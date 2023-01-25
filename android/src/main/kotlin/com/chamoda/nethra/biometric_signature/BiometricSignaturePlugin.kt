@@ -179,11 +179,9 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
 
   private fun deleteKeys(@NonNull result: MethodChannel.Result) {
     if (doesBiometricKeyExist()) {
-      val deletionSuccessful = deleteBiometricKey()
-      if (deletionSuccessful) {
-        val resultMap = mutableMapOf<String, String>()
-        resultMap["deleted"] = "true"
-        result.success(resultMap)
+      val resultBoolean = deleteBiometricKey()
+      if (resultBoolean) {
+        result.success(resultBoolean)
       } else {
         result.error(
           "AUTHFAILED",
@@ -199,10 +197,8 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
 
   private fun biometricKeysExist(@NonNull result: MethodChannel.Result) {
     try {
-      val doesBiometricKeyExist = doesBiometricKeyExist()
-      val resultMap = mutableMapOf<String, String>()
-      resultMap["keysExist"] = doesBiometricKeyExist.toString()
-      result.success(resultMap)
+      val resultBoolean = doesBiometricKeyExist()
+      result.success(resultBoolean)
     } catch (e: Exception) {
       result.error(
         "AUTHFAILED",
@@ -233,7 +229,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
               .lowercase(
                 Locale.ROOT
               )
-          )?.value/*.also { println(it) }*/ ?: "biometrics"
+          )?.value ?: "biometrics"
       } else {
         when (canAuthenticate) {
           BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> resultMap["error"] =

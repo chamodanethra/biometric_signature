@@ -12,8 +12,8 @@ class BiometricSignature {
     return response;
   }
 
-  Future<Map<String?, String?>?> deleteKeys() async {
-    final Map<String?, String?>? response = await BiometricSignaturePlatform.instance.deleteKeys();
+  Future<bool?> deleteKeys() async {
+    final bool? response = await BiometricSignaturePlatform.instance.deleteKeys();
     return response;
   }
 
@@ -22,8 +22,8 @@ class BiometricSignature {
     return response;
   }
 
-  Future<Map<String?, String?>?> biometricKeysExist() async {
-    final Map<String?, String?>? response = await BiometricSignaturePlatform.instance.biometricAuthAvailable();
+  Future<bool?> biometricKeysExist() async {
+    final bool? response = await BiometricSignaturePlatform.instance.biometricKeysExist();
     return response;
   }
 }

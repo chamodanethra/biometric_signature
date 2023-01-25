@@ -16,9 +16,8 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
     return response.toStringEntriesMap();
   }
   @override
-  Future<Map<String?, String?>?> deleteKeys() async {
-    final deleted = await methodChannel.invokeMethod<Map<String?, String?>?>('deleteKeys');
-    return deleted;
+  Future<bool?> deleteKeys() async {
+    return methodChannel.invokeMethod<bool?>('deleteKeys');
   }
   @override
   Future<Map<String?, String?>?> createSignature({Map<String?, String?>? options}) async {
@@ -31,8 +30,7 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
     return response.toStringEntriesMap();
   }
   @override
-  Future<Map<String?, String?>?> biometricKeysExist() async {
-    final response = await methodChannel.invokeMethod<Map>('biometricKeysExist');
-    return response.toStringEntriesMap();
+  Future<bool?> biometricKeysExist() async {
+    return methodChannel.invokeMethod<bool?>('biometricKeysExist');
   }
 }

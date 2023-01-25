@@ -26,16 +26,21 @@ class _MyAppState extends State<MyApp> {
 
   // Platform messages are asynchronous, so we initialize in an async method.
   Future<void> initPlatformState() async {
-    Map<String?, dynamic>? response;
     // Platform messages may fail, so we use a try/catch PlatformException.
     // We also handle the message potentially returning null.
     try {
-      var res = await _biometricSignaturePlugin.createKeys();
-      print(res?.values);
-      response =
+      var doExist = await _biometricSignaturePlugin.biometricKeysExist() ?? false;
+      debugPrint(doExist.toString());
+      if (!doExist) {
+        var resp = await _biometricSignaturePlugin.createKeys();
+        resp?.keys.forEach((element) {debugPrint("$element : ${resp[element]}");});
+      }
+      var response =
       await _biometricSignaturePlugin.createSignature();
-      print(response?.values);
-    } on PlatformException {
+      response?.keys.forEach((element) {debugPrint("$element : ${response![element]}");});
+    } on PlatformException catch(e) {
+      debugPrint(e.message);
+      debugPrint(e.details);
     }
 
     // If the widget was removed from the tree while the asynchronous platform
