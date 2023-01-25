@@ -23,7 +23,19 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
     _instance = instance;
   }
 
-  Future<String?> getPlatformVersion() {
-    throw UnimplementedError('platformVersion() has not been implemented.');
+  Future<Map<String?, String?>?> createKeys() {
+    throw UnimplementedError('createKeys() has not been implemented.');
+  }
+  Future<Map<String?, String?>?> deleteKeys() {
+    throw UnimplementedError('deleteKeys() has not been implemented.');
+  }
+  Future<Map<String?, String?>?> biometricAuthAvailable() {
+    throw UnimplementedError('biometricAuthAvailable() has not been implemented.');
+  }
+  Future<Map<String?, String?>?> createSignature({Map<String, String?>? options}) {
+    throw UnimplementedError('createSignature(Map<String, String?>? options) has not been implemented.');
+  }
+  Future<Map<String?, String?>?> biometricKeysExist() {
+    throw UnimplementedError('biometricKeysExist() has not been implemented.');
   }
 }

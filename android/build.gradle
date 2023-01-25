@@ -41,6 +41,10 @@ android {
     }
 
     defaultConfig {
-        minSdkVersion 16
+        minSdkVersion 23
+    }
+
+    dependencies {
+        implementation 'androidx.biometric:biometric-ktx:1.2.0-alpha04'
     }
 }
