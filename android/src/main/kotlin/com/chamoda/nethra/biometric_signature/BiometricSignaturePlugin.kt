@@ -109,15 +109,15 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
   }
 
   private fun createSignature(
-    params: MutableMap<String, String>?,
+    options: MutableMap<String, String>?,
     @NonNull result: MethodChannel.Result
   ) {
     var resultSent = false
     try {
-      val cancelButtonText: String = params?.get("cancelButtonText") ?: "Cancel"
-      val promptMessage: String = params?.get("promptMessage") ?: "Welcome"
+      val cancelButtonText: String = options?.get("cancelButtonText") ?: "Cancel"
+      val promptMessage: String = options?.get("promptMessage") ?: "Welcome"
       val payload: String =
-        Base64.encodeToString("somewhat secret".toByteArray(Charsets.UTF_8), DEFAULT)
+        Base64.encodeToString("arhten adomahc".toByteArray(Charsets.UTF_8), DEFAULT)
       val signature = Signature.getInstance("SHA256withRSA")
       val keyStore = KeyStore.getInstance("AndroidKeyStore")
       keyStore.load(null)

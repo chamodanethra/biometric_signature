@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'dart:async';
 
@@ -29,6 +31,9 @@ class _MyAppState extends State<MyApp> {
     // Platform messages may fail, so we use a try/catch PlatformException.
     // We also handle the message potentially returning null.
     try {
+      if (Platform.isIOS) {
+        await _biometricSignaturePlugin.deleteKeys();
+      }
       var doExist = await _biometricSignaturePlugin.biometricKeysExist() ?? false;
       debugPrint(doExist.toString());
       if (!doExist) {

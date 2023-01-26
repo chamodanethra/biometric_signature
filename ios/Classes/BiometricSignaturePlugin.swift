@@ -65,170 +65,182 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             }
         })
     }
-
-
-      private func createKeys(result: @escaping FlutterResult) -> Void  {
-          DispatchQueue.global(qos: .default).async(execute: { [self] in
-              var error: Unmanaged<CFError>? = nil
-              let sacObject = SecAccessControlCreateWithFlags(
-                  kCFAllocatorDefault,
-                  kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
-                  .biometryAny,
-                  &error)
-              if sacObject == nil || error != nil {
-                  var errorString: String? = nil
-                  if let error {
-                      errorString = "SecItemAdd can't create sacObject: \(error)"
-
-                      let platformError = FlutterError(code: "AUTHFAILED",
-                                                       message: errorString,
-                                                       details: nil)
-                      result(platformError)
-                      return
-                  }
-              }else {
-                  let biometricKeyTag = getBiometricKeyTag()
-                  var keyAttributes: [AnyHashable? : Any?]? = nil
-                  if let kSecClass = kSecClass as? AnyHashable, let kSecClassKey = kSecClassKey as? AnyHashable, let kSecAttrKeyType = kSecAttrKeyType as? AnyHashable, let kSecAttrKeyTypeRSA=kSecAttrKeyTypeRSA as? AnyHashable, let kSecAttrKeySizeInBits = kSecAttrKeySizeInBits as? AnyHashable, let kSecPrivateKeyAttrs = kSecPrivateKeyAttrs as? AnyHashable, let kSecAttrIsPermanent = kSecAttrIsPermanent as? AnyHashable, let kSecUseAuthenticationUI = kSecUseAuthenticationUI as? AnyHashable, let kSecUseAuthenticationUIAllow = kSecUseAuthenticationUIAllow as? AnyHashable, let kSecAttrApplicationTag = kSecAttrApplicationTag as? AnyHashable, let biometricKeyTag, let kSecAttrAccessControl = kSecAttrAccessControl as? AnyHashable, let sacObject {
-                      keyAttributes = [
-                          kSecClass: kSecClassKey,
-                          kSecAttrKeyType: kSecAttrKeyTypeRSA,
-                          kSecAttrKeySizeInBits: NSNumber(value: 2048),
-                          kSecPrivateKeyAttrs: [
-                              kSecAttrIsPermanent: NSNumber(value: true),
-                              kSecUseAuthenticationUI: kSecUseAuthenticationUIAllow,
-                              kSecAttrApplicationTag: biometricKeyTag,
-                              kSecAttrAccessControl: sacObject
-                          ] as? Any
-                      ]
-                  }
-                  deleteBiometricKey()
-                  var gen_error: Unmanaged<CFError>?
-                  var privateKey: Any? = nil
-                  if let attributes = keyAttributes as? CFDictionary? {
-                      privateKey = SecKeyCreateRandomKey(attributes!, &gen_error)
-                      if let privateKey {
-                          var publicKey: Any? = nil
-                          if let key = privateKey as? SecKey? {
-                              publicKey = SecKeyCopyPublicKey(key!)
-                          }
-                          var publicKeyDataRef: CFData? = nil
-                          if let key = publicKey {
-                              publicKeyDataRef = SecKeyCopyExternalRepresentation(key as! SecKey, nil)
-                          }
-                          let publicKeyData = publicKeyDataRef as? Data
-                          let publicKeyDataWithHeader = AppDelegate.addHeaderPublickey(publicKeyData)
-                          let publicKeyString = publicKeyDataWithHeader?.base64EncodedString(options: [])
-
-                          let resultMap = [
-                              "publicKey": publicKeyString ?? ""
-                          ]
-                          result(resultMap)
-                      } else {
-                          let platformError = FlutterError(code: "AUTHFAILED",
-                                                           message: "Key generation error: \(gen_error)",
-                                                           details: nil)
-                          result(platformError)
-                      }
-                      return
-                  }
-              }
-          })
-      }
-
-      private func createSignature(params: Dictionary<String, String>, result: @escaping FlutterResult) -> Void  {
-          DispatchQueue.global(qos: .default).async(execute: { [self] in
-              let promptMessage = params["promptMessage"]
-              let payload = params["payload"] as? String
-
-              let biometricKeyTag = getBiometricKeyTag()
-              var query: [AnyHashable? : Any?]? = nil
-              if let kSecClass = kSecClass as? AnyHashable, let kSecClassKey = kSecClassKey as? AnyHashable, let kSecAttrApplicationTag = kSecAttrApplicationTag as? AnyHashable, let biometricKeyTag, let kSecAttrKeyType = kSecAttrKeyType as? AnyHashable, let kSecAttrKeyTypeRSA = kSecAttrKeyTypeRSA as? AnyHashable, let kSecReturnRef = kSecReturnRef as? AnyHashable, let kSecUseOperationPrompt = kSecUseOperationPrompt as? AnyHashable {
-                  query = [
-                      kSecClass: kSecClassKey,
-                      kSecAttrApplicationTag: biometricKeyTag,
-                      kSecAttrKeyType: kSecAttrKeyTypeRSA,
-                      kSecReturnRef: NSNumber(value: true),
-                      kSecUseOperationPrompt: promptMessage
-                  ]
-              }
-              var privateKey: AnyObject?
-              var status: OSStatus? = nil
-              if let query = query as? CFDictionary? {
-                  status = SecItemCopyMatching(query!, &privateKey)
-              }
-              if status == errSecSuccess {
-                  var error: NSError?
-                  let dataToSign = payload!.data(using: .utf8)
-                  var signature: Data? = nil
-                  if let sign = dataToSign as? CFData? {
-                      signature = SecKeyCreateSignature(privateKey as! SecKey, .rsaSignatureMessagePKCS1v15SHA256, sign!, nil)! as Data
-                  }
-
-                  var resultMap = [String : String]()
-                  if let signature {
-                      let signatureString = signature.base64EncodedString(options: [])
-                      resultMap = [
-                          "signature": signatureString
-                      ]
-                      result(resultMap)
-                  } else if (error as NSError?)?.code == Int(errSecUserCanceled) {
-                      let platformError = FlutterError(code: "useCancel",
-                                                       message: "userCancel",
-                                                       details: nil)
-
-                      result(platformError)
-                  } else {
-                      if let error {
-                          let message = "Error generating signature: \(error)"
-                          let platformError = FlutterError(code: "AUTHFAILED",
-                                                           message: message,
-                                                           details: nil)
-                          result(platformError)
-                      }
-                  }
-              } else {
-                  let message = "Key not found: \(keychainError(error: status!))"
-                  let platformError = FlutterError(code: "AUTHFAILED",
-                                                   message: message,
-                                                   details: nil)
-                  result(platformError)
-              }
-              return
-          })
-      }
-
-      private func deleteBiometricKey() -> OSStatus {
-          let biometricKeyTag = getBiometricKeyTag()
-          var deleteQuery: [AnyHashable? : Any?]? = nil
-          if let kSecClass = kSecClass as? AnyHashable, let kSecClassKey = kSecClassKey as? AnyHashable, let kSecAttrApplicationTag = kSecAttrApplicationTag as? AnyHashable, let kSecAttrKeyType = kSecAttrKeyType as? AnyHashable, let kSecAttrKeyTypeRSA = kSecAttrKeyTypeRSA as? AnyHashable {
-              deleteQuery = [
-                  kSecClass: kSecClassKey,
-                  kSecAttrApplicationTag: biometricKeyTag,
-                  kSecAttrKeyType: kSecAttrKeyTypeRSA
-              ]
-          }
-
-          var status: OSStatus? = nil
-          if let query = deleteQuery as? CFDictionary? {
-              status = SecItemDelete(query!)
-          }
-          return status!
-      }
-
-      private func getBiometryType(_ context: LAContext?) -> String {
-          if #available(iOS 11, *) {
-              return (context?.biometryType == .faceID) ? "FaceID" : "TouchID"
-          }
-
-          return "TouchID"
-      }
-
-      private func getBiometricKeyTag() -> Data? {
-          let biometricKeyAlias = "biometric_key"
-          let biometricKeyTag = biometricKeyAlias.data(using: .utf8)
-          return biometricKeyTag
-      }
+    
+    private func deleteKeys(result: @escaping FlutterResult) -> Void  {
+            let group = DispatchGroup()
+            DispatchQueue.global(qos: .default).async(execute: { [self] in
+                let biometricKeyExists = self.doesBiometricKeyExist()
+                if biometricKeyExists {
+                    self.deleteBiometricKey() { status in
+                        print(status)
+                        result(status == noErr)
+                        group.leave()
+                        group.wait()
+                    }
+                }
+            })
+        }
+    
+    
+    private func createKeys(result: @escaping FlutterResult) -> Void  {
+        let group = DispatchGroup()
+        DispatchQueue.global(qos: .default).async(execute: { [self] in
+            var error: Unmanaged<CFError>? = nil
+            let sacObject = SecAccessControlCreateWithFlags(
+                kCFAllocatorDefault,
+                kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+                .biometryAny,
+                &error)
+            if sacObject == nil || error != nil {
+                var errorString: String? = nil
+                if let error {
+                    errorString = "SecItemAdd can't create sacObject: \(error)"
+                    
+                    let platformError = FlutterError(code: "AUTHFAILED",
+                                                     message: errorString,
+                                                     details: nil)
+                    result(platformError)
+                    return
+                }
+            }else {
+                let biometricKeyTag = getBiometricKey()
+                var keyAttributes: [AnyHashable? : Any?]? = nil
+                if let kSecClass = kSecClass as? AnyHashable, let kSecClassKey = kSecClassKey as? AnyHashable, let kSecAttrKeyType = kSecAttrKeyType as? AnyHashable, let kSecAttrKeyTypeRSA=kSecAttrKeyTypeRSA as? AnyHashable, let kSecAttrKeySizeInBits = kSecAttrKeySizeInBits as? AnyHashable, let kSecPrivateKeyAttrs = kSecPrivateKeyAttrs as? AnyHashable, let kSecAttrIsPermanent = kSecAttrIsPermanent as? AnyHashable, let kSecUseAuthenticationUI = kSecUseAuthenticationUI as? AnyHashable, let kSecUseAuthenticationUIAllow = kSecUseAuthenticationUIAllow as? AnyHashable, let kSecAttrApplicationTag = kSecAttrApplicationTag as? AnyHashable, let biometricKeyTag, let kSecAttrAccessControl = kSecAttrAccessControl as? AnyHashable, let sacObject {
+                    keyAttributes = [
+                        kSecClass: kSecClassKey,
+                        kSecAttrKeyType: kSecAttrKeyTypeRSA,
+                        kSecAttrKeySizeInBits: NSNumber(value: 2048),
+                        kSecPrivateKeyAttrs: [
+                            kSecAttrIsPermanent: NSNumber(value: true),
+                            kSecUseAuthenticationUI: kSecUseAuthenticationUIAllow,
+                            kSecAttrApplicationTag: biometricKeyTag,
+                            kSecAttrAccessControl: sacObject
+                        ] as? Any
+                    ]
+                }
+                self.deleteBiometricKey() { status in
+                    print(status)
+                    group.leave()
+                    group.wait()
+                    var error: Unmanaged<CFError>?
+                    var privateKey: Any? = nil
+                    if let attributes = keyAttributes as? CFDictionary? {
+                        privateKey = SecKeyCreateRandomKey(attributes!, &error)
+                        if let privateKey {
+                            var publicKey: Any? = nil
+                            if let key = privateKey as? SecKey? {
+                                publicKey = SecKeyCopyPublicKey(key!)
+                            }
+                            var publicKeyDataRef: CFData? = nil
+                            if let key = publicKey {
+                                publicKeyDataRef = SecKeyCopyExternalRepresentation(key as! SecKey, nil)
+                            }
+                            let publicKeyData = publicKeyDataRef as? Data
+                            let publicKeyDataWithHeader = BiometricSignaturePlugin.addHeaderPublickey(publicKeyData)
+                            let publicKeyString = publicKeyDataWithHeader?.base64EncodedString(options: [])
+                            
+                            let resultMap = [
+                                "publicKey": publicKeyString ?? ""
+                            ]
+                            result(resultMap)
+                        } else {
+                            let platformError = FlutterError(code: "AUTHFAILED",
+                                                             message: "Key generation error: \(error)",
+                                                             details: nil)
+                            result(platformError)
+                        }
+                        return
+                    }
+                }
+            }
+        })
+    }
+    
+    private func createSignature(options: Dictionary<String, String>?, result: @escaping FlutterResult) -> Void  {
+        DispatchQueue.global(qos: .default).async(execute: { [self] in
+            let promptMessage = options?["promptMessage"] ?? "Welcome"
+            let payload = "arhten adomahc"
+            let biometricKeyTag = getBiometricKey()
+            var query: [AnyHashable? : Any?]? = nil
+            if let kSecClass = kSecClass as? AnyHashable, let kSecClassKey = kSecClassKey as? AnyHashable, let kSecAttrApplicationTag = kSecAttrApplicationTag as? AnyHashable, let biometricKeyTag, let kSecAttrKeyType = kSecAttrKeyType as? AnyHashable, let kSecAttrKeyTypeRSA = kSecAttrKeyTypeRSA as? AnyHashable, let kSecReturnRef = kSecReturnRef as? AnyHashable, let kSecUseOperationPrompt = kSecUseOperationPrompt as? AnyHashable {
+                query = [
+                    kSecClass: kSecClassKey,
+                    kSecAttrApplicationTag: biometricKeyTag,
+                    kSecAttrKeyType: kSecAttrKeyTypeRSA,
+                    kSecReturnRef: NSNumber(value: true),
+                    kSecUseOperationPrompt: promptMessage
+                ]
+            }
+            var privateKey: AnyObject?
+            var status: OSStatus? = nil
+            if let query = query as? CFDictionary? {
+                status = SecItemCopyMatching(query!, &privateKey)
+            }
+            if status == errSecSuccess {
+                var error: NSError?
+                let dataToSign = payload.data(using: .utf8)
+                var signature: Data? = nil
+                if let sign = dataToSign as? CFData? {
+                    signature = SecKeyCreateSignature(privateKey as! SecKey, .rsaSignatureMessagePKCS1v15SHA256, sign!, nil)! as Data
+                }
+                var resultMap = [String : String]()
+                if let signature {
+                    let signatureString = signature.base64EncodedString(options: [])
+                    resultMap = [
+                        "signature": signatureString
+                    ]
+                    result(resultMap)
+                } else if (error as NSError?)?.code == Int(errSecUserCanceled) {
+                    let platformError = FlutterError(code: "useCancel",
+                                                     message: "userCancel",
+                                                     details: nil)
+                    result(platformError)
+                } else {
+                    if let error {
+                        let message = "Error generating signature: \(error)"
+                        let platformError = FlutterError(code: "AUTHFAILED",
+                                                         message: message,
+                                                         details: nil)
+                        result(platformError)
+                    }
+                }
+            } else {
+                let message = "Key not found: \(keychainError(error: status!))"
+                let platformError = FlutterError(code: "AUTHFAILED",
+                                                 message: message,
+                                                 details: nil)
+                result(platformError)
+            }
+            return
+        })
+    }
+    
+    private func deleteBiometricKey(completion: @escaping (OSStatus) -> Void) {
+            let biometricKeyTag = getBiometricKey()
+            var deleteQuery: [AnyHashable? : Any?]? = nil
+            if let kSecClass = kSecClass as? AnyHashable, let kSecClassKey = kSecClassKey as? AnyHashable, let kSecAttrApplicationTag = kSecAttrApplicationTag as? AnyHashable, let kSecAttrKeyType = kSecAttrKeyType as? AnyHashable, let kSecAttrKeyTypeRSA = kSecAttrKeyTypeRSA as? AnyHashable {
+                deleteQuery = [
+                    kSecClass: kSecClassKey,
+                    kSecAttrApplicationTag: biometricKeyTag,
+                    kSecAttrKeyType: kSecAttrKeyTypeRSA
+                ]
+            }
+            var status: OSStatus? = nil
+            if let query = deleteQuery as? CFDictionary? {
+                status = SecItemDelete(query!)
+                completion(status!)
+            }
+        }
+    
+    private func getBiometryType(_ context: LAContext?) -> String {
+        return (context?.biometryType == .faceID) ? "FaceID" : "TouchID"
+    }
+    
+    private func getBiometricKey() -> Data? {
+        let BIOMETRIC_KEY_ALIAS = "biometric_key"
+        let biometricKeyTag = BIOMETRIC_KEY_ALIAS.data(using: .utf8)
+        return biometricKeyTag
+    }
     
     func doesBiometricKeyExist() -> Bool {
         let biometricKeyTag = getBiometricKeyTag()
