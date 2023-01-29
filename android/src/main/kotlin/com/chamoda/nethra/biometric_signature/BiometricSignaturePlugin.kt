@@ -3,7 +3,6 @@ package com.chamoda.nethra.biometric_signature
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import android.util.Base64.DEFAULT
 import androidx.annotation.NonNull
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -63,8 +62,8 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       "biometricAuthAvailable" -> {
         biometricAuthAvailable(result)
       }
-      "biometricKeysExist" -> {
-        biometricKeysExist(result)
+      "biometricKeyExists" -> {
+        biometricKeyExists(result)
       }
       else -> {
         result.notImplemented()
@@ -94,11 +93,9 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       val publicKey: PublicKey = keyPair.public
       val encodedPublicKey: ByteArray = publicKey.encoded
       var publicKeyString: String =
-        Base64.encodeToString(encodedPublicKey, DEFAULT)
-      val resultMap = mutableMapOf<String, String>()
+        Base64.encodeToString(encodedPublicKey, Base64.DEFAULT)
       publicKeyString = publicKeyString.replace("\r", "").replace("\n", "")
-      resultMap["publicKey"] = publicKeyString
-      result.success(resultMap)
+      result.success(mapOf("publicKey" to publicKeyString))
 
     } catch (e: Exception) {
       result.error(
@@ -108,16 +105,11 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     }
   }
 
-  private fun createSignature(
-    options: MutableMap<String, String>?,
-    @NonNull result: MethodChannel.Result
-  ) {
-    var resultSent = false
+  private fun createSignature(options: MutableMap<String, String>?, @NonNull result: MethodChannel.Result) {
     try {
-      val cancelButtonText: String = options?.get("cancelButtonText") ?: "Cancel"
-      val promptMessage: String = options?.get("promptMessage") ?: "Welcome"
-      val payload: String =
-        Base64.encodeToString("arhten adomahc".toByteArray(Charsets.UTF_8), DEFAULT)
+      val cancelButtonText = options?.get("cancelButtonText") ?: "Cancel"
+      val promptMessage = options?.get("promptMessage") ?: "Welcome"
+      val payload = Base64.encodeToString("arhten adomahc".toByteArray(Charsets.UTF_8), Base64.DEFAULT)
       val signature = Signature.getInstance("SHA256withRSA")
       val keyStore = KeyStore.getInstance("AndroidKeyStore")
       keyStore.load(null)
@@ -125,55 +117,32 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       signature.initSign(privateKey)
       val cryptoObject = BiometricPrompt.CryptoObject(signature)
       val executor = ContextCompat.getMainExecutor(activity)
-      val biometricPrompt =
-        BiometricPrompt(
-          activity, executor,
-          object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationError(
-              errorCode: Int,
-              errString: CharSequence
-            ) {
-              super.onAuthenticationError(errorCode, errString)
-              if (errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON /*|| errorCode == BiometricPrompt.ERROR_USER_CANCELED */) {
-                result.error("userCancel", "userCancel", null)
-              } else if (errorCode == BiometricPrompt.ERROR_USER_CANCELED) {
-                result.error("$errorCode", errString.toString(), null)
-              }
-              resultSent = true
-            }
+      BiometricPrompt(activity, executor,
+        object : BiometricPrompt.AuthenticationCallback() {
+          override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
+            super.onAuthenticationSucceeded(authResult)
+            val cryptoSignature = authResult.cryptoObject!!.signature!!
+            cryptoSignature.update(payload.toByteArray())
+            val signedString = Base64.encodeToString(cryptoSignature.sign(), Base64.DEFAULT)
+              .replace("\r", "").replace("\n", "")
+            result.success(mapOf("signature" to signedString))
+          }
 
-            override fun onAuthenticationSucceeded(
-              authResult: BiometricPrompt.AuthenticationResult
-            ) {
-              super.onAuthenticationSucceeded(authResult)
-              val cryptoObject: BiometricPrompt.CryptoObject =
-                authResult.cryptoObject!!
-              val cryptoSignature = cryptoObject.signature!!
-              cryptoSignature.update(payload.toByteArray())
-              val signed = cryptoSignature.sign()
-              var signedString = Base64.encodeToString(signed, DEFAULT)
-              signedString =
-                signedString.replace("\r", "").replace("\n", "")
-              if (!resultSent) {
-                val resultMap = mutableMapOf<String, String>()
-                resultMap["signature"] = signedString
-                result.success(resultMap)
-                resultSent = true
-              }
+          override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+            super.onAuthenticationError(errorCode, errString)
+            if (errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON /*|| errorCode == BiometricPrompt.ERROR_USER_CANCELED*/) {
+              result.error("USERCANCEL", "userCancel", null)
+            } else {
+              result.error("$errorCode", errString.toString(), null)
             }
-          })
-
-      val promptInfo = PromptInfo.Builder()
+          }
+        }).authenticate(PromptInfo.Builder()
         .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
         .setNegativeButtonText(cancelButtonText)
         .setTitle(promptMessage)
-        .build()
-      biometricPrompt.authenticate(promptInfo, cryptoObject)
+        .build(), cryptoObject)
     } catch (e: Exception) {
-      result.error(
-        "AUTHFAILED",
-        "Error generating signature: " + e.message, null
-      )
+      result.error("AUTHFAILED", "Error generating signature: ${e.message}", null)
     }
   }
 
@@ -189,16 +158,14 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
         )
       }
     } else {
-      val resultMap = mutableMapOf<String, String>()
-      resultMap["deleted"] = "false"
-      result.success(resultMap)
+      result.success(false)
     }
   }
 
-  private fun biometricKeysExist(@NonNull result: MethodChannel.Result) {
+  private fun biometricKeyExists(@NonNull result: MethodChannel.Result) {
     try {
-      val resultBoolean = doesBiometricKeyExist()
-      result.success(resultBoolean)
+      val biometricKeyExists = doesBiometricKeyExist()
+      result.success(biometricKeyExists)
     } catch (e: Exception) {
       result.error(
         "AUTHFAILED",
@@ -208,47 +175,31 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
   }
 
   private fun biometricAuthAvailable(@NonNull result: MethodChannel.Result) {
-    try {
-      val canAuthenticate = BiometricManager.from(activity).canAuthenticate(
-        BiometricManager.Authenticators.BIOMETRIC_STRONG
-      )
-      val resultMap = mutableMapOf<String, String>()
-      "fingerprint|face|iris".toRegex().find(
-        BiometricManager.from(activity)
-          .getStrings(BiometricManager.Authenticators.BIOMETRIC_STRONG)?.buttonLabel.toString()
-          .lowercase(
-            Locale.ROOT
-          )
-      )?.value
+    val biometricManager = BiometricManager.from(activity)
+    val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
 
-      if (canAuthenticate === BiometricManager.BIOMETRIC_SUCCESS) {
-        resultMap["biometricsType"] =
-          "fingerprint|face|iris".toRegex().find(
-            BiometricManager.from(activity)
-              .getStrings(BiometricManager.Authenticators.BIOMETRIC_STRONG)?.buttonLabel.toString()
-              .lowercase(
-                Locale.ROOT
-              )
-          )?.value ?: "biometrics"
-      } else {
-        when (canAuthenticate) {
-          BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> resultMap["error"] =
-            "BIOMETRIC_ERROR_NO_HARDWARE"
-          BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> resultMap["error"] =
-            "BIOMETRIC_ERROR_HW_UNAVAILABLE"
-          BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> resultMap["error"] =
-            "BIOMETRIC_ERROR_NONE_ENROLLED"
-        }
-        resultMap["biometricsType"] = "none"
+    val resultMap = mutableMapOf<String, String>()
+    if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
+      resultMap["biometricType"] =
+        "fingerprint|face|iris".toRegex().find(
+          BiometricManager.from(activity)
+            .getStrings(BiometricManager.Authenticators.BIOMETRIC_STRONG)?.buttonLabel.toString()
+            .lowercase(
+              Locale.ROOT
+            )
+        )?.value ?: "biometrics"
+    } else {
+      resultMap["error"] = when (canAuthenticate) {
+        BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "BIOMETRIC_ERROR_NO_HARDWARE"
+        BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "BIOMETRIC_ERROR_HW_UNAVAILABLE"
+        BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "BIOMETRIC_ERROR_NONE_ENROLLED"
+        else -> "Error checking biometrics"
       }
-      result.success(resultMap)
-    } catch (e: Exception) {
-      result.error(
-        "AUTHFAILED",
-        "Error checking if biometric key exists: ${e.message}", null
-      )
+      resultMap["biometricType"] = "none"
     }
+    result.success(resultMap)
   }
+
 
   private fun doesBiometricKeyExist(): Boolean {
     return try {

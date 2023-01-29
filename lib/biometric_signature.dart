@@ -22,8 +22,8 @@ class BiometricSignature {
     return response;
   }
 
-  Future<bool?> biometricKeysExist() async {
-    final bool? response = await BiometricSignaturePlatform.instance.biometricKeysExist();
+  Future<bool?> biometricKeyExists() async {
+    final bool? response = await BiometricSignaturePlatform.instance.biometricKeyExists();
     return response;
   }
 }

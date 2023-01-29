@@ -30,7 +30,7 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
     return response.toStringEntriesMap();
   }
   @override
-  Future<bool?> biometricKeysExist() async {
-    return methodChannel.invokeMethod<bool?>('biometricKeysExist');
+  Future<bool?> biometricKeyExists() async {
+    return methodChannel.invokeMethod<bool?>('biometricKeyExists');
   }
 }
