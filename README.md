@@ -1,15 +1,13 @@
 # biometric_signature
 
-"This Flutter plugin provides an easy way to integrate cryptographic signing with biometric
-authentication using the Android KeyStore and iOS KeyChain."
+This Flutter plugin provides an easy way to integrate cryptographic signing with biometric authentication.
 
-On supported devices, this includes authentication with biometrics such as
+On supported devices, this includes biometric signing with
 fingerprint or facial recognition or iris scanning.
 
-|             | Android | iOS  |
-|-------------|---------|------|
-| **Support** | SDK 23+ | 11.0+
-
+|             | Android | iOS   |
+|-------------|---------|-------|
+| **Support** | SDK 23+ | 11.0+ |
 
 ## Getting started
 
