@@ -25,27 +25,21 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> asyncInit() async {
-    final response = await _biometricSignaturePlugin.biometricAuthAvailable();
-    response?.keys.forEach((element) {
-      debugPrint("$element : ${response![element]}");
-    });
-    // if (condition) {
-    //   await _biometricSignaturePlugin.deleteKeys();
-    // }
     try {
-      final doExist =
+      final String? biometricsType = await _biometricSignaturePlugin.biometricAuthAvailable();
+      debugPrint("biometricsType : $biometricsType");
+      // if (condition) {
+      //   final bool? result = await _biometricSignaturePlugin.deleteKeys();
+      // }
+      final bool doExist =
           await _biometricSignaturePlugin.biometricKeyExists() ?? false;
-      debugPrint(doExist.toString());
+      debugPrint("doExist :$doExist");
       if (!doExist) {
-        var resp = await _biometricSignaturePlugin.createKeys();
-        resp?.keys.forEach((element) {
-          debugPrint("$element : ${resp[element]}");
-        });
+        final String? publicKey = await _biometricSignaturePlugin.createKeys();
+          debugPrint("publicKey : $publicKey");
       }
-      final response = await _biometricSignaturePlugin.createSignature();
-      response?.keys.forEach((element) {
-        debugPrint("$element : ${response![element]}");
-      });
+      final String? signature = await _biometricSignaturePlugin.createSignature();
+      debugPrint("signature : $signature");
     } on PlatformException catch (e) {
       debugPrint(e.message);
       debugPrint(e.details);

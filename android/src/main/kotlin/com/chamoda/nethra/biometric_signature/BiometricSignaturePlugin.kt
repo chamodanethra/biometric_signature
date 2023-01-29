@@ -92,10 +92,10 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       val keyPair: KeyPair = keyPairGenerator.generateKeyPair()
       val publicKey: PublicKey = keyPair.public
       val encodedPublicKey: ByteArray = publicKey.encoded
-      var publicKeyString: String =
+      var publicKeyString =
         Base64.encodeToString(encodedPublicKey, Base64.DEFAULT)
       publicKeyString = publicKeyString.replace("\r", "").replace("\n", "")
-      result.success(mapOf("publicKey" to publicKeyString))
+      result.success(publicKeyString)
 
     } catch (e: Exception) {
       result.error(
@@ -125,7 +125,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
             cryptoSignature.update(payload.toByteArray())
             val signedString = Base64.encodeToString(cryptoSignature.sign(), Base64.DEFAULT)
               .replace("\r", "").replace("\n", "")
-            result.success(mapOf("signature" to signedString))
+            result.success(signedString)
           }
 
           override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
@@ -178,26 +178,23 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     val biometricManager = BiometricManager.from(activity)
     val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
 
-    val resultMap = mutableMapOf<String, String>()
     if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
-      resultMap["biometricType"] =
-        "fingerprint|face|iris".toRegex().find(
-          BiometricManager.from(activity)
-            .getStrings(BiometricManager.Authenticators.BIOMETRIC_STRONG)?.buttonLabel.toString()
-            .lowercase(
-              Locale.ROOT
-            )
-        )?.value ?: "biometrics"
+      result.success("fingerprint|face|iris".toRegex().find(
+        BiometricManager.from(activity)
+          .getStrings(BiometricManager.Authenticators.BIOMETRIC_STRONG)?.buttonLabel.toString()
+          .lowercase(
+            Locale.ROOT
+          )
+      )?.value ?: "biometrics")
     } else {
-      resultMap["error"] = when (canAuthenticate) {
+      var errorString = when (canAuthenticate) {
         BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "BIOMETRIC_ERROR_NO_HARDWARE"
         BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "BIOMETRIC_ERROR_HW_UNAVAILABLE"
         BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "BIOMETRIC_ERROR_NONE_ENROLLED"
         else -> "Error checking biometrics"
       }
-      resultMap["biometricType"] = "none"
+      result.success("none, $errorString")
     }
-    result.success(resultMap)
   }
 
 

@@ -2,13 +2,13 @@ import 'biometric_signature_platform_interface.dart';
 
 class BiometricSignature {
 
-  Future<Map<String?, String?>?> createKeys() async {
-    final Map<String?, String?>? response = await BiometricSignaturePlatform.instance.createKeys();
+  Future<String?> createKeys() async {
+    final String? response = await BiometricSignaturePlatform.instance.createKeys();
     return response;
   }
 
-  Future<Map<String?, String?>?> createSignature({Map<String, String>? options}) async {
-    final Map<String?, String?>? response = await BiometricSignaturePlatform.instance.createSignature(options: options);
+  Future<String?> createSignature({Map<String, String>? options}) async {
+    final String? response = await BiometricSignaturePlatform.instance.createSignature(options: options);
     return response;
   }
 
@@ -17,8 +17,8 @@ class BiometricSignature {
     return response;
   }
 
-  Future<Map<String?, String?>?> biometricAuthAvailable() async {
-    final Map<String?, String?>? response = await BiometricSignaturePlatform.instance.biometricAuthAvailable();
+  Future<String?> biometricAuthAvailable() async {
+    final String? response = await BiometricSignaturePlatform.instance.biometricAuthAvailable();
     return response;
   }
 

@@ -34,10 +34,10 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         
         if canEvaluatePolicy {
             let biometricType = getBiometricType(context)
-            result(["biometricType": biometricType])
+            result(biometricType)
         } else {
             let errorMessage = error?.localizedDescription ?? ""
-            result(["biometricType": "none", "error": errorMessage])
+            result("none, \(errorMessage)")
         }
     }
     
@@ -98,7 +98,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
                 if let publicKeyDataRef = publicKeyDataRef as? Data {
                     let publicKeyDataWithHeader = BiometricSignaturePlugin.addHeader(publicKeyData: publicKeyDataRef)
                     let publicKeyString = publicKeyDataWithHeader!.base64EncodedString(options: [])
-                    result(["publicKey": publicKeyString])
+                    result(publicKeyString)
                     return
                 }
             }
@@ -132,7 +132,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
                 }
                 return
             }
-            result(["signature": signature.base64EncodedString(options: [])])
+            result(signature.base64EncodedString())
         } else {
             result(FlutterError(code: "AUTHFAILED", message: "Key not found: \(Int(status))", details: nil))
         }

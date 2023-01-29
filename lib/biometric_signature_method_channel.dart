@@ -1,4 +1,3 @@
-import 'package:biometric_signature/ex_map.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -11,26 +10,26 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   final methodChannel = const MethodChannel('biometric_signature');
 
   @override
-  Future<Map<String?, String?>?> createKeys() async {
-    final response = await methodChannel.invokeMethod<Map>('createKeys');
-    return response.toStringEntriesMap();
+  Future<String?> createKeys() async {
+    final response = await methodChannel.invokeMethod<String>('createKeys');
+    return response;
   }
   @override
   Future<bool?> deleteKeys() async {
-    return methodChannel.invokeMethod<bool?>('deleteKeys');
+    return methodChannel.invokeMethod<bool>('deleteKeys');
   }
   @override
-  Future<Map<String?, String?>?> createSignature({Map<String?, String?>? options}) async {
-    final response = await methodChannel.invokeMethod<Map>('createSignature');
-    return response.toStringEntriesMap();
+  Future<String?> createSignature({Map<String?, String?>? options}) async {
+    final response = await methodChannel.invokeMethod<String>('createSignature');
+    return response;
   }
   @override
-  Future<Map<String?, String?>?> biometricAuthAvailable() async {
-    final response = await methodChannel.invokeMethod<Map>('biometricAuthAvailable');
-    return response.toStringEntriesMap();
+  Future<String?> biometricAuthAvailable() async {
+    final response = await methodChannel.invokeMethod<String>('biometricAuthAvailable');
+    return response;
   }
   @override
   Future<bool?> biometricKeyExists() async {
-    return methodChannel.invokeMethod<bool?>('biometricKeyExists');
+    return methodChannel.invokeMethod<bool>('biometricKeyExists');
   }
 }
