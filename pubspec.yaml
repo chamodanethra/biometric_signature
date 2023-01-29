@@ -1,7 +1,7 @@
 name: biometric_signature
-description: A new Flutter plugin project.
+description: Flutter biometric functionality for cryptographic signing and encryption
 version: 0.0.1
-homepage:
+homepage: https://github.com/chamodanethra/biometric_signature
 
 environment:
   sdk: '>=2.19.0 <3.0.0'
