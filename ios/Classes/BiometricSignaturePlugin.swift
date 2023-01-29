@@ -105,7 +105,6 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         }
         result(FlutterError(code: "AUTHFAILED", message: "Error generating public private keys", details: nil))
     }
-
     
     private func createSignature(options: Dictionary<String, String>?, result: @escaping FlutterResult) {
         let promptMessage = options?["promptMessage"] ?? "Welcome"
@@ -132,7 +131,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
                 }
                 return
             }
-            result(signature.base64EncodedString())
+            result(signature.base64EncodedString(options: []))
         } else {
             result(FlutterError(code: "AUTHFAILED", message: "Key not found: \(Int(status))", details: nil))
         }
@@ -168,7 +167,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         ]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(searchQuery as CFDictionary, &item)
-        return status == errSecSuccess
+        return status == errSecSuccess || status == errSecInteractionNotAllowed
     }
     
     private static let encodedRSAEncryptionOID:[UInt8] = [
@@ -185,33 +184,31 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         }
         builder[0] = 0x30
         let i = MemoryLayout.size(ofValue: encodedRSAEncryptionOID) + 2 + Int(bitstringEncLength) + (publicKeyData?.count ?? 0)
-        let j = encodedLength(i)
+        var j = encodedLength(&builder[1], i)
         encKey.append(&builder, count: Int(j + 1))
         encKey.append(
             encodedRSAEncryptionOID,
             count: MemoryLayout.size(ofValue: encodedRSAEncryptionOID))
         builder[0] = 0x03
-        let k = encodedLength((publicKeyData?.count ?? 0) + 1)
-        builder[Int(k)] = 0x00
-        encKey.append(&builder, count: Int(k + 1))
+        j = encodedLength(&builder[1], (publicKeyData?.count ?? 0) + 1)
+        builder[j + 1] = 0x00
+        encKey.append(&builder, count: Int(j + 2))
         if let publicKeyData {
             encKey.append(publicKeyData)
         }
         return encKey
     }
-
-    private static func encodedLength(_ length: size_t) -> size_t {
+    
+    private static func encodedLength(_ buf: UnsafeMutablePointer<UInt8>?, _ length: size_t) -> size_t {
         var length = length
-        var buf = [UInt8](repeating: 0, count: 32)
-        var i = 0
         if length < 128 {
-            buf[0] = UInt8(length)
+            buf?[0] = UInt8(length)
             return 1
         }
-        i = Int((length / 256)) + 1
-        buf[0] = UInt8(i + 0x80)
+        let i: size_t = Int((length / 256)) + 1
+        buf?[0] = UInt8(i + 0x80)
         for j in 0..<i {
-            buf[i - j] = UInt8(length & 0xff)
+            buf?[i - j] = UInt8(length & 0xff)
             length = size_t(length >> 8)
         }
         return size_t(i + 1)

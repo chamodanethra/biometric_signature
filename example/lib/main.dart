@@ -33,7 +33,7 @@ class _MyAppState extends State<MyApp> {
       // }
       final bool doExist =
           await _biometricSignaturePlugin.biometricKeyExists() ?? false;
-      debugPrint("doExist :$doExist");
+      debugPrint("doExist : $doExist");
       if (!doExist) {
         final String? publicKey = await _biometricSignaturePlugin.createKeys();
           debugPrint("publicKey : $publicKey");
