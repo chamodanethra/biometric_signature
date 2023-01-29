@@ -8,7 +8,8 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
 
   static final Object _token = Object();
 
-  static BiometricSignaturePlatform _instance = MethodChannelBiometricSignature();
+  static BiometricSignaturePlatform _instance =
+      MethodChannelBiometricSignature();
 
   /// The default instance of [BiometricSignaturePlatform] to use.
   ///
@@ -26,15 +27,21 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
   Future<String?> createKeys() {
     throw UnimplementedError('createKeys() has not been implemented.');
   }
+
   Future<bool?> deleteKeys() {
     throw UnimplementedError('deleteKeys() has not been implemented.');
   }
+
   Future<String?> biometricAuthAvailable() {
-    throw UnimplementedError('biometricAuthAvailable() has not been implemented.');
+    throw UnimplementedError(
+        'biometricAuthAvailable() has not been implemented.');
   }
+
   Future<String?> createSignature({Map<String, String?>? options}) {
-    throw UnimplementedError('createSignature(Map<String, String?>? options) has not been implemented.');
+    throw UnimplementedError(
+        'createSignature(Map<String, String?>? options) has not been implemented.');
   }
+
   Future<bool?> biometricKeyExists() {
     throw UnimplementedError('biometricKeyExists() has not been implemented.');
   }

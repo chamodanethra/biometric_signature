@@ -11,25 +11,53 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
 
   @override
   Future<String?> createKeys() async {
-    final response = await methodChannel.invokeMethod<String>('createKeys');
-    return response;
+    try {
+      final response = await methodChannel.invokeMethod<String>('createKeys');
+      return response;
+    } on PlatformException catch (e) {
+      return e.message;
+    }
   }
+
   @override
   Future<bool?> deleteKeys() async {
-    return methodChannel.invokeMethod<bool>('deleteKeys');
+    try {
+      return methodChannel.invokeMethod<bool>('deleteKeys');
+    } on PlatformException catch (e) {
+      debugPrint(e.message);
+      return false;
+    }
   }
+
   @override
   Future<String?> createSignature({Map<String?, String?>? options}) async {
-    final response = await methodChannel.invokeMethod<String>('createSignature');
-    return response;
+    try {
+      final response =
+          await methodChannel.invokeMethod<String>('createSignature');
+      return response;
+    } on PlatformException catch (e) {
+      return e.message;
+    }
   }
+
   @override
   Future<String?> biometricAuthAvailable() async {
-    final response = await methodChannel.invokeMethod<String>('biometricAuthAvailable');
-    return response;
+    try {
+      final response =
+          await methodChannel.invokeMethod<String>('biometricAuthAvailable');
+      return response;
+    } on PlatformException catch (e) {
+      return e.message;
+    }
   }
+
   @override
   Future<bool?> biometricKeyExists() async {
-    return methodChannel.invokeMethod<bool>('biometricKeyExists');
+    try {
+      return methodChannel.invokeMethod<bool>('biometricKeyExists');
+    } on PlatformException catch (e) {
+      debugPrint(e.message);
+      return false;
+    }
   }
 }

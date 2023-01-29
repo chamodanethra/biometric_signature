@@ -26,7 +26,8 @@ class _MyAppState extends State<MyApp> {
 
   Future<void> asyncInit() async {
     try {
-      final String? biometricsType = await _biometricSignaturePlugin.biometricAuthAvailable();
+      final String? biometricsType =
+          await _biometricSignaturePlugin.biometricAuthAvailable();
       debugPrint("biometricsType : $biometricsType");
       // if (condition) {
       //   final bool? result = await _biometricSignaturePlugin.deleteKeys();
@@ -36,9 +37,10 @@ class _MyAppState extends State<MyApp> {
       debugPrint("doExist : $doExist");
       if (!doExist) {
         final String? publicKey = await _biometricSignaturePlugin.createKeys();
-          debugPrint("publicKey : $publicKey");
+        debugPrint("publicKey : $publicKey");
       }
-      final String? signature = await _biometricSignaturePlugin.createSignature();
+      final String? signature =
+          await _biometricSignaturePlugin.createSignature();
       debugPrint("signature : $signature");
     } on PlatformException catch (e) {
       debugPrint(e.message);
