@@ -10,4 +10,9 @@
 
 ## 1.0.1
 
-*  downgrade min Dart Sdk.
+* downgrade min Dart Sdk.
+
+
+## 1.0.2
+
+*  fixing createSignature's options param.

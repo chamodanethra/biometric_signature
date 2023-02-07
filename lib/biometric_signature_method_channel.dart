@@ -33,7 +33,7 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   Future<String?> createSignature({Map<String?, String?>? options}) async {
     try {
       final response =
-          await methodChannel.invokeMethod<String>('createSignature');
+          await methodChannel.invokeMethod<String>('createSignature', options);
       return response;
     } on PlatformException catch (e) {
       return e.message;
