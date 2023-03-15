@@ -15,4 +15,9 @@
 
 ## 1.0.2
 
-*  fixing createSignature's options param.
+* fixing createSignature's options param.
+
+## 1.0.3
+
+* upgrading dependencies.
+* refactoring.

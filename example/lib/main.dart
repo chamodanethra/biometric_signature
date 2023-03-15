@@ -39,8 +39,8 @@ class _MyAppState extends State<MyApp> {
         final String? publicKey = await _biometricSignaturePlugin.createKeys();
         debugPrint("publicKey : $publicKey");
       }
-      final String? signature =
-          await _biometricSignaturePlugin.createSignature(options: {"promptMessage": "You are Welcome!"});
+      final String? signature = await _biometricSignaturePlugin
+          .createSignature(options: {"promptMessage": "You are Welcome!"});
       debugPrint("signature : $signature");
     } on PlatformException catch (e) {
       debugPrint(e.message);
