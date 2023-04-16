@@ -21,3 +21,9 @@
 
 * upgrading dependencies.
 * refactoring.
+
+
+## 1.0.4
+
+* upgrading flutter sdk to 3.7.11.
+* improved documentation.
