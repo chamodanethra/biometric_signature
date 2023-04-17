@@ -109,14 +109,12 @@ class BiometricAuthButton extends StatelessWidget {
         if (await _biometricSignature.canCheckBiometrics) {
           final biometrics = await _biometricSignature.getAvailableBiometrics();
           if (biometrics.isNotEmpty) {
-            final authenticated = await _biometricSignature.authenticate(
-              localizedReason: 'Please authenticate to access this feature',
-            );
-
-            if (authenticated) {
-              // Proceed with the authenticated action
-            } else {
-              // Handle authentication failure
+            try {
+              final String? signature = await _biometricSignature.createSignature(
+                  options: {"promptMessage": "You are Welcome!"});
+            } on PlatformException catch (e) {
+              debugPrint(e.message);
+              debugPrint(e.details);
             }
           }
         }
