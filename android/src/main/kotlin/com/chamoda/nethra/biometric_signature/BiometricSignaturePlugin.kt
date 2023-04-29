@@ -130,7 +130,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
 
           override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
             super.onAuthenticationError(errorCode, errString)
-            if (errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON /*|| errorCode == BiometricPrompt.ERROR_USER_CANCELED*/) {
+            if (errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON || errorCode == BiometricPrompt.ERROR_USER_CANCELED) {
               result.error("USERCANCEL", "userCancel", null)
             } else {
               result.error("$errorCode", errString.toString(), null)
