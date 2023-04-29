@@ -44,7 +44,7 @@ class _MyAppState extends State<MyApp> {
       debugPrint("signature : $signature");
     } on PlatformException catch (e) {
       debugPrint(e.message);
-      debugPrint(e.details);
+      debugPrint(e.code);
     }
   }
 
