@@ -14,8 +14,8 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
     try {
       final response = await methodChannel.invokeMethod<String>('createKeys');
       return response;
-    } on PlatformException catch (e) {
-      return e.message;
+    } on PlatformException {
+      rethrow;
     }
   }
 
@@ -35,8 +35,8 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
       final response =
           await methodChannel.invokeMethod<String>('createSignature', options);
       return response;
-    } on PlatformException catch (e) {
-      return e.message;
+    } on PlatformException {
+      rethrow;
     }
   }
 
@@ -46,8 +46,8 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
       final response =
           await methodChannel.invokeMethod<String>('biometricAuthAvailable');
       return response;
-    } on PlatformException catch (e) {
-      return e.message;
+    } on PlatformException {
+      rethrow;
     }
   }
 

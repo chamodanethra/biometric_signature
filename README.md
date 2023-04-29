@@ -21,12 +21,12 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^1.0.4
+  biometric_signature: ^2.0.0
 ```
 
 |             | Android | iOS   |
 |-------------|---------|-------|
-| **Support** | SDK 23+ | 11.0+ |
+| **Support** | SDK 23+ | 12.0+ |
 
 ### iOS Integration
 
@@ -109,14 +109,12 @@ class BiometricAuthButton extends StatelessWidget {
         if (await _biometricSignature.canCheckBiometrics) {
           final biometrics = await _biometricSignature.getAvailableBiometrics();
           if (biometrics.isNotEmpty) {
-            final authenticated = await _biometricSignature.authenticate(
-              localizedReason: 'Please authenticate to access this feature',
-            );
-
-            if (authenticated) {
-              // Proceed with the authenticated action
-            } else {
-              // Handle authentication failure
+            try {
+              final String? signature = await _biometricSignature.createSignature(
+                  options: {"promptMessage": "You are Welcome!"});
+            } on PlatformException catch (e) {
+              debugPrint(e.message);
+              debugPrint(e.code);
             }
           }
         }

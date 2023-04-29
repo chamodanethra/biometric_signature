@@ -44,7 +44,7 @@ class _MyAppState extends State<MyApp> {
       debugPrint("signature : $signature");
     } on PlatformException catch (e) {
       debugPrint(e.message);
-      debugPrint(e.details);
+      debugPrint(e.code);
     }
   }
 
@@ -55,7 +55,7 @@ class _MyAppState extends State<MyApp> {
         appBar: AppBar(
           title: const Text('Plugin example app'),
         ),
-        body: Center(
+        body: const Center(
           child: Text('Running'),
         ),
       ),
