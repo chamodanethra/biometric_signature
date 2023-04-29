@@ -21,12 +21,12 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^1.0.4
+  biometric_signature: ^2.0.0
 ```
 
 |             | Android | iOS   |
 |-------------|---------|-------|
-| **Support** | SDK 23+ | 11.0+ |
+| **Support** | SDK 23+ | 12.0+ |
 
 ### iOS Integration
 
@@ -114,7 +114,7 @@ class BiometricAuthButton extends StatelessWidget {
                   options: {"promptMessage": "You are Welcome!"});
             } on PlatformException catch (e) {
               debugPrint(e.message);
-              debugPrint(e.details);
+              debugPrint(e.code);
             }
           }
         }
