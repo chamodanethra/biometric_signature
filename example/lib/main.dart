@@ -16,7 +16,7 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  final _biometricSignaturePlugin = BiometricSignature();
+  final _biometricSignature = BiometricSignature();
 
   @override
   void initState() {
@@ -27,20 +27,23 @@ class _MyAppState extends State<MyApp> {
   Future<void> asyncInit() async {
     try {
       final String? biometricsType =
-          await _biometricSignaturePlugin.biometricAuthAvailable();
+          await _biometricSignature.biometricAuthAvailable();
       debugPrint("biometricsType : $biometricsType");
       // if (condition) {
       //   final bool? result = await _biometricSignaturePlugin.deleteKeys();
       // }
       final bool doExist =
-          await _biometricSignaturePlugin.biometricKeyExists() ?? false;
+          await _biometricSignature.biometricKeyExists() ?? false;
       debugPrint("doExist : $doExist");
       if (!doExist) {
-        final String? publicKey = await _biometricSignaturePlugin.createKeys();
+        final String? publicKey = await _biometricSignature.createKeys();
         debugPrint("publicKey : $publicKey");
       }
-      final String? signature = await _biometricSignaturePlugin
-          .createSignature(options: {"promptMessage": "You are Welcome!"});
+      final String? signature = await _biometricSignature.createSignature(
+          options: {
+            "payload": "Biometric payload",
+            "promptMessage": "You are Welcome!"
+          });
       debugPrint("signature : $signature");
     } on PlatformException catch (e) {
       debugPrint(e.message);
