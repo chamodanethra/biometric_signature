@@ -30,7 +30,7 @@ class _MyAppState extends State<MyApp> {
           await _biometricSignature.biometricAuthAvailable();
       debugPrint("biometricsType : $biometricsType");
       // if (condition) {
-      //   final bool? result = await _biometricSignaturePlugin.deleteKeys();
+      //   final bool? result = await _biometricSignature.deleteKeys();
       // }
       final bool doExist =
           await _biometricSignature.biometricKeyExists() ?? false;
