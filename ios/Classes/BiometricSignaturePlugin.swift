@@ -130,7 +130,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
     
     private func createSignature(options: Dictionary<String, String>?, result: @escaping FlutterResult) {
         let promptMessage = options?["promptMessage"] ?? "Welcome"
-        let payload = "arhten adomahc"
+        let payload = options?["payload"] ?? "arhten adomahc"
         let tag = getBiometricKeyTag()
         let query: [AnyHashable: Any] = [
             kSecClass: kSecClassKey,
