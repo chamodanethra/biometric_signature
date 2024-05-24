@@ -21,7 +21,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^2.0.0
+  biometric_signature: ^2.1.0
 ```
 
 |             | Android | iOS   |
@@ -106,16 +106,20 @@ class BiometricAuthButton extends StatelessWidget {
     return ElevatedButton(
       child: Text('Authenticate with Biometrics'),
       onPressed: () async {
-        if (await _biometricSignature.canCheckBiometrics) {
-          final biometrics = await _biometricSignature.getAvailableBiometrics();
-          if (biometrics.isNotEmpty) {
-            try {
-              final String? signature = await _biometricSignature.createSignature(
-                  options: {"promptMessage": "You are Welcome!"});
-            } on PlatformException catch (e) {
-              debugPrint(e.message);
-              debugPrint(e.code);
-            }
+        final biometrics = await _biometricSignature
+            .biometricAuthAvailable();
+        if (!biometrics!.contains("none, ")) {
+          try {
+            final String? publicKey = await _biometricSignature
+                .createKeys();
+            final String? signature = await _biometricSignature
+                .createSignature(
+                options: {
+                  "payload": "Payload to sign",
+                  "promptMessage": "You are Welcome!"});
+          } on PlatformException catch (e) {
+            debugPrint(e.message);
+            debugPrint(e.code);
           }
         }
       },

@@ -2,16 +2,13 @@
 
 * initial release.
 
-
 ## 1.0.0
 
 * improved documentation.
 
-
 ## 1.0.1
 
 * downgrade min Dart Sdk.
-
 
 ## 1.0.2
 
@@ -35,3 +32,11 @@
 
 * Consistent Platform error handling.
 * Upgrade dependencies.
+
+## 2.1.0
+
+* Returns "biometric" for Android devices with multiple BIOMETRIC_STRONG options when called
+  biometricAuthAvailable().
+* Let createSignature() accept a "payload" keyValue pair in options arg.
+* updates dependencies.
+* updates README.md and the Example.

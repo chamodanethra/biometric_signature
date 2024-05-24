@@ -109,7 +109,8 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     try {
       val cancelButtonText = options?.get("cancelButtonText") ?: "Cancel"
       val promptMessage = options?.get("promptMessage") ?: "Welcome"
-      val payload = Base64.encodeToString("arhten adomahc".toByteArray(Charsets.UTF_8), Base64.DEFAULT)
+      val rawPayload =  options?.get("payload") ?: "arhten adomahc"
+      val payload = Base64.encodeToString(rawPayload.toByteArray(Charsets.UTF_8), Base64.DEFAULT)
       val signature = Signature.getInstance("SHA256withRSA")
       val keyStore = KeyStore.getInstance("AndroidKeyStore")
       keyStore.load(null)
@@ -175,22 +176,29 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
   }
 
   private fun biometricAuthAvailable(@NonNull result: MethodChannel.Result) {
+    fun processBiometricString(rawString: String): String {
+      val androidBiometrics = listOf("fingerprint", "face", "iris")
+      val biometricsList = androidBiometrics.filter { rawString.contains(it, ignoreCase = true) }
+
+      return if (biometricsList.size == 1) biometricsList[0] else "biometric"
+    }
+
     val biometricManager = BiometricManager.from(activity)
     val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
 
     if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
-      result.success("fingerprint|face|iris".toRegex().find(
+      result.success(processBiometricString(
         BiometricManager.from(activity)
           .getStrings(BiometricManager.Authenticators.BIOMETRIC_STRONG)?.buttonLabel.toString()
-          .lowercase(
-            Locale.ROOT
-          )
-      )?.value ?: "biometrics")
+        ))
     } else {
       var errorString = when (canAuthenticate) {
         BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "BIOMETRIC_ERROR_NO_HARDWARE"
         BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "BIOMETRIC_ERROR_HW_UNAVAILABLE"
         BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "BIOMETRIC_ERROR_NONE_ENROLLED"
+        BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED -> "BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED"
+        BiometricManager.BIOMETRIC_ERROR_UNSUPPORTED -> "BIOMETRIC_ERROR_UNSUPPORTED"
+        BiometricManager.BIOMETRIC_STATUS_UNKNOWN -> "BIOMETRIC_STATUS_UNKNOWN"
         else -> "Error checking biometrics"
       }
       result.success("none, $errorString")
