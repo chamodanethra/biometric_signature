@@ -180,7 +180,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       val androidBiometrics = listOf("fingerprint", "face", "iris")
       val biometricsList = androidBiometrics.filter { rawString.contains(it, ignoreCase = true) }
 
-      return if (biometricsList.size == 1) biometricsList[0] else "biometrics"
+      return if (biometricsList.size == 1) biometricsList[0] else "biometric"
     }
 
     val biometricManager = BiometricManager.from(activity)
