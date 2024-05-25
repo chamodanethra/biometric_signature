@@ -1,5 +1,5 @@
 PODS:
-  - biometric_signature (2.0.0):
+  - biometric_signature (2.1.1):
     - Flutter
   - Flutter (1.0.0)
 
@@ -14,7 +14,7 @@ EXTERNAL SOURCES:
     :path: Flutter
 
 SPEC CHECKSUMS:
-  biometric_signature: 06b9615f1d192f08cfe7db5aa016beccb6217c12
+  biometric_signature: 4329f241995479f364d9b8cfafa4c6357eb1fb35
   Flutter: f04841e97a9d0b0a8025694d0796dd46242b2854
 
 PODFILE CHECKSUM: ef19549a9bc3046e7bb7d2fab4d021637c0c58a3

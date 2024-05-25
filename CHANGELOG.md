@@ -40,3 +40,8 @@
 * Let createSignature() accept a "payload" keyValue pair in options arg.
 * updates dependencies.
 * updates README.md and the Example.
+
+## 2.1.1
+
+* Removes a redundant code push in Android native code.
+* Updates README.md and the Example.
