@@ -1,11 +1,11 @@
 name: biometric_signature
 description: Flutter biometric functionality for cryptographic signing and encryption
-version: 2.1.1
+version: 3.0.0
 homepage: https://github.com/chamodanethra/biometric_signature
 
 environment:
-  sdk: '>=2.19.6 <3.0.0'
-  flutter: ">=2.5.0"
+  sdk: '>=3.3.4 <4.0.0'
+  flutter: '>=3.3.0'
 
 dependencies:
   flutter:
@@ -15,7 +15,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^2.0.0
+  flutter_lints: ^3.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
