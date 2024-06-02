@@ -65,7 +65,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
         biometricAuthAvailable(result)
       }
       "biometricKeyExists" -> {
-        biometricKeyExists(result)
+        biometricKeyExists(call.arguments()!!, result)
       }
       else -> {
         result.notImplemented()
@@ -180,9 +180,9 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     }
   }
 
-  private fun biometricKeyExists(@NonNull result: MethodChannel.Result) {
+  private fun biometricKeyExists(checkValidity: Boolean, @NonNull result: MethodChannel.Result) {
     try {
-      val biometricKeyExists = doesBiometricKeyExist()
+      val biometricKeyExists = doesBiometricKeyExist(checkValidity)
       result.success(biometricKeyExists)
     } catch (e: Exception) {
       result.error(
@@ -223,17 +223,22 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
   }
 
 
-  private fun doesBiometricKeyExist(): Boolean {
-    return try {
+  private fun doesBiometricKeyExist(checkValidity: Boolean = false): Boolean {
+    try {
       val keyStore: KeyStore = KeyStore.getInstance("AndroidKeyStore")
       keyStore.load(null)
-      if (!keyStore.containsAlias(BIOMETRIC_KEY_ALIAS)) false
+      if (!keyStore.containsAlias(BIOMETRIC_KEY_ALIAS)) {
+        return false
+      }
+      if (!checkValidity) {
+        return  true
+      }
       val signature = Signature.getInstance("SHA256withRSA")
       val privateKey = keyStore.getKey(BIOMETRIC_KEY_ALIAS, null) as PrivateKey
       signature.initSign(privateKey)
-      true
+      return true
     } catch (e: Exception) {
-      false
+      return false
     }
   }
 

@@ -42,7 +42,8 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
         'createSignature(Map<String, String?>? options) has not been implemented.');
   }
 
-  Future<bool?> biometricKeyExists() {
-    throw UnimplementedError('biometricKeyExists() has not been implemented.');
+  Future<bool?> biometricKeyExists(bool checkValidity) {
+    throw UnimplementedError(
+        'biometricKeyExists(bool checkValidity) has not been implemented.');
   }
 }

@@ -52,9 +52,10 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   }
 
   @override
-  Future<bool?> biometricKeyExists() async {
+  Future<bool?> biometricKeyExists(bool checkValidity) async {
     try {
-      return methodChannel.invokeMethod<bool>('biometricKeyExists');
+      return methodChannel.invokeMethod<bool>(
+          'biometricKeyExists', checkValidity);
     } on PlatformException catch (e) {
       debugPrint(e.message);
       return false;

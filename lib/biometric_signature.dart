@@ -40,10 +40,11 @@ class BiometricSignature {
 
   /// Check if the biometric key exists in the keychain/keystore
   ///
+  /// params: An optional bool named checkValidity, to check if the key is valid
   /// - Returns: A boolean indicating whether the biometric key exists
-  Future<bool?> biometricKeyExists() async {
-    final bool? response =
-        await BiometricSignaturePlatform.instance.biometricKeyExists();
+  Future<bool?> biometricKeyExists({bool checkValidity = false}) async {
+    final bool? response = await BiometricSignaturePlatform.instance
+        .biometricKeyExists(checkValidity);
     return response;
   }
 }

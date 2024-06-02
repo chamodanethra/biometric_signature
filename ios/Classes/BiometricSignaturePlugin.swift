@@ -27,7 +27,10 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         case "biometricAuthAvailable":
             biometricAuthAvailable(result: result)
         case "biometricKeyExists":
-            biometricKeyExists(result: result)
+            guard let checkValidity = call.arguments as? Bool else {
+                return
+            }
+            biometricKeyExists(checkValidity: checkValidity, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -47,8 +50,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         }
     }
     
-    private func biometricKeyExists(result: @escaping FlutterResult) {
-        let biometricKeyExists = self.doesBiometricKeyExist()
+    private func biometricKeyExists(checkValidity: Bool, result: @escaping FlutterResult) {
+        let biometricKeyExists = self.doesBiometricKeyExist(checkValidity: checkValidity)
         result(biometricKeyExists)
     }
     
@@ -170,7 +173,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         return tag
     }
     
-    private func doesBiometricKeyExist() -> Bool {
+    private func doesBiometricKeyExist(checkValidity: Bool = false) -> Bool {
         let tag = getBiometricKeyTag()
         let searchQuery: [String: Any] = [
             kSecClass as String: kSecClassKey,
@@ -185,6 +188,9 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
 
         guard status == errSecSuccess || status == errSecInteractionNotAllowed, let key = item else {
             return false
+        }
+        if !checkValidity {
+            return true
         }
 
         do {
@@ -254,5 +260,3 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         return size_t(i + 1)
     }
 }
-
-
