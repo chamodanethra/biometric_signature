@@ -227,7 +227,11 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     return try {
       val keyStore: KeyStore = KeyStore.getInstance("AndroidKeyStore")
       keyStore.load(null)
-      keyStore.containsAlias(BIOMETRIC_KEY_ALIAS)
+      if (!keyStore.containsAlias(BIOMETRIC_KEY_ALIAS)) false
+      val signature = Signature.getInstance("SHA256withRSA")
+      val privateKey = keyStore.getKey(BIOMETRIC_KEY_ALIAS, null) as PrivateKey
+      signature.initSign(privateKey)
+      true
     } catch (e: Exception) {
       false
     }

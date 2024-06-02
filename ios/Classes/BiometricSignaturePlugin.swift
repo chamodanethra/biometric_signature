@@ -176,11 +176,36 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tag,
             kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+            kSecReturnRef as String: kCFBooleanTrue!,
             kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
         ]
+
         var item: CFTypeRef?
         let status = SecItemCopyMatching(searchQuery as CFDictionary, &item)
-        return status == errSecSuccess || status == errSecInteractionNotAllowed
+
+        guard status == errSecSuccess || status == errSecInteractionNotAllowed, let key = item else {
+            return false
+        }
+
+        do {
+            let key = key as! SecKey
+            let algorithm: SecKeyAlgorithm = .rsaEncryptionPKCS1
+            let message = "test".data(using: .utf8)!
+
+            var error: Unmanaged<CFError>?
+            guard SecKeyIsAlgorithmSupported(key, .encrypt, algorithm) else {
+                return false
+            }
+
+            _ = SecKeyCreateEncryptedData(key, algorithm, message as CFData, &error)
+            if let error = error {
+                throw error.takeRetainedValue() as Error
+            }
+
+            return true
+        } catch {
+            return false
+        }
     }
     
     private static let encodedRSAEncryptionOID: [UInt8] = [
