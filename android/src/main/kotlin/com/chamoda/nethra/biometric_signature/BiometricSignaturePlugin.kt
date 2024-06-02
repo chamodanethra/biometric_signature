@@ -12,7 +12,6 @@ import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
-import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
@@ -26,26 +25,29 @@ const val BIOMETRIC_KEY_ALIAS= "biometric_key"
 /** BiometricSignaturePlugin */
 class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
   private lateinit var channel: MethodChannel
-  private lateinit var activity: FlutterFragmentActivity
-  private lateinit var binaryMessenger: BinaryMessenger
+  private var activity: FlutterFragmentActivity? = null
 
   override fun onAttachedToActivity(binding: ActivityPluginBinding) {
-    this.activity = binding.activity as FlutterFragmentActivity
-    channel = MethodChannel(binaryMessenger, "biometric_signature")
-    channel.setMethodCallHandler(this)
+    activity = binding.activity as? FlutterFragmentActivity
   }
-
-  override fun onDetachedFromActivityForConfigChanges() {
-  }
-
   override fun onDetachedFromActivity() {
+    activity = null
   }
 
   override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+    onAttachedToActivity(binding)
+  }
+  override fun onDetachedFromActivityForConfigChanges() {
+    onDetachedFromActivity()
   }
 
   override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
-    binaryMessenger = flutterPluginBinding.binaryMessenger
+    channel = MethodChannel(flutterPluginBinding.binaryMessenger, "biometric_signature")
+    channel.setMethodCallHandler(this)
+
+  }
+  override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
+    channel.setMethodCallHandler(null)
   }
 
   override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
@@ -117,24 +119,39 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       val privateKey = keyStore.getKey(BIOMETRIC_KEY_ALIAS, null) as PrivateKey
       signature.initSign(privateKey)
       val cryptoObject = BiometricPrompt.CryptoObject(signature)
-      val executor = ContextCompat.getMainExecutor(activity)
-      BiometricPrompt(activity, executor,
+      val executor = ContextCompat.getMainExecutor(activity!!)
+      var resultReturned = false
+      BiometricPrompt(activity!!, executor,
         object : BiometricPrompt.AuthenticationCallback() {
           override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
             super.onAuthenticationSucceeded(authResult)
-            val cryptoSignature = authResult.cryptoObject!!.signature!!
-            cryptoSignature.update(payload.toByteArray())
-            val signedString = Base64.encodeToString(cryptoSignature.sign(), Base64.DEFAULT)
-              .replace("\r", "").replace("\n", "")
-            result.success(signedString)
+            if (!resultReturned) {
+              resultReturned = true
+              val cryptoSignature = authResult.cryptoObject!!.signature!!
+              cryptoSignature.update(payload.toByteArray())
+              val signedString = Base64.encodeToString(cryptoSignature.sign(), Base64.DEFAULT)
+                .replace("\r", "").replace("\n", "")
+              result.success(signedString)
+            }
           }
 
           override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
             super.onAuthenticationError(errorCode, errString)
-            if (errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON || errorCode == BiometricPrompt.ERROR_USER_CANCELED) {
-              result.error("USERCANCEL", "userCancel", null)
-            } else {
-              result.error("$errorCode", errString.toString(), null)
+            if (!resultReturned) {
+              resultReturned = true
+              if (errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON || errorCode == BiometricPrompt.ERROR_USER_CANCELED) {
+                result.error("USERCANCEL", "userCancel", null)
+              } else {
+                result.error("$errorCode", errString.toString(), null)
+              }
+            }
+          }
+
+          override fun onAuthenticationFailed() {
+            super.onAuthenticationFailed()
+            if (!resultReturned) {
+              resultReturned = true
+              result.error("AUTHFAILED", "authFailed", null)
             }
           }
         }).authenticate(PromptInfo.Builder()
@@ -183,12 +200,12 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       return if (biometricsList.size == 1) biometricsList[0] else "biometric"
     }
 
-    val biometricManager = BiometricManager.from(activity)
+    val biometricManager = BiometricManager.from(activity!!)
     val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
 
     if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
       result.success(processBiometricString(
-        BiometricManager.from(activity)
+        BiometricManager.from(activity!!)
           .getStrings(BiometricManager.Authenticators.BIOMETRIC_STRONG)?.buttonLabel.toString()
         ))
     } else {
@@ -225,9 +242,5 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     } catch (e: java.lang.Exception) {
       false
     }
-  }
-
-  override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
-    channel.setMethodCallHandler(null)
   }
 }
