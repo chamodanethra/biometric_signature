@@ -76,6 +76,92 @@ import 'package:biometric_signature/biometric_signature.dart';
 final biometricSignature = BiometricSignature();
 ```
 
+## Usage
+
+This package simplifies server authentication using biometrics. The following image from Android Developers Blog illustrates the basic use case:
+
+![biometric_signature](/assets/usecase.png)
+
+When a user enrolls in biometrics, a key pair is generated. The private key is securely stored on the device, while the public key is sent to a server for registration. To authenticate, the user is prompted to use their biometrics, unlocking the private key. A cryptographic signature is then generated and sent to the server for verification. If the server successfully verifies the signature, it returns an appropriate response, authorizing the user.
+
+## Class: BiometricSignaturePlugin
+
+This class provides methods to manage and utilize biometric authentication for secure server interactions. It supports both Android and iOS platforms.
+
+### `createKeys()`
+
+Generates a new RSA 2048 key pair for biometric authentication. The private key is securely stored on the device, and the public key is returned as a base64 encoded string. This method deletes any existing key pair before creating a new one.
+
+- **Returns**: `String` - The base64 encoded public key.
+
+- **Error Codes**:
+
+- `AUTHFAILED`: Error generating public-private keys.
+
+### `createSignature(options: Map<String, String>)`
+
+Prompts the user for biometric authentication and generates a RSA PKCS#1v1.5 SHA 256 signature using the securely stored private key. The payload to be signed is provided in the `options` map.
+
+- **Parameters**:
+
+- `options`: A map containing the following keys:
+
+- `cancelButtonText` (Android only, optional): Text for the cancel button in the biometric prompt. Default is "Cancel".
+
+- `promptMessage` (optional): Message to display in the biometric prompt. Default is "Welcome".
+
+- `payload`: The payload to be signed, as a base64 encoded string. Defaults to the previously hardcoded payload, which will be removed in a future release.
+
+- **Returns**: `String` - The base64 encoded cryptographic signature.
+
+- **Error Codes**:
+
+- `USERCANCEL`: User canceled the authentication.
+
+- `AUTHFAILED`: Error generating the signature.
+
+- Various biometric prompt error codes as strings.
+
+### `deleteKeys()`
+
+Deletes the existing RSA key pair used for biometric authentication.
+
+- **Returns**: `Boolean` - `true` if the key was successfully deleted, `false` otherwise.
+
+- **Error Codes**:
+
+- `AUTHFAILED`: Error deleting the biometric key from the keystore.
+
+### `biometricAuthAvailable()`
+
+Checks if biometric authentication is available on the device. On Android, it specifically checks for Biometric Strong Authenticators, which provide a higher level of security.
+
+- **Returns**: `String` - The type of biometric authentication available (`fingerprint`, `face`, `iris`, `TouchID`, `FaceID`, or `biometric`) or a string indicating the error if no biometrics are available.
+
+- **Error Values**:
+
+- `none, BIOMETRIC_ERROR_NO_HARDWARE`: No biometric hardware available.
+
+- `none, BIOMETRIC_ERROR_HW_UNAVAILABLE`: Biometric hardware currently unavailable.
+
+- `none, BIOMETRIC_ERROR_NONE_ENROLLED`: No biometric credentials enrolled.
+
+- `none, BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED`: Security update required.
+
+- `none, BIOMETRIC_ERROR_UNSUPPORTED`: Biometric authentication is unsupported.
+
+- `none, BIOMETRIC_STATUS_UNKNOWN`: Unknown status.
+
+### `biometricKeyExists(checkValidity: Boolean)`
+
+Checks if the biometric key pair exists on the device. Optionally, it can also verify the validity of the key by attempting to initialize a signature with it. The key will become irreversibly invalidated once the secure lock screen is disabled (reconfigured to None, Swipe or other mode which does not authenticate the user) or when the secure lock screen is forcibly reset (e.g., by a Device Administrator). Since the key requires that user authentication takes place for every use of the key, it is also irreversibly invalidated once a new biometric is enrolled or once no more biometrics are enrolled.
+
+-   **Parameters**:
+    -   `checkValidity`: A boolean indicating whether to check the validity of the key by initializing a signature. Default is `false`.
+-   **Returns**: `Boolean` - `true` if the key pair exists (and is valid if `checkValidity` is `true`), `false` otherwise.
+-   **Error Codes**:
+    -   `AUTHFAILED`: Error checking if the biometric key exists.
+
 ## Example
 
 ```dart
@@ -127,4 +213,3 @@ class BiometricAuthButton extends StatelessWidget {
   }
 }
 ```
-
