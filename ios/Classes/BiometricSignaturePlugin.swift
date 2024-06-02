@@ -161,7 +161,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
     }
     
     private func getBiometricType(_ context: LAContext?) -> String {
-        return (context?.biometryType == .faceID) ? "FaceID" : "TouchID"
+        return context?.biometryType == .faceID ? "FaceID" : context?.biometryType == .touchID ? "TouchID" : "none, no biometrics available"
     }
     
     private func getBiometricKeyTag() -> Data? {
