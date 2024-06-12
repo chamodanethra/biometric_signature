@@ -111,7 +111,14 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     try {
       val cancelButtonText = options?.get("cancelButtonText") ?: "Cancel"
       val promptMessage = options?.get("promptMessage") ?: "Welcome"
-      val payload =  options?.get("payload") ?: "arhten adomahc"
+      val payload = options?.get("payload")
+
+      if (payload == null || !isValidUTF8(payload)) {
+        result.error("INVALID_PAYLOAD", "Payload is required and must be valid UTF-8", null)
+        return
+      }
+      val payloadBytes = payload.toByteArray(Charsets.UTF_8)
+
       val signature = Signature.getInstance("SHA256withRSA")
       val keyStore = KeyStore.getInstance("AndroidKeyStore")
       keyStore.load(null)
@@ -127,7 +134,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
             if (!resultReturned) {
               resultReturned = true
               val cryptoSignature = authResult.cryptoObject!!.signature!!
-              cryptoSignature.update(payload.toByteArray(Charsets.UTF_8))
+              cryptoSignature.update(payloadBytes)
               val signedString = Base64.encodeToString(cryptoSignature.sign(), Base64.DEFAULT)
                 .replace("\r", "").replace("\n", "")
               result.success(signedString)
@@ -138,10 +145,12 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
             super.onAuthenticationError(errorCode, errString)
             if (!resultReturned) {
               resultReturned = true
-              if (errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON || errorCode == BiometricPrompt.ERROR_USER_CANCELED) {
-                result.error("USERCANCEL", "userCancel", null)
-              } else {
-                result.error("$errorCode", errString.toString(), null)
+              when (errorCode) {
+                BiometricPrompt.ERROR_NEGATIVE_BUTTON -> result.error("NEGATIVE_BUTTON", errString.toString(), null)
+                BiometricPrompt.ERROR_USER_CANCELED -> result.error("USER_CANCELED", errString.toString(), null)
+                BiometricPrompt.ERROR_LOCKOUT -> result.error("LOCKOUT", errString.toString(), null)
+                BiometricPrompt.ERROR_LOCKOUT_PERMANENT -> result.error("LOCKOUT_PERMANENT", errString.toString(), null)
+                else -> result.error("AUTHFAILED", errString.toString(), null)
               }
             }
           }
@@ -150,7 +159,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
             super.onAuthenticationFailed()
             if (!resultReturned) {
               resultReturned = true
-              result.error("AUTHFAILED", "authFailed", null)
+              result.error("AUTHFAILED", "Authentication failed", null)
             }
           }
         }).authenticate(PromptInfo.Builder()
@@ -160,6 +169,15 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
         .build(), cryptoObject)
     } catch (e: Exception) {
       result.error("AUTHFAILED", "Error generating signature: ${e.message}", null)
+    }
+  }
+
+  private fun isValidUTF8(payload: String): Boolean {
+    return try {
+      payload.toByteArray(Charsets.UTF_8)
+      true
+    } catch (e: Exception) {
+      false
     }
   }
 

@@ -5,6 +5,7 @@ import Security
 
 private enum Constants {
     static let authFailed = "AUTHFAILED"
+    static let invalidPayload = "INVALID_PAYLOAD"
     static let userCancel = "USERCANCEL"
     static let biometricKeyAlias = "biometric_key"
 }
@@ -131,37 +132,40 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         return SecItemDelete(query as CFDictionary)
     }
     
-    private func createSignature(options: Dictionary<String, String>?, result: @escaping FlutterResult) {
-        let promptMessage = options?["promptMessage"] ?? "Welcome"
-        let payload = options?["payload"] ?? "arhten adomahc"
-        let tag = getBiometricKeyTag()
-        let query: [AnyHashable: Any] = [
-            kSecClass: kSecClassKey,
-            kSecAttrApplicationTag: tag,
-            kSecAttrKeyType: kSecAttrKeyTypeRSA,
-            kSecReturnRef: NSNumber(value: true),
-            kSecUseOperationPrompt: promptMessage
-        ]
-        
-        var privateKey: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &privateKey)
-        
-        guard status == errSecSuccess else {
-            result(FlutterError(code: Constants.authFailed, message: "Key not found: \(Int(status))", details: nil))
-            return
-        }
-        
-        guard let dataToSign = payload.data(using: .utf8),
-              let signature = SecKeyCreateSignature(privateKey as! SecKey, .rsaSignatureMessagePKCS1v15SHA256, dataToSign as CFData, nil) as Data? else {
-            if status == Int(errSecUserCanceled) {
-                result(FlutterError(code: Constants.userCancel, message: "userCancel", details: nil))
-            } else {
-                result(FlutterError(code: Constants.authFailed, message: "Error generating signature", details: nil))
-            }
-            return
-        }
-        result(signature.base64EncodedString(options: []))
+private func createSignature(options: [String: String]?, result: @escaping FlutterResult) {
+    let promptMessage = options?["promptMessage"] ?? "Welcome"
+    guard let payload = options?["payload"],
+          let dataToSign = payload.data(using: .utf8) else {
+        result(FlutterError(code: Constants.invalidPayload, message: "Payload is required and must be valid UTF-8", details: nil))
+        return
     }
+
+    let tag = getBiometricKeyTag()
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassKey,
+        kSecAttrApplicationTag as String: tag,
+        kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+        kSecReturnRef as String: true,
+        kSecUseOperationPrompt as String: promptMessage
+    ]
+
+    var privateKey: AnyObject?
+    let status = SecItemCopyMatching(query as CFDictionary, &privateKey)
+
+    guard status == errSecSuccess else {
+        let errorMessage = status == errSecUserCanceled ? "User canceled the authentication" : "Key not found: \(Int(status))"
+        result(FlutterError(code: Constants.authFailed, message: errorMessage, details: nil))
+        return
+    }
+    var error: Unmanaged<CFError>?
+    guard let signature = SecKeyCreateSignature(privateKey as! SecKey, .rsaSignatureMessagePKCS1v15SHA256, dataToSign as CFData, &error) as Data? else {
+        let errorDescription = error?.takeRetainedValue().localizedDescription ?? "Unknown error"
+        result(FlutterError(code: Constants.authFailed, message: "Error generating signature: \(errorDescription)", details: nil))
+        return
+    }
+
+    result(signature.base64EncodedString())
+}
     
     private func getBiometricType(_ context: LAContext?) -> String {
         return context?.biometryType == .faceID ? "FaceID" : context?.biometryType == .touchID ? "TouchID" : "none, no biometrics available"
