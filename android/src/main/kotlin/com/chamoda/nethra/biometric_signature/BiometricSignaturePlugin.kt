@@ -111,8 +111,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     try {
       val cancelButtonText = options?.get("cancelButtonText") ?: "Cancel"
       val promptMessage = options?.get("promptMessage") ?: "Welcome"
-      val rawPayload =  options?.get("payload") ?: "arhten adomahc"
-      val payload = Base64.encodeToString(rawPayload.toByteArray(Charsets.UTF_8), Base64.DEFAULT)
+      val payload =  options?.get("payload") ?: "arhten adomahc"
       val signature = Signature.getInstance("SHA256withRSA")
       val keyStore = KeyStore.getInstance("AndroidKeyStore")
       keyStore.load(null)
@@ -128,7 +127,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
             if (!resultReturned) {
               resultReturned = true
               val cryptoSignature = authResult.cryptoObject!!.signature!!
-              cryptoSignature.update(payload.toByteArray())
+              cryptoSignature.update(payload.toByteArray(Charsets.UTF_8))
               val signedString = Base64.encodeToString(cryptoSignature.sign(), Base64.DEFAULT)
                 .replace("\r", "").replace("\n", "")
               result.success(signedString)
