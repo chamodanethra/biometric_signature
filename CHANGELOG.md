@@ -67,3 +67,12 @@
 ### Breaking Changes:
 
 * The minimum supported Flutter version has been increased to 3.3.0.
+
+## 4.0.0
+
+* Fixed a bug in createKeys() for iOS.
+* Fixed a bug in createSignature() for android.
+* Error codes were updated to maintain consistency.
+* Updated README.md and Licence content.
+* Hardcoded default payload was removed.
+* Improved error handling.
