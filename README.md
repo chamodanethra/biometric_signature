@@ -21,7 +21,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^3.0.0
+  biometric_signature: ^4.0.0
 ```
 
 |             | Android | iOS   |
@@ -80,7 +80,7 @@ final biometricSignature = BiometricSignature();
 
 This package simplifies server authentication using biometrics. The following image from Android Developers Blog illustrates the basic use case:
 
-![biometric_signature](/assets/usecase.png)
+![biometric_signature](https://raw.githubusercontent.com/chamodanethra/biometric_signature/version-upgrade/assets/usecase.png)
 
 When a user enrolls in biometrics, a key pair is generated. The private key is securely stored on the device, while the public key is sent to a server for registration. To authenticate, the user is prompted to use their biometrics, unlocking the private key. A cryptographic signature is then generated and sent to the server for verification. If the server successfully verifies the signature, it returns an appropriate response, authorizing the user.
 
@@ -96,7 +96,7 @@ Generates a new RSA 2048 key pair for biometric authentication. The private key 
 
 - **Error Codes**:
 
-- `AUTHFAILED`: Error generating public-private keys.
+- `AUTH_FAILED`: Error generating public-private keys.
 
 ### `createSignature(options: Map<String, String>)`
 
@@ -110,17 +110,21 @@ Prompts the user for biometric authentication and generates a RSA PKCS#1v1.5 SHA
 
 - `promptMessage` (optional): Message to display in the biometric prompt. Default is "Welcome".
 
-- `payload`: The payload to be signed, as a base64 encoded string. Defaults to the previously hardcoded payload, which will be removed in a future release.
+- `payload`: The payload to be signed.
 
 - **Returns**: `String` - The base64 encoded cryptographic signature.
 
 - **Error Codes**:
 
-- `USERCANCEL`: User canceled the authentication.
+- `AUTH_FAILED`: Error generating the signature.
 
-- `AUTHFAILED`: Error generating the signature.
+- `USER_CANCELED`: User canceled the authentication.
 
-- Various biometric prompt error codes as strings.
+- `LOCKOUT`: The operation was canceled because the API is locked out due to too many attempts.
+
+- `LOCKOUT_PERMANENT`: The operation was canceled because `LOCKOUT` occurred too many times
+
+- `AUTH_ERROR`: Various other biometric prompt error codes. Check the error message for more details.
 
 ### `deleteKeys()`
 
@@ -130,7 +134,7 @@ Deletes the existing RSA key pair used for biometric authentication.
 
 - **Error Codes**:
 
-- `AUTHFAILED`: Error deleting the biometric key from the keystore.
+- `AUTH_FAILED`: Error deleting the biometric key from the keystore.
 
 ### `biometricAuthAvailable()`
 
@@ -152,6 +156,8 @@ Checks if biometric authentication is available on the device. On Android, it sp
 
 - `none, BIOMETRIC_STATUS_UNKNOWN`: Unknown status.
 
+- `none, NO_BIOMETRICS`: No biometrics.
+
 ### `biometricKeyExists(checkValidity: Boolean)`
 
 Checks if the biometric key pair exists on the device. Optionally, it can also verify the validity of the key by attempting to initialize a signature with it. The key will become irreversibly invalidated once the secure lock screen is disabled (reconfigured to None, Swipe or other mode which does not authenticate the user) or when the secure lock screen is forcibly reset (e.g., by a Device Administrator). Since the key requires that user authentication takes place for every use of the key, it is also irreversibly invalidated once a new biometric is enrolled or once no more biometrics are enrolled.
@@ -160,7 +166,7 @@ Checks if the biometric key pair exists on the device. Optionally, it can also v
     -   `checkValidity`: A boolean indicating whether to check the validity of the key by initializing a signature. Default is `false`.
 -   **Returns**: `Boolean` - `true` if the key pair exists (and is valid if `checkValidity` is `true`), `false` otherwise.
 -   **Error Codes**:
-    -   `AUTHFAILED`: Error checking if the biometric key exists.
+    -   `AUTH_FAILED`: Error checking if the biometric key exists.
 
 ## Example
 
