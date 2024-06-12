@@ -4,9 +4,9 @@ import LocalAuthentication
 import Security
 
 private enum Constants {
-    static let authFailed = "AUTHFAILED"
+    static let authFailed = "AUTH_FAILED"
     static let invalidPayload = "INVALID_PAYLOAD"
-    static let userCancel = "USERCANCEL"
+    static let userCanceled = "USER_CANCELED"
     static let biometricKeyAlias = "biometric_key"
 }
 
@@ -70,11 +70,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         let tag = self.getBiometricKeyTag()
         var secObject: SecAccessControl?
         var error: Unmanaged<CFError>? = nil
-        if #available(iOS 11.3, *) {
-            secObject = SecAccessControlCreateWithFlags(kCFAllocatorDefault, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .biometryAny, &error)
-        } else {
-            secObject = SecAccessControlCreateWithFlags(kCFAllocatorDefault, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .touchIDAny, &error)
-        }
+        secObject = SecAccessControlCreateWithFlags(kCFAllocatorDefault, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .biometryAny, &error)
         guard error == nil else {
             result(FlutterError(code: Constants.authFailed, message: "SecItemAdd can't create secObject: \(error!)", details: nil))
             return
@@ -118,7 +114,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         }
         
         let publicKeyDataWithHeader = BiometricSignaturePlugin.addHeader(publicKeyData: publicKeyDataRef)
-        let publicKeyString = publicKeyDataWithHeader!.base64EncodedString(options: [])
+        let publicKeyString = publicKeyDataWithHeader!.base64EncodedString()
         result(publicKeyString)
     }
     
@@ -154,7 +150,8 @@ private func createSignature(options: [String: String]?, result: @escaping Flutt
 
     guard status == errSecSuccess else {
         let errorMessage = status == errSecUserCanceled ? "User canceled the authentication" : "Key not found: \(Int(status))"
-        result(FlutterError(code: Constants.authFailed, message: errorMessage, details: nil))
+        let errorCode = status == errSecUserCanceled ? Constants.userCanceled : Constants.authFailed
+        result(FlutterError(code: errorCode, message: errorMessage, details: nil))
         return
     }
     var error: Unmanaged<CFError>?
@@ -168,11 +165,11 @@ private func createSignature(options: [String: String]?, result: @escaping Flutt
 }
     
     private func getBiometricType(_ context: LAContext?) -> String {
-        return context?.biometryType == .faceID ? "FaceID" : context?.biometryType == .touchID ? "TouchID" : "none, no biometrics available"
+        return context?.biometryType == .faceID ? "FaceID" : context?.biometryType == .touchID ? "TouchID" : "none, NO_BIOMETRICS"
     }
     
     private func getBiometricKeyTag() -> Data? {
-        let BIOMETRIC_KEY_ALIAS = "biometric_key"
+        let BIOMETRIC_KEY_ALIAS = Constants.biometricKeyAlias
         let tag = BIOMETRIC_KEY_ALIAS.data(using: .utf8)
         return tag
     }

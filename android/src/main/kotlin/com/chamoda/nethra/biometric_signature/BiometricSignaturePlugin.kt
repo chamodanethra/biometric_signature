@@ -20,8 +20,10 @@ import java.security.*
 import java.security.spec.RSAKeyGenParameterSpec
 import java.util.*
 
-const val BIOMETRIC_KEY_ALIAS= "biometric_key"
-
+const val AUTH_FAILED = "AUTH_FAILED"
+const val INVALID_PAYLOAD = "INVALID_PAYLOAD"
+const val USER_CANCELED = "USER_CANCELED"
+const val BIOMETRIC_KEY_ALIAS = "biometric_key"
 /** BiometricSignaturePlugin */
 class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
   private lateinit var channel: MethodChannel
@@ -101,8 +103,8 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
 
     } catch (e: Exception) {
       result.error(
-        "AUTHFAILED",
-        "Error generating public private keys", null
+        AUTH_FAILED,
+        "Error generating public-private keys", null
       )
     }
   }
@@ -114,7 +116,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       val payload = options?.get("payload")
 
       if (payload == null || !isValidUTF8(payload)) {
-        result.error("INVALID_PAYLOAD", "Payload is required and must be valid UTF-8", null)
+        result.error(INVALID_PAYLOAD, "Payload is required and must be valid UTF-8", null)
         return
       }
       val payloadBytes = payload.toByteArray(Charsets.UTF_8)
@@ -140,26 +142,17 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
               result.success(signedString)
             }
           }
-
           override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
             super.onAuthenticationError(errorCode, errString)
             if (!resultReturned) {
               resultReturned = true
               when (errorCode) {
-                BiometricPrompt.ERROR_NEGATIVE_BUTTON -> result.error("NEGATIVE_BUTTON", errString.toString(), null)
-                BiometricPrompt.ERROR_USER_CANCELED -> result.error("USER_CANCELED", errString.toString(), null)
+                BiometricPrompt.ERROR_NEGATIVE_BUTTON -> result.error(USER_CANCELED, errString.toString(), null)
+                BiometricPrompt.ERROR_USER_CANCELED -> result.error(USER_CANCELED, errString.toString(), null)
                 BiometricPrompt.ERROR_LOCKOUT -> result.error("LOCKOUT", errString.toString(), null)
                 BiometricPrompt.ERROR_LOCKOUT_PERMANENT -> result.error("LOCKOUT_PERMANENT", errString.toString(), null)
-                else -> result.error("AUTHFAILED", errString.toString(), null)
+                else -> result.error("AUTH_ERROR", errString.toString(), null)
               }
-            }
-          }
-
-          override fun onAuthenticationFailed() {
-            super.onAuthenticationFailed()
-            if (!resultReturned) {
-              resultReturned = true
-              result.error("AUTHFAILED", "Authentication failed", null)
             }
           }
         }).authenticate(PromptInfo.Builder()
@@ -168,7 +161,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
         .setTitle(promptMessage)
         .build(), cryptoObject)
     } catch (e: Exception) {
-      result.error("AUTHFAILED", "Error generating signature: ${e.message}", null)
+      result.error(AUTH_FAILED, "Error generating signature: ${e.message}", null)
     }
   }
 
@@ -188,7 +181,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
         result.success(resultBoolean)
       } else {
         result.error(
-          "AUTHFAILED",
+          AUTH_FAILED,
           "Error deleting biometric key from keystore", null
         )
       }
@@ -203,7 +196,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       result.success(biometricKeyExists)
     } catch (e: Exception) {
       result.error(
-        "AUTHFAILED",
+        AUTH_FAILED,
         "Error checking if biometric key exists: ${e.message}", null
       )
     }
@@ -233,7 +226,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
         BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED -> "BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED"
         BiometricManager.BIOMETRIC_ERROR_UNSUPPORTED -> "BIOMETRIC_ERROR_UNSUPPORTED"
         BiometricManager.BIOMETRIC_STATUS_UNKNOWN -> "BIOMETRIC_STATUS_UNKNOWN"
-        else -> "Error checking biometrics"
+        else -> "NO_BIOMETRICS"
       }
       result.success("none, $errorString")
     }
