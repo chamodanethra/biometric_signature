@@ -54,6 +54,10 @@ android {
         minSdk 23
     }
 
+    lintOptions {
+        disable 'InvalidPackage'
+    }
+
     dependencies {
         implementation 'androidx.biometric:biometric-ktx:1.2.0-alpha05'
     }
