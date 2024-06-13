@@ -45,3 +45,45 @@
 
 * Removes a redundant code push in Android native code.
 * Updates README.md and the Example.
+
+## 2.1.2
+
+### Fixed:
+
+- Fixed the issue with the `createSignature()` method on Android, ensuring it doesn't do base64 encoding of the payload.
+- Corrected the public key header in the `createKeys()` method on iOS to align with standard RSA key formats.
+
+### Other Changes:
+
+* Updated README.md and Licence content.
+
+## 3.0.0
+
+### New Features:
+
+* The plugin offers more flexibility for advanced use cases, such as handling different biometric modalities and customizing the signature generation process.
+
+### Bug Fixes:
+
+* Improved the handling of biometric prompt cancellations.
+* Enhanced the accuracy of biometric authentication on some devices.
+
+### Other Changes:
+
+* Updated the plugin's documentation to reflect the new features and improvements.
+* Migrated the plugin to use the latest Flutter development tools.
+* Improved the overall performance and stability of the plugin.
+* This version is now compatible with AGP >=7.3 including 8.x support.
+
+### Breaking Changes:
+
+* The minimum supported Flutter version has been increased to 3.3.0.
+
+## 4.0.0
+
+* Fixed a bug in createKeys() for iOS.
+* Fixed a bug in createSignature() for android.
+* Error codes were updated to maintain consistency.
+* Updated README.md and Licence content.
+* Hardcoded default payload was removed.
+* Improved error handling.
