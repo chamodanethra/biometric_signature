@@ -1,7 +1,7 @@
 ## [4.0.1] - 2024-06-30
 
-- A crash on Android devices below API level 28 was fixed.
-- General improvements.
+* A crash on Android devices below API level 28 was fixed.
+* General improvements.
 
 ## [4.0.0] - 2024-06-12
 
