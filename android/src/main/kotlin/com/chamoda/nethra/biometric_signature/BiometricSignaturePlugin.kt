@@ -53,6 +53,10 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
   }
 
   override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
+    if (activity !is FlutterFragmentActivity || activity == null) {
+      result.error("INCOMPATIBLE_ACTIVITY", "BiometricSignaturePlugin requires your app to use FlutterFragmentActivity", null)
+      return
+    }
     when (call.method) {
       "createKeys" -> {
         createKeys(result)
@@ -127,6 +131,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       val privateKey = keyStore.getKey(BIOMETRIC_KEY_ALIAS, null) as PrivateKey
       signature.initSign(privateKey)
       val cryptoObject = BiometricPrompt.CryptoObject(signature)
+      activity!!.setTheme(androidx.appcompat.R.style.Theme_AppCompat_Light_DarkActionBar)
       val executor = ContextCompat.getMainExecutor(activity!!)
       var resultReturned = false
       BiometricPrompt(activity!!, executor,
