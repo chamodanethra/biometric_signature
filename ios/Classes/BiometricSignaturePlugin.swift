@@ -41,45 +41,59 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         let context = LAContext()
         var error: NSError?
         let canEvaluatePolicy = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
-        
+
         if canEvaluatePolicy {
             let biometricType = getBiometricType(context)
-            result(biometricType)
+            dispatchMainAsync {
+                result(biometricType)
+            }
         } else {
             let errorMessage = error?.localizedDescription ?? ""
-            result("none, \(errorMessage)")
+            dispatchMainAsync {
+                result("none, \(errorMessage)")
+            }
         }
     }
-    
+
     private func biometricKeyExists(checkValidity: Bool, result: @escaping FlutterResult) {
         let biometricKeyExists = self.doesBiometricKeyExist(checkValidity: checkValidity)
-        result(biometricKeyExists)
+        dispatchMainAsync {
+            result(biometricKeyExists)
+        }
     }
-    
+
     private func deleteKeys(result: @escaping FlutterResult) {
         let biometricKeyExists = self.doesBiometricKeyExist()
         if biometricKeyExists {
             let status = self.deleteBiometricKey()
-            result(status == noErr)
+            dispatchMainAsync {
+                result(status == noErr)
+            }
         } else {
-            result(false)
+            dispatchMainAsync {
+                result(false)
+            }
         }
     }
-    
+
     private func createKeys(result: @escaping FlutterResult) {
         let tag = self.getBiometricKeyTag()
         var secObject: SecAccessControl?
         var error: Unmanaged<CFError>? = nil
         secObject = SecAccessControlCreateWithFlags(kCFAllocatorDefault, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .biometryAny, &error)
         guard error == nil else {
-            result(FlutterError(code: Constants.authFailed, message: "SecItemAdd can't create secObject: \(error!)", details: nil))
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.authFailed, message: "SecItemAdd can't create secObject: \(error!)", details: nil))
+            }
             return
         }
         guard let secObject = secObject else {
-            result(FlutterError(code: Constants.authFailed, message: "Error creating SecAccessControl object", details: nil))
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.authFailed, message: "Error creating SecAccessControl object", details: nil))
+            }
             return
         }
-        
+
         let keyAttributes = [
             kSecClass as AnyHashable: kSecClassKey,
             kSecAttrKeyType as AnyHashable: kSecAttrKeyTypeRSA,
@@ -91,31 +105,39 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
                 kSecAttrAccessControl as AnyHashable: secObject
             ] as Any
         ] as CFDictionary
-        
+
         self.deleteBiometricKey()
         var privateKey: SecKey?
         if let attributes = keyAttributes as? CFDictionary {
             privateKey = SecKeyCreateRandomKey(attributes, &error)
         }
-        
+
         guard error == nil else {
-            result(FlutterError(code: Constants.authFailed, message: "Error generating public-private keys", details: nil))
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.authFailed, message: "Error generating public-private keys", details: nil))
+            }
             return
         }
-        
+
         guard let privateKey = privateKey, let publicKey = SecKeyCopyPublicKey(privateKey) else {
-            result(FlutterError(code: Constants.authFailed, message: "Error generating public-private keys", details: nil))
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.authFailed, message: "Error generating public-private keys", details: nil))
+            }
             return
         }
-        
+
         guard let publicKeyDataRef = SecKeyCopyExternalRepresentation(publicKey, nil) as Data? else {
-            result(FlutterError(code: Constants.authFailed, message: "Error generating public-private keys", details: nil))
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.authFailed, message: "Error generating public-private keys", details: nil))
+            }
             return
         }
-        
+
         let publicKeyDataWithHeader = BiometricSignaturePlugin.addHeader(publicKeyData: publicKeyDataRef)
         let publicKeyString = publicKeyDataWithHeader!.base64EncodedString()
-        result(publicKeyString)
+        dispatchMainAsync {
+            result(publicKeyString)
+        }
     }
     
     private func deleteBiometricKey() -> OSStatus {
@@ -128,41 +150,75 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         return SecItemDelete(query as CFDictionary)
     }
     
-private func createSignature(options: [String: String]?, result: @escaping FlutterResult) {
-    let promptMessage = options?["promptMessage"] ?? "Welcome"
-    guard let payload = options?["payload"],
-          let dataToSign = payload.data(using: .utf8) else {
-        result(FlutterError(code: Constants.invalidPayload, message: "Payload is required and must be valid UTF-8", details: nil))
-        return
+    private func createSignature(options: [String: String]?, result: @escaping FlutterResult) {
+        let promptMessage = options?["promptMessage"] ?? "Welcome"
+        guard let payload = options?["payload"],
+              let dataToSign = payload.data(using: .utf8) else {
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.invalidPayload, message: "Payload is required and must be valid UTF-8", details: nil))
+            }
+            return
+        }
+
+        let tag = getBiometricKeyTag()
+        let context = LAContext()
+        context.localizedFallbackTitle = ""
+        var error: NSError?
+
+        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.authFailed, message: "Biometric authentication not available", details: error?.localizedDescription))
+            }
+            return
+        }
+
+        context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: promptMessage) { [weak self] success, authenticationError in
+            guard let self = self else { return }
+
+            if success {
+                let query: [String: Any] = [
+                    kSecClass as String: kSecClassKey,
+                    kSecAttrApplicationTag as String: tag,
+                    kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+                    kSecReturnRef as String: true,
+                    kSecUseOperationPrompt as String: promptMessage,
+                    kSecUseAuthenticationContext as String: context
+                ]
+
+                var privateKey: AnyObject?
+                let status = SecItemCopyMatching(query as CFDictionary, &privateKey)
+
+                guard status == errSecSuccess else {
+                    self.dispatchMainAsync {
+                        result(FlutterError(code: Constants.authFailed, message: "Key not found: \(Int(status))", details: nil))
+                    }
+                    return
+                }
+
+                var signingError: Unmanaged<CFError>?
+                guard let signature = SecKeyCreateSignature(privateKey as! SecKey, .rsaSignatureMessagePKCS1v15SHA256, dataToSign as CFData, &signingError) as Data? else {
+                    let errorDescription = signingError?.takeRetainedValue().localizedDescription ?? "Unknown error"
+                    self.dispatchMainAsync {
+                        result(FlutterError(code: Constants.authFailed, message: "Error generating signature: \(errorDescription)", details: nil))
+                    }
+                    return
+                }
+
+                self.dispatchMainAsync {
+                    result(signature.base64EncodedString())
+                }
+            } else {
+                let errorCode = (authenticationError as? LAError)?.code == .userCancel ? Constants.userCanceled : Constants.authFailed
+                self.dispatchMainAsync {
+                    result(FlutterError(code: errorCode, message: authenticationError?.localizedDescription ?? "Authentication failed", details: nil))
+                }
+            }
+        }
     }
 
-    let tag = getBiometricKeyTag()
-    let query: [String: Any] = [
-        kSecClass as String: kSecClassKey,
-        kSecAttrApplicationTag as String: tag,
-        kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
-        kSecReturnRef as String: true,
-        kSecUseOperationPrompt as String: promptMessage
-    ]
-
-    var privateKey: AnyObject?
-    let status = SecItemCopyMatching(query as CFDictionary, &privateKey)
-
-    guard status == errSecSuccess else {
-        let errorMessage = status == errSecUserCanceled ? "User canceled the authentication" : "Key not found: \(Int(status))"
-        let errorCode = status == errSecUserCanceled ? Constants.userCanceled : Constants.authFailed
-        result(FlutterError(code: errorCode, message: errorMessage, details: nil))
-        return
+    private func dispatchMainAsync(_ block: @escaping () -> Void) {
+        DispatchQueue.main.async(execute: block)
     }
-    var error: Unmanaged<CFError>?
-    guard let signature = SecKeyCreateSignature(privateKey as! SecKey, .rsaSignatureMessagePKCS1v15SHA256, dataToSign as CFData, &error) as Data? else {
-        let errorDescription = error?.takeRetainedValue().localizedDescription ?? "Unknown error"
-        result(FlutterError(code: Constants.authFailed, message: "Error generating signature: \(errorDescription)", details: nil))
-        return
-    }
-
-    result(signature.base64EncodedString())
-}
     
     private func getBiometricType(_ context: LAContext?) -> String {
         return context?.biometryType == .faceID ? "FaceID" : context?.biometryType == .touchID ? "TouchID" : "none, NO_BIOMETRICS"
