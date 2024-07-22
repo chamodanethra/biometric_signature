@@ -1,3 +1,8 @@
+## [4.0.2] - 2024-07-22
+
+* fix Biometric portal not coming up in iOS simulators when calling createSignature().
+* General improvements.
+
 ## [4.0.1] - 2024-06-30
 
 * A crash on Android devices below API level 28 was fixed.
