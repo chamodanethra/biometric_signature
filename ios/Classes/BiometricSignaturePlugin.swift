@@ -209,8 +209,6 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
                 }
             } else {
                 let errorCode = (error as? LAError)?.code == .userCancel ? Constants.userCanceled : Constants.authFailed
-                // TODO: remove below line
-                print((error as? LAError)?.code.rawValue)
                 self.dispatchMainAsync {
                     result(FlutterError(code: errorCode, message: error?.localizedDescription ?? "Authentication failed", details: nil))
                 }
