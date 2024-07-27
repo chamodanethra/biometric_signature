@@ -1,3 +1,7 @@
+## [4.0.3] - 2024-07-27
+
+* fix Local Authentication bypass in iOS when calling createSignature().
+
 ## [4.0.2] - 2024-07-22
 
 * fix Biometric portal not coming up in iOS simulators when calling createSignature().
