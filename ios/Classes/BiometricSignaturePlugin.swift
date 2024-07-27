@@ -163,38 +163,38 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         let tag = getBiometricKeyTag()
         let context = LAContext()
         context.localizedFallbackTitle = ""
-        var error: NSError?
 
-        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
+        guard let accessControl = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, [.biometryAny, .and, .privateKeyUsage], nil) else {
             dispatchMainAsync {
-                result(FlutterError(code: Constants.authFailed, message: "Biometric authentication not available", details: error?.localizedDescription))
+                result(FlutterError(code: Constants.authFailed, message: "Failed to create access control", details: nil))
             }
             return
         }
 
-        context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: promptMessage) { [weak self] success, authenticationError in
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: tag,
+            kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+            kSecReturnRef as String: true,
+            kSecUseOperationPrompt as String: promptMessage,
+            kSecAttrAccessControl as String: accessControl,
+            kSecUseAuthenticationContext as String: context
+        ]
+
+        var privateKey: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &privateKey)
+
+        guard status == errSecSuccess else {
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.authFailed, message: "Key not found: \(Int(status))", details: nil))
+            }
+            return
+        }
+
+        context.evaluateAccessControl(accessControl, operation: .useKeySign, localizedReason: promptMessage) { [weak self] success, error in
             guard let self = self else { return }
 
             if success {
-                let query: [String: Any] = [
-                    kSecClass as String: kSecClassKey,
-                    kSecAttrApplicationTag as String: tag,
-                    kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
-                    kSecReturnRef as String: true,
-                    kSecUseOperationPrompt as String: promptMessage,
-                    kSecUseAuthenticationContext as String: context
-                ]
-
-                var privateKey: AnyObject?
-                let status = SecItemCopyMatching(query as CFDictionary, &privateKey)
-
-                guard status == errSecSuccess else {
-                    self.dispatchMainAsync {
-                        result(FlutterError(code: Constants.authFailed, message: "Key not found: \(Int(status))", details: nil))
-                    }
-                    return
-                }
-
                 var signingError: Unmanaged<CFError>?
                 guard let signature = SecKeyCreateSignature(privateKey as! SecKey, .rsaSignatureMessagePKCS1v15SHA256, dataToSign as CFData, &signingError) as Data? else {
                     let errorDescription = signingError?.takeRetainedValue().localizedDescription ?? "Unknown error"
@@ -208,9 +208,11 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
                     result(signature.base64EncodedString())
                 }
             } else {
-                let errorCode = (authenticationError as? LAError)?.code == .userCancel ? Constants.userCanceled : Constants.authFailed
+                let errorCode = (error as? LAError)?.code == .userCancel ? Constants.userCanceled : Constants.authFailed
+                // TODO: remove below line
+                print((error as? LAError)?.code.rawValue)
                 self.dispatchMainAsync {
-                    result(FlutterError(code: errorCode, message: authenticationError?.localizedDescription ?? "Authentication failed", details: nil))
+                    result(FlutterError(code: errorCode, message: error?.localizedDescription ?? "Authentication failed", details: nil))
                 }
             }
         }
@@ -219,7 +221,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
     private func dispatchMainAsync(_ block: @escaping () -> Void) {
         DispatchQueue.main.async(execute: block)
     }
-    
+
     private func getBiometricType(_ context: LAContext?) -> String {
         return context?.biometryType == .faceID ? "FaceID" : context?.biometryType == .touchID ? "TouchID" : "none, NO_BIOMETRICS"
     }
