@@ -163,8 +163,9 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
         }).authenticate(PromptInfo.Builder()
         .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
         .setNegativeButtonText(cancelButtonText)
+        .setLogoDescription("Hello")
         .setTitle(promptMessage)
-        .build(), cryptoObject)
+        .build().also{ println(it.getLogoDescription()) }, cryptoObject)
     } catch (e: Exception) {
       result.error(AUTH_FAILED, "Error generating signature: ${e.message}", null)
     }
