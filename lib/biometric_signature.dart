@@ -1,13 +1,15 @@
+import 'package:biometric_signature/android_config.dart';
+
 import 'biometric_signature_platform_interface.dart';
 
 class BiometricSignature {
   /// Creates a RSA key pair on the device, stores Private Key in keychain/keystore
   ///
-  /// params: An optional bool named useStrongBox, which attempts to use it on compatible devices
+  /// params: An optional AndroidConfig object containing the bool useStrongBox, which attempts to use it on compatible devices
   /// Returns: The Public Key component as a String
-  Future<String?> createKeys({bool useStrongBox = false}) async {
+  Future<String?> createKeys({AndroidConfig? config}) async {
     final String? response =
-        await BiometricSignaturePlatform.instance.createKeys(useStrongBox);
+        await BiometricSignaturePlatform.instance.createKeys(config ?? AndroidConfig(useStrongBox: false));
     return response;
   }
 

@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:biometric_signature/android_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -10,10 +13,14 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   final methodChannel = const MethodChannel('biometric_signature');
 
   @override
-  Future<String?> createKeys(bool useStrongBox) async {
+  Future<String?> createKeys(AndroidConfig config) async {
     try {
-      final response = await methodChannel.invokeMethod<String>('createKeys', useStrongBox);
-      return response;
+      if (Platform.isAndroid) {
+        return await methodChannel.invokeMethod<String>(
+            'createKeys', config.useStrongBox);
+      } else {
+        return await methodChannel.invokeMethod<String>('createKeys');
+      }
     } on PlatformException {
       rethrow;
     }

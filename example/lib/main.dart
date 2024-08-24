@@ -1,3 +1,4 @@
+import 'package:biometric_signature/android_config.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 
@@ -36,7 +37,8 @@ class _MyAppState extends State<MyApp> {
           await _biometricSignature.biometricKeyExists() ?? false;
       debugPrint("doExist : $doExist");
       if (!doExist) {
-        final String? publicKey = await _biometricSignature.createKeys();
+        final String? publicKey = await _biometricSignature.createKeys(
+            config: AndroidConfig(useStrongBox: true));
         debugPrint("publicKey : $publicKey");
       }
       final String? signature = await _biometricSignature.createSignature(
