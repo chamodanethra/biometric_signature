@@ -24,8 +24,8 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
     _instance = instance;
   }
 
-  Future<String?> createKeys() {
-    throw UnimplementedError('createKeys() has not been implemented.');
+  Future<String?> createKeys(bool useStrongBox) {
+    throw UnimplementedError('createKeys(bool useStrongBox) has not been implemented.');
   }
 
   Future<bool?> deleteKeys() {

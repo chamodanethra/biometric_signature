@@ -1,7 +1,9 @@
 package com.chamoda.nethra.biometric_signature
 
+import android.content.pm.PackageManager
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.security.keystore.StrongBoxUnavailableException
 import android.util.Base64
 import androidx.annotation.NonNull
 import androidx.biometric.BiometricManager
@@ -59,7 +61,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     }
     when (call.method) {
       "createKeys" -> {
-        createKeys(result)
+        createKeys(call.arguments()!!, result)
       }
       "createSignature" -> {
         createSignature(call.arguments(), result)
@@ -79,40 +81,51 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     }
   }
 
-  private fun createKeys(@NonNull result: MethodChannel.Result) {
+  private fun createKeys(useStrongBox: Boolean, @NonNull result: MethodChannel.Result) {
     try {
       deleteBiometricKey()
       val keyPairGenerator: KeyPairGenerator =
         KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, "AndroidKeyStore")
-      val keyGenParameterSpec: KeyGenParameterSpec =
-        KeyGenParameterSpec.Builder(BIOMETRIC_KEY_ALIAS, KeyProperties.PURPOSE_SIGN)
-          .setDigests(KeyProperties.DIGEST_SHA256)
-          .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
-          .setAlgorithmParameterSpec(
-            RSAKeyGenParameterSpec(
-              2048,
-              RSAKeyGenParameterSpec.F4
-            )
+
+      val builder = KeyGenParameterSpec.Builder(BIOMETRIC_KEY_ALIAS, KeyProperties.PURPOSE_SIGN)
+        .setDigests(KeyProperties.DIGEST_SHA256)
+        .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
+        .setAlgorithmParameterSpec(
+          RSAKeyGenParameterSpec(
+            2048,
+            RSAKeyGenParameterSpec.F4
           )
-          .setUserAuthenticationRequired(true)
-          .build()
-      keyPairGenerator.initialize(keyGenParameterSpec)
+        )
+        .setUserAuthenticationRequired(true)
+
+        if (useStrongBox && activity!!.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                try {
+                    println("Attempting to use StrongBox")
+                    builder.setIsStrongBoxBacked(true)
+                } catch (e: StrongBoxUnavailableException) {
+                    println("StrongBox unavailable: ${e.message}")
+                    // Fallback to TEE
+                    builder.setIsStrongBoxBacked(false)
+                }
+            }
+        }
+
+      keyPairGenerator.initialize(builder.build())
       val keyPair: KeyPair = keyPairGenerator.generateKeyPair()
       val publicKey: PublicKey = keyPair.public
       val encodedPublicKey: ByteArray = publicKey.encoded
-      var publicKeyString =
-        Base64.encodeToString(encodedPublicKey, Base64.DEFAULT)
+      var publicKeyString = Base64.encodeToString(encodedPublicKey, Base64.DEFAULT)
       publicKeyString = publicKeyString.replace("\r", "").replace("\n", "")
       result.success(publicKeyString)
-
     } catch (e: Exception) {
       result.error(
         AUTH_FAILED,
-        "Error generating public-private keys", null
+        "Error generating public-private keys: ${e.javaClass.name}: ${e.message}",
+        e.stackTraceToString()
       )
     }
   }
-
   private fun createSignature(options: MutableMap<String, String>?, @NonNull result: MethodChannel.Result) {
     try {
       val cancelButtonText = options?.get("cancelButtonText") ?: "Cancel"

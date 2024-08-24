@@ -10,9 +10,9 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   final methodChannel = const MethodChannel('biometric_signature');
 
   @override
-  Future<String?> createKeys() async {
+  Future<String?> createKeys(bool useStrongBox) async {
     try {
-      final response = await methodChannel.invokeMethod<String>('createKeys');
+      final response = await methodChannel.invokeMethod<String>('createKeys', useStrongBox);
       return response;
     } on PlatformException {
       rethrow;
