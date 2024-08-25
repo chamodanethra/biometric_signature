@@ -1,3 +1,8 @@
+## [4.1.0] - 2024-08-25
+
+* **Feature** Use StrongBox in compatible android devices.
+* Refactor key creation to use AndroidConfig object.
+
 ## [4.0.3] - 2024-07-27
 
 * fix Local Authentication bypass in iOS when calling createSignature().

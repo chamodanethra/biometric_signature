@@ -21,7 +21,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^4.0.3
+  biometric_signature: ^4.1.0
 ```
 
 |             | Android | iOS   |
@@ -88,9 +88,9 @@ When a user enrolls in biometrics, a key pair is generated. The private key is s
 
 This class provides methods to manage and utilize biometric authentication for secure server interactions. It supports both Android and iOS platforms.
 
-### `createKeys()`
+### `createKeys(AndroidConfig config)`
 
-Generates a new RSA 2048 key pair for biometric authentication. The private key is securely stored on the device, and the public key is returned as a base64 encoded string. This method deletes any existing key pair before creating a new one.
+Generates a new RSA 2048 key pair for biometric authentication. The private key is securely stored on the device, and the public key is returned as a base64 encoded string. This method deletes any existing key pair before creating a new one. StrongBox support is available for compatible android devices.
 
 - **Returns**: `String` - The base64 encoded public key.
 
