@@ -8,8 +8,8 @@ class BiometricSignature {
   /// params: An optional AndroidConfig object containing the bool useStrongBox, which attempts to use it on compatible devices
   /// Returns: The Public Key component as a String
   Future<String?> createKeys({AndroidConfig? config}) async {
-    final String? response =
-        await BiometricSignaturePlatform.instance.createKeys(config ?? AndroidConfig(useStrongBox: false));
+    final String? response = await BiometricSignaturePlatform.instance
+        .createKeys(config ?? AndroidConfig(useStrongBox: false));
     return response;
   }
 

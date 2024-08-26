@@ -1,3 +1,7 @@
+## [4.1.1] - 2024-08-26
+
+* Fix linting issues.
+
 ## [4.1.0] - 2024-08-25
 
 * **Feature** Use StrongBox in compatible android devices.
