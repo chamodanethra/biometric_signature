@@ -242,16 +242,16 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
 
         var item: CFTypeRef?
         let status = SecItemCopyMatching(searchQuery as CFDictionary, &item)
-
-        guard status == errSecSuccess || status == errSecInteractionNotAllowed, let key = item else {
+        
+        guard status == errSecSuccess || status == errSecInteractionNotAllowed else {
             return false
         }
         if !checkValidity {
             return true
         }
-
+        
         do {
-            let key = key as! SecKey
+            let key = item as! SecKey
             let algorithm: SecKeyAlgorithm = .rsaEncryptionPKCS1
             let message = "test".data(using: .utf8)!
 
