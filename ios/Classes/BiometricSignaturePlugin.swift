@@ -236,37 +236,36 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tag,
             kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
-            kSecReturnRef as String: kCFBooleanTrue!,
-            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
+            kSecReturnRef as String: true,
         ]
 
         var item: CFTypeRef?
         let status = SecItemCopyMatching(searchQuery as CFDictionary, &item)
 
-        guard status == errSecSuccess || status == errSecInteractionNotAllowed, let key = item else {
-            return false
-        }
-        if !checkValidity {
-            return true
-        }
-
-        do {
-            let key = key as! SecKey
-            let algorithm: SecKeyAlgorithm = .rsaEncryptionPKCS1
+        if status == errSecSuccess {
+            if !checkValidity {
+                return true
+            }
+            let key = item as! SecKey
+            let algorithm: SecKeyAlgorithm = .rsaSignatureMessagePKCS1v15SHA256
             let message = "test".data(using: .utf8)!
 
             var error: Unmanaged<CFError>?
-            guard SecKeyIsAlgorithmSupported(key, .encrypt, algorithm) else {
+            if SecKeyIsAlgorithmSupported(key, .sign, algorithm) {
+                let signature = SecKeyCreateSignature(key, algorithm, message as CFData, &error)
+                return signature != nil
+            } else {
                 return false
             }
-
-            _ = SecKeyCreateEncryptedData(key, algorithm, message as CFData, &error)
-            if let error = error {
-                throw error.takeRetainedValue() as Error
+        } else if status == errSecInteractionNotAllowed {
+            if checkValidity {
+                return false
+            } else {
+                return true
             }
-
-            return true
-        } catch {
+        } else if status == errSecItemNotFound {
+            return false
+        } else {
             return false
         }
     }
