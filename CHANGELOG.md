@@ -1,3 +1,7 @@
+## [4.2.0] - 2024-09-14
+
+* Fix [iOs issue: biometricKeyExists always false ](https://github.com/chamodanethra/biometric_signature/issues/12).
+
 ## [4.1.1] - 2024-08-26
 
 * Fix linting issues.

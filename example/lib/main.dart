@@ -34,7 +34,7 @@ class _MyAppState extends State<MyApp> {
       //   final bool? result = await _biometricSignature.deleteKeys();
       // }
       final bool doExist =
-          await _biometricSignature.biometricKeyExists() ?? false;
+          await _biometricSignature.biometricKeyExists(checkValidity: true) ?? false;
       debugPrint("doExist : $doExist");
       if (!doExist) {
         final String? publicKey = await _biometricSignature.createKeys(
