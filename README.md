@@ -7,6 +7,7 @@ customizable UI components and high-level abstractions for biometric signature m
 
 ## Features
 
+- StrongBox support in compatible Android devices and Secure Enclave integration in iOS
 - Cross-platform support (Android and iOS)
 - Fingerprint, facial, and iris recognition (based on device capabilities)
 - Simple integration with Dart and Flutter applications
@@ -21,7 +22,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^4.2.0
+  biometric_signature: ^5.0.0
 ```
 
 |             | Android | iOS   |
