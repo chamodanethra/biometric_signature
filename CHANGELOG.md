@@ -1,3 +1,7 @@
+## [5.1.0] - 2024-09-19
+
+* **Feature** Secure Enclave migration from Key Chain.
+
 ## [5.0.0] - 2024-09-15
 
 * Secure Enclave integration in iOS.
