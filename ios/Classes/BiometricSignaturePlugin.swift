@@ -236,8 +236,13 @@ private func createSignature(options: [String: String]?, result: @escaping Flutt
     var item: CFTypeRef?
     let status = SecItemCopyMatching(encryptedKeyQuery as CFDictionary, &item)
     guard status == errSecSuccess else {
-        dispatchMainAsync {
-            result(FlutterError(code: Constants.authFailed, message: "Encrypted RSA key not found in Keychain", details: nil))
+        let shouldMigrate = options?["shouldMigrate"] ?? "false"
+        if Bool(shouldMigrate)! {
+            self.migrateToSecureEnclave(options: options, result: result)
+        } else {
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.authFailed, message: "Encrypted RSA key not found in Keychain", details: nil))
+            }
         }
         return
     }
@@ -336,6 +341,123 @@ private func createSignature(options: [String: String]?, result: @escaping Flutt
     dispatchMainAsync {
         result(signature.base64EncodedString())
     }
+}
+
+private func migrateToSecureEnclave(options: [String: String]?, result: @escaping FlutterResult) {
+    // Generate EC key pair in Secure Enclave
+    let ecAccessControl = SecAccessControlCreateWithFlags(
+        kCFAllocatorDefault,
+        kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+        [.privateKeyUsage, .biometryAny],
+        nil
+    )
+
+    guard let ecAccessControl = ecAccessControl else {
+        dispatchMainAsync {
+            result(FlutterError(code: Constants.authFailed, message: "Failed to create access control for EC key", details: nil))
+        }
+        return
+    }
+
+    let ecTag = Constants.ecKeyAlias
+
+    let ecKeyAttributes: [String: Any] = [
+        kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+        kSecAttrKeySizeInBits as String: 256,
+        kSecAttrTokenID as String: kSecAttrTokenIDSecureEnclave,
+        kSecAttrAccessControl as String: ecAccessControl,
+        kSecPrivateKeyAttrs as String: [
+            kSecAttrIsPermanent as String: true,
+            kSecAttrApplicationTag as String: ecTag
+        ]
+    ]
+
+    var error: Unmanaged<CFError>?
+    guard let ecPrivateKey = SecKeyCreateRandomKey(ecKeyAttributes as CFDictionary, &error) else {
+        dispatchMainAsync {
+            let errorDescription = error?.takeRetainedValue().localizedDescription ?? "Unknown error"
+            result(FlutterError(code: Constants.authFailed, message: "Error generating EC key: \(errorDescription)", details: nil))
+        }
+        return
+    }
+
+    guard let ecPublicKey = SecKeyCopyPublicKey(ecPrivateKey) else {
+        dispatchMainAsync {
+            result(FlutterError(code: Constants.authFailed, message: "Error getting EC public key", details: nil))
+        }
+        return
+    }
+
+    // Retrieve RSA private key from Keychain
+    let unencryptedKeyTag = getBiometricKeyTag()
+    let unencryptedKeyQuery: [String: Any] = [
+        kSecClass as String: kSecClassKey,
+        kSecAttrApplicationTag as String: unencryptedKeyTag,
+        kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+        kSecReturnData as String: true
+    ]
+
+    var rsaItem: CFTypeRef?
+    let status = SecItemCopyMatching(unencryptedKeyQuery as CFDictionary, &rsaItem)
+    guard status == errSecSuccess else {
+        dispatchMainAsync {
+            result(FlutterError(code: Constants.authFailed, message: "RSA private key not found in Keychain", details: nil))
+        }
+        return
+    }
+    guard var rsaPrivateKeyData = rsaItem as? Data else {
+        dispatchMainAsync {
+            result(FlutterError(code: Constants.authFailed, message: "Failed to retrieve RSA private key data", details: nil))
+        }
+        return
+    }
+
+    // Encrypt the RSA private key using the EC public key
+    let algorithm: SecKeyAlgorithm = .eciesEncryptionStandardX963SHA256AESGCM
+    guard SecKeyIsAlgorithmSupported(ecPublicKey, .encrypt, algorithm) else {
+        dispatchMainAsync {
+            result(FlutterError(code: Constants.authFailed, message: "EC encryption algorithm not supported", details: nil))
+        }
+        return
+    }
+
+    guard let encryptedRSAKeyData = SecKeyCreateEncryptedData(ecPublicKey, algorithm, rsaPrivateKeyData as CFData, &error) as Data? else {
+        let errorDescription = error?.takeRetainedValue().localizedDescription ?? "Unknown error"
+        dispatchMainAsync {
+            result(FlutterError(code: Constants.authFailed, message: "Error encrypting RSA private key: \(errorDescription)", details: nil))
+        }
+        return
+    }
+
+    // Store encrypted RSA private key in Keychain
+    let encryptedKeyAttributes: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: unencryptedKeyTag,
+        kSecAttrAccount as String: unencryptedKeyTag,
+        kSecValueData as String: encryptedRSAKeyData,
+        kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+    ]
+
+    SecItemDelete(encryptedKeyAttributes as CFDictionary) // Delete any existing item
+    let storeStatus = SecItemAdd(encryptedKeyAttributes as CFDictionary, nil)
+    if storeStatus != errSecSuccess {
+        dispatchMainAsync {
+            result(FlutterError(code: Constants.authFailed, message: "Error storing encrypted RSA private key in Keychain", details: nil))
+        }
+        return
+    }
+
+    // Delete unencrypted RSA private key from Keychain
+    SecItemDelete(unencryptedKeyQuery as CFDictionary)
+
+    // Zero out decrypted RSA private key data from memory
+    rsaPrivateKeyData.resetBytes(in: 0..<rsaPrivateKeyData.count)
+
+    // Call createSignature() to use the migrated keys
+    var modOptions = options
+    modOptions?["shouldMigrate"] = "false"
+    self.createSignature(options: modOptions, result: result)
+    return
 }
 
     private func dispatchMainAsync(_ block: @escaping () -> Void) {
