@@ -512,20 +512,10 @@ private func migrateToSecureEnclave(options: [String: String]?, result: @escapin
             return false
         }
 
-        guard let encryptedRSAKeyData = rsaItem as? Data else {
+        guard rsaItem is Data else {
             return false
         }
-
-        var error: Unmanaged<CFError>?
-        var rsaPrivateKeyData = SecKeyCreateDecryptedData(ecPrivateKey, algorithm, encryptedRSAKeyData as CFData, &error) as Data?
-
-        if rsaPrivateKeyData != nil {
-            // Zero out the decrypted RSA private key data from memory
-            rsaPrivateKeyData!.resetBytes(in: 0..<rsaPrivateKeyData!.count)
-            return true
-        } else {
-            return false
-        }
+        return true
     }
 
      private func getBiometricKeyTag() -> Data {
