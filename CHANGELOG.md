@@ -1,3 +1,11 @@
+## [5.1.1] - 2024-09-20
+
+* ReadMe.md updates.
+
+## [5.1.0] - 2024-09-19
+
+* **Feature** Secure Enclave migration from Key Chain.
+
 ## [5.0.0] - 2024-09-15
 
 * Secure Enclave integration in iOS.
