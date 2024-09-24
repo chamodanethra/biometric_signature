@@ -15,7 +15,7 @@ class BiometricSignature {
 
   /// Creates a digital signature using biometric authentication
   ///
-  /// params: A map of options, {"payload": "// your payload", "promptMessage": "// your welcome message", "cancelButtonText": "Cancel"(on Android only)}
+  /// params: A map of options, {"payload": "// your payload", "promptMessage": "// your welcome message", "cancelButtonText": "Cancel"(on Android only), "shouldMigrate": "true"(on iOS only)}
   /// - Returns: Either the created signature as a base64 encoded string or an error
   Future<String?> createSignature({Map<String, String>? options}) async {
     final String? response = await BiometricSignaturePlatform.instance
