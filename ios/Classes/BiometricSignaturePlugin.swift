@@ -197,12 +197,12 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             bitstringEncLength = UInt((((publicKeyData?.count ?? 0) + 1) / 256) + 2)
         }
         builder[0] = 0x30
-        let i = MemoryLayout.size(ofValue: encodedRSAEncryptionOID) + 2 + Int(bitstringEncLength) + (publicKeyData?.count ?? 0)
+        let i = encodedRSAEncryptionOID.count + 2 + Int(bitstringEncLength) + (publicKeyData?.count ?? 0)
         var j = encodedLength(&builder[1], i)
         encKey.append(&builder, count: Int(j + 1))
         encKey.append(
             encodedRSAEncryptionOID,
-            count: MemoryLayout.size(ofValue: encodedRSAEncryptionOID)
+            count: encodedRSAEncryptionOID.count
         )
         builder[0] = 0x03
         j = encodedLength(&builder[1], (publicKeyData?.count ?? 0) + 1)
@@ -220,7 +220,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             buf?[0] = UInt8(length)
             return 1
         }
-        let i: size_t = Int((length / 256)) + 1
+        let i: size_t = (length / 256) + 1
         buf?[0] = UInt8(i + 0x80)
         for j in 0..<i {
             buf?[i - j] = UInt8(length & 0xff)
