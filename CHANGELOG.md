@@ -1,3 +1,7 @@
+## [5.1.2] - 2024-11-19
+
+* A [bug](https://github.com/chamodanethra/biometric_signature/issues/20) fix in iOS createKeys() flow.
+
 ## [5.1.1] - 2024-09-20
 
 * ReadMe.md updates.
