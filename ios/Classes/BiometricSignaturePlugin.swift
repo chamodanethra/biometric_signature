@@ -89,7 +89,30 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         }
     }
 
+    private func deleteExistingKeys() {
+        // Delete EC key pair
+        let ecTag = Constants.ecKeyAlias
+        let ecKeyQuery: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: ecTag,
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+        ]
+        SecItemDelete(ecKeyQuery as CFDictionary)
+
+        // Delete encrypted RSA private key from Keychain
+        let encryptedKeyTag = getBiometricKeyTag()
+        let encryptedKeyQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: encryptedKeyTag,
+            kSecAttrAccount as String: encryptedKeyTag
+        ]
+        SecItemDelete(encryptedKeyQuery as CFDictionary)
+    }
+
     private func createKeys(result: @escaping FlutterResult) {
+        // Delete existing keys
+        deleteExistingKeys()
+
         // Generate EC key pair in Secure Enclave
         let ecAccessControl = SecAccessControlCreateWithFlags(
             kCFAllocatorDefault,
