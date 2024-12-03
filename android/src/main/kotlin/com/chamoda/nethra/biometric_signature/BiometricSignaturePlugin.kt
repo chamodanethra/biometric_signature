@@ -97,6 +97,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
           )
         )
         .setUserAuthenticationRequired(true)
+        .setUserAuthenticationValidityDurationSeconds(-1) // Require authentication every time
 
         if (useStrongBox && activity!!.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
