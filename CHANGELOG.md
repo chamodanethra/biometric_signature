@@ -1,3 +1,7 @@
+## [5.1.3] - 2024-12-03
+
+* A [bug](https://github.com/chamodanethra/biometric_signature/issues/24) fix for android KeyStoreException crash.
+
 ## [5.1.2] - 2024-11-19
 
 * A [bug](https://github.com/chamodanethra/biometric_signature/issues/20) fix in iOS createKeys() flow.
