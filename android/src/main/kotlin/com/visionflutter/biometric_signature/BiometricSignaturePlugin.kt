@@ -1,4 +1,4 @@
-package com.chamoda.nethra.biometric_signature
+package com.visionflutter.biometric_signature
 
 import android.content.pm.PackageManager
 import android.security.keystore.KeyGenParameterSpec

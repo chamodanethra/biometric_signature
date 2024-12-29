@@ -1,4 +1,4 @@
-package com.chamoda.nethra.biometric_signature_example
+package com.visionflutter.biometric_signature_example
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 
