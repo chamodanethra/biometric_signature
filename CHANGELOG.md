@@ -1,3 +1,7 @@
+## [6.1.0] - 2025-01-06
+
+* Feature - Allow Device Credentials as a fallback for biometric authentication.
+
 ## [6.0.0] - 2024-12-29
 
 * Upgrading Flutter from 3.19.6 to 3.27.0

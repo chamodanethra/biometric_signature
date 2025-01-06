@@ -1,4 +1,5 @@
 import 'package:biometric_signature/android_config.dart';
+import 'package:biometric_signature/iOS_config.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'biometric_signature_method_channel.dart';
@@ -25,9 +26,9 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
     _instance = instance;
   }
 
-  Future<String?> createKeys(AndroidConfig config) {
+  Future<String?> createKeys(AndroidConfig config, IOSConfig config1) {
     throw UnimplementedError(
-        'createKeys(AndroidConfig config) has not been implemented.');
+        'createKeys(AndroidConfig config, IOSConfig config1) has not been implemented.');
   }
 
   Future<bool?> deleteKeys() {

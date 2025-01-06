@@ -1,5 +1,6 @@
 package com.visionflutter.biometric_signature
 
+import android.content.Context
 import android.content.pm.PackageManager
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -132,53 +133,90 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       val cancelButtonText = options?.get("cancelButtonText") ?: "Cancel"
       val promptMessage = options?.get("promptMessage") ?: "Welcome"
       val payload = options?.get("payload")
+      val allowDeviceCredentials = options?.get("allowDeviceCredentials")?.toBoolean() ?: false
 
       if (payload == null || !isValidUTF8(payload)) {
         result.error(INVALID_PAYLOAD, "Payload is required and must be valid UTF-8", null)
         return
       }
-      val payloadBytes = payload.toByteArray(Charsets.UTF_8)
 
-      val signature = Signature.getInstance("SHA256withRSA")
-      val keyStore = KeyStore.getInstance("AndroidKeyStore")
-      keyStore.load(null)
-      val privateKey = keyStore.getKey(BIOMETRIC_KEY_ALIAS, null) as PrivateKey
-      signature.initSign(privateKey)
-      val cryptoObject = BiometricPrompt.CryptoObject(signature)
+       val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+       val privateKey = keyStore.getKey(BIOMETRIC_KEY_ALIAS, null) as? PrivateKey
+       val signature = Signature.getInstance("SHA256withRSA").apply {
+           initSign(privateKey)
+       }
+      val cryptoObject = signature?.let { BiometricPrompt.CryptoObject(it) }
+
+      val biometricManager = BiometricManager.from(activity!!)
+      val canAuthenticate: Int = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        biometricManager.canAuthenticate(
+          BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                  BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        )
+      } else {
+        // For older devices, we just check if BIOMETRIC is available.
+        biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+      }
+
+      if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
+        result.error(AUTH_FAILED, "Biometrics/Device Credentials not available", null)
+        return
+      }
+
       activity!!.setTheme(androidx.appcompat.R.style.Theme_AppCompat_Light_DarkActionBar)
+
       val executor = ContextCompat.getMainExecutor(activity!!)
-      var resultReturned = false
-      BiometricPrompt(activity!!, executor,
+      val biometricPrompt = BiometricPrompt(
+        activity!!,
+        executor,
         object : BiometricPrompt.AuthenticationCallback() {
-          override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
-            super.onAuthenticationSucceeded(authResult)
-            if (!resultReturned) {
-              resultReturned = true
-              val cryptoSignature = authResult.cryptoObject!!.signature!!
-              cryptoSignature.update(payloadBytes)
-              val signedString = Base64.encodeToString(cryptoSignature.sign(), Base64.DEFAULT)
-                .replace("\r", "").replace("\n", "")
-              result.success(signedString)
-            }
-          }
           override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
             super.onAuthenticationError(errorCode, errString)
-            if (!resultReturned) {
-              resultReturned = true
-              when (errorCode) {
-                BiometricPrompt.ERROR_NEGATIVE_BUTTON -> result.error(USER_CANCELED, errString.toString(), null)
-                BiometricPrompt.ERROR_USER_CANCELED -> result.error(USER_CANCELED, errString.toString(), null)
-                BiometricPrompt.ERROR_LOCKOUT -> result.error("LOCKOUT", errString.toString(), null)
-                BiometricPrompt.ERROR_LOCKOUT_PERMANENT -> result.error("LOCKOUT_PERMANENT", errString.toString(), null)
-                else -> result.error("AUTH_ERROR", errString.toString(), null)
+            result.error(AUTH_FAILED, "$errString (code: $errorCode)", null)
+          }
+          override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
+            super.onAuthenticationSucceeded(authResult)
+            try {
+              val returnedCryptoObject = authResult.cryptoObject
+              val signatureObj = returnedCryptoObject?.signature
+              if (signatureObj == null) {
+                result.error(AUTH_FAILED, "No signature object returned", null)
+                return
               }
+              signatureObj.update(payload.toByteArray(Charsets.UTF_8))
+              val signatureBytes = signatureObj.sign()
+              val signatureBase64 = Base64.encodeToString(
+                signatureBytes,
+                Base64.NO_WRAP
+              )
+              result.success(signatureBase64)
+            } catch (e: Exception) {
+              result.error(AUTH_FAILED, "Error signing data: ${e.localizedMessage}", null)
             }
           }
-        }).authenticate(PromptInfo.Builder()
-        .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-        .setNegativeButtonText(cancelButtonText)
+        }
+      )
+
+      val promptInfoBuilder = BiometricPrompt.PromptInfo.Builder()
         .setTitle(promptMessage)
-        .build(), cryptoObject)
+      if (allowDeviceCredentials && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        // If using device credentials fallback, do not set negative button text
+        promptInfoBuilder.setAllowedAuthenticators(
+          BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                  BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        )
+      } else {
+        // Otherwise, fallback to only BIOMETRIC_STRONG, show negative button
+        promptInfoBuilder.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        promptInfoBuilder.setNegativeButtonText(cancelButtonText)
+      }
+      val promptInfo = promptInfoBuilder.build()
+      if (cryptoObject != null) {
+        biometricPrompt.authenticate(promptInfo, cryptoObject)
+      } else {
+        // If we don't have a real signature-based approach, just do:
+        biometricPrompt.authenticate(promptInfo)
+      }
     } catch (e: Exception) {
       result.error(AUTH_FAILED, "Error generating signature: ${e.message}", null)
     }
