@@ -1,21 +1,22 @@
 import 'package:biometric_signature/android_config.dart';
+import 'package:biometric_signature/iOS_config.dart';
 
 import 'biometric_signature_platform_interface.dart';
 
 class BiometricSignature {
   /// Creates a RSA key pair on the device, stores Private Key in keychain/keystore
   ///
-  /// params: An optional AndroidConfig object containing the bool useStrongBox, which attempts to use it on compatible devices
+  /// params: An optional AndroidConfig object containing the bool useStrongBox, which attempts to use it on compatible devices and an optional IOSConfig object containing the bool useDeviceCredentials
   /// Returns: The Public Key component as a String
-  Future<String?> createKeys({AndroidConfig? config}) async {
+  Future<String?> createKeys({AndroidConfig? config, IOSConfig? config1}) async {
     final String? response = await BiometricSignaturePlatform.instance
-        .createKeys(config ?? AndroidConfig(useStrongBox: false));
+        .createKeys(config ?? AndroidConfig(useStrongBox: false), config1 ?? IOSConfig(useDeviceCredentials: false));
     return response;
   }
 
   /// Creates a digital signature using biometric authentication
   ///
-  /// params: A map of options, {"payload": "// your payload", "promptMessage": "// your welcome message", "cancelButtonText": "Cancel"(on Android only), "shouldMigrate": "true"(on iOS only)}
+  /// params: A map of options, {"payload": "// your payload", "promptMessage": "// your welcome message", "cancelButtonText": "Cancel"(on Android only), "shouldMigrate": "true"(on iOS only), "allowDeviceCredentials": "false"(on Android only)}
   /// - Returns: Either the created signature as a base64 encoded string or an error
   Future<String?> createSignature({Map<String, String>? options}) async {
     final String? response = await BiometricSignaturePlatform.instance

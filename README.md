@@ -22,7 +22,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^5.1.3
+  biometric_signature: ^6.1.0
 ```
 
 |             | Android | iOS   |
