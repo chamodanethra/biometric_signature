@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:biometric_signature/android_config.dart';
-import 'package:biometric_signature/iOS_config.dart';
+import 'package:biometric_signature/ios_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -14,7 +14,7 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   final methodChannel = const MethodChannel('biometric_signature');
 
   @override
-  Future<String?> createKeys(AndroidConfig config, IOSConfig config1) async {
+  Future<String?> createKeys(AndroidConfig config, IosConfig config1) async {
     try {
       if (Platform.isAndroid) {
         return await methodChannel.invokeMethod<String>(

@@ -1,5 +1,5 @@
 import 'package:biometric_signature/android_config.dart';
-import 'package:biometric_signature/iOS_config.dart';
+import 'package:biometric_signature/ios_config.dart';
 
 import 'biometric_signature_platform_interface.dart';
 
@@ -8,9 +8,9 @@ class BiometricSignature {
   ///
   /// params: An optional AndroidConfig object containing the bool useStrongBox, which attempts to use it on compatible devices and an optional IOSConfig object containing the bool useDeviceCredentials
   /// Returns: The Public Key component as a String
-  Future<String?> createKeys({AndroidConfig? config, IOSConfig? config1}) async {
+  Future<String?> createKeys({AndroidConfig? config, IosConfig? config1}) async {
     final String? response = await BiometricSignaturePlatform.instance
-        .createKeys(config ?? AndroidConfig(useStrongBox: false), config1 ?? IOSConfig(useDeviceCredentials: false));
+        .createKeys(config ?? AndroidConfig(useStrongBox: false), config1 ?? IosConfig(useDeviceCredentials: false));
     return response;
   }
 

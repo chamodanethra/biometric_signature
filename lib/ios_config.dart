@@ -1,7 +1,7 @@
-class IOSConfig {
+class IosConfig {
   bool useDeviceCredentials;
 
-  IOSConfig({
+  IosConfig({
     required this.useDeviceCredentials,
   });
 }
