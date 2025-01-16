@@ -1,7 +1,7 @@
 class AndroidConfig {
-  bool useStrongBox;
+  bool useDeviceCredentials;
 
   AndroidConfig({
-    required this.useStrongBox,
+    required this.useDeviceCredentials,
   });
 }

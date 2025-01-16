@@ -32,7 +32,7 @@ class _MyAppState extends State<MyApp> {
           await _biometricSignature.biometricAuthAvailable();
       debugPrint("biometricsType : $biometricsType");
       // if (condition) {
-      //   final bool? result = await _biometricSignature.deleteKeys();
+      final bool? result = await _biometricSignature.deleteKeys();
       // }
       final bool doExist =
           await _biometricSignature.biometricKeyExists(checkValidity: true) ??
@@ -40,8 +40,8 @@ class _MyAppState extends State<MyApp> {
       debugPrint("doExist : $doExist");
       if (!doExist) {
         final String? publicKey = await _biometricSignature.createKeys(
-            config: AndroidConfig(useStrongBox: true),
-            config1: IosConfig(useDeviceCredentials: false));
+            androidConfig: AndroidConfig(useDeviceCredentials: true),
+            iosConfig: IosConfig(useDeviceCredentials: false));
         debugPrint("publicKey : $publicKey");
       }
       final String? signature =
@@ -49,6 +49,7 @@ class _MyAppState extends State<MyApp> {
         "payload": "Biometric payload",
         "promptMessage": "You are Welcome!",
         "shouldMigrate": "true",
+        "allowDeviceCredentials": "true"
       });
       debugPrint("signature : $signature");
     } on PlatformException catch (e) {

@@ -6,11 +6,13 @@ import 'biometric_signature_platform_interface.dart';
 class BiometricSignature {
   /// Creates a RSA key pair on the device, stores Private Key in keychain/keystore
   ///
-  /// params: An optional AndroidConfig object containing the bool useStrongBox, which attempts to use it on compatible devices and an optional IOSConfig object containing the bool useDeviceCredentials
+  /// params: An optional AndroidConfig object containing the bool useDeviceCredentials, which attempts to use it on compatible devices and an optional IosConfig object containing the bool useDeviceCredentials
   /// Returns: The Public Key component as a String
-  Future<String?> createKeys({AndroidConfig? config, IosConfig? config1}) async {
+  Future<String?> createKeys(
+      {AndroidConfig? androidConfig, IosConfig? iosConfig}) async {
     final String? response = await BiometricSignaturePlatform.instance
-        .createKeys(config ?? AndroidConfig(useStrongBox: false), config1 ?? IosConfig(useDeviceCredentials: false));
+        .createKeys(androidConfig ?? AndroidConfig(useDeviceCredentials: false),
+            iosConfig ?? IosConfig(useDeviceCredentials: false));
     return response;
   }
 

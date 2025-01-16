@@ -14,13 +14,15 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   final methodChannel = const MethodChannel('biometric_signature');
 
   @override
-  Future<String?> createKeys(AndroidConfig config, IosConfig config1) async {
+  Future<String?> createKeys(
+      AndroidConfig androidConfig, IosConfig iosConfig) async {
     try {
       if (Platform.isAndroid) {
         return await methodChannel.invokeMethod<String>(
-            'createKeys', config.useStrongBox);
+            'createKeys', androidConfig.useDeviceCredentials);
       } else {
-        return await methodChannel.invokeMethod<String>('createKeys', config1.useDeviceCredentials);
+        return await methodChannel.invokeMethod<String>(
+            'createKeys', iosConfig.useDeviceCredentials);
       }
     } on PlatformException {
       rethrow;

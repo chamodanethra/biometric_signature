@@ -26,9 +26,9 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
     _instance = instance;
   }
 
-  Future<String?> createKeys(AndroidConfig config, IosConfig config1) {
+  Future<String?> createKeys(AndroidConfig androidConfig, IosConfig iosConfig) {
     throw UnimplementedError(
-        'createKeys(AndroidConfig config, IOSConfig config1) has not been implemented.');
+        'createKeys(AndroidConfig androidConfig, IosConfig iosConfig) has not been implemented.');
   }
 
   Future<bool?> deleteKeys() {
