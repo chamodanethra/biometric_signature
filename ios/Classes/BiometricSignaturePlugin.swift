@@ -6,7 +6,6 @@ import Security
 private enum Constants {
     static let authFailed = "AUTH_FAILED"
     static let invalidPayload = "INVALID_PAYLOAD"
-    static let userCanceled = "USER_CANCELED"
     static let biometricKeyAlias = "biometric_key"
     static let ecKeyAlias = "com.visionflutter.eckey".data(using: .utf8)!
 }

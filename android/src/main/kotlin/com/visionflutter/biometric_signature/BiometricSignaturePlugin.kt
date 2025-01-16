@@ -25,7 +25,6 @@ import java.util.*
 
 const val AUTH_FAILED = "AUTH_FAILED"
 const val INVALID_PAYLOAD = "INVALID_PAYLOAD"
-const val USER_CANCELED = "USER_CANCELED"
 const val BIOMETRIC_KEY_ALIAS = "biometric_key"
 /** BiometricSignaturePlugin */
 class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
@@ -82,7 +81,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     }
   }
 
-  private fun createKeys(useStrongBox: Boolean, @NonNull result: MethodChannel.Result) {
+  private fun createKeys(useDeviceCredentials: Boolean, @NonNull result: MethodChannel.Result) {
     try {
       deleteBiometricKey()
       val keyPairGenerator: KeyPairGenerator =
@@ -98,9 +97,21 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
           )
         )
         .setUserAuthenticationRequired(true)
-        .setUserAuthenticationValidityDurationSeconds(-1) // Require authentication every time
 
-        if (useStrongBox && activity!!.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)) {
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        if (useDeviceCredentials) {
+          builder.setUserAuthenticationParameters(
+            0,
+            KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL
+          )
+        } else {
+          builder.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
+        }
+      } else {
+        builder.setUserAuthenticationValidityDurationSeconds(-1)
+      }
+
+        if (activity!!.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                 try {
                     println("Attempting to use StrongBox")

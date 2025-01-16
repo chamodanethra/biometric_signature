@@ -1,3 +1,10 @@
+## [6.2.0] - 2025-01-15
+
+* Upgrading Flutter from 3.27.0 to 3.27.2.
+* Updating the README.md file descriptions.
+* Device Credentials' fallback support for compatible devices can be configured.
+
+
 ## [6.1.0] - 2025-01-06
 
 * Feature - Allow Device Credentials as a fallback for biometric authentication.

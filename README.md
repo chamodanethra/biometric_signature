@@ -8,8 +8,8 @@ customizable UI components and high-level abstractions for biometric signature m
 ## Features
 
 - StrongBox support in compatible Android devices and Secure Enclave integration in iOS
-- Cross-platform support (Android and iOS)
 - Fingerprint, facial, and iris recognition (based on device capabilities)
+- Device Credentials' fallback support for compatible devices can be configured
 - Simple integration with Dart and Flutter applications
 - Customizable UI components for signature prompts
 - High-level abstractions for managing biometric signatures
@@ -22,7 +22,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^6.1.0
+  biometric_signature: ^6.2.0
 ```
 
 |             | Android | iOS   |
@@ -91,12 +91,14 @@ This class provides methods to manage and utilize biometric authentication for s
 
 ### `createKeys(AndroidConfig config)`
 
-Generates a new RSA 2048 key pair for biometric authentication. The private key is securely stored on the device, and the public key is returned as a base64 encoded string. This method deletes any existing key pair before creating a new one. Optional StrongBox support is available for compatible android devices. Secure Enclave support is available for iOS
+Generates a new RSA 2048 key pair for biometric authentication. The private key is securely stored on the device, and the public key is returned as a base64 encoded string. This method deletes any existing key pair before creating a new one. StrongBox support is available for compatible android devices. Secure Enclave support is available for iOS.
 
 - **Parameters**:
 
-- `config`: An `AndroidConfig` object containing following properties:
-  - `useStrongBox`: A bool to indicate whether StrongBox support is needed for the compatible Android devices.
+- `androidConfig`: An `AndroidConfig` object containing following properties:
+  - `useDeviceCredentials`: A bool to indicate whether Device Credentials' fallback support is needed for the compatible Android devices.
+- `iosConfig`: An `IosConfig` object containing following properties:
+    - `useDeviceCredentials`: A bool to indicate whether Device Credentials' fallback support is needed.
 
 - **Returns**: `String` - The base64 encoded public key.
 
@@ -111,24 +113,17 @@ Prompts the user for biometric authentication and generates a RSA PKCS#1v1.5 SHA
 - **Parameters**:
 
 - `options`: A map containing the following keys:
-  - `cancelButtonText` (Android only, optional): Text for the cancel button in the biometric prompt. Default is "Cancel".
-  - `promptMessage` (optional): Message to display in the biometric prompt. Default is "Welcome".
+  - `cancelButtonText` (Android only, optional) : Text for the cancel button in the biometric prompt. Default is "Cancel".
+  - `promptMessage` : (optional): Message to display in the biometric prompt. Default is "Welcome".
   - `payload`: The payload to be signed.
   - `shouldMigrate`: (iOS only, required): To migrate to Secure Enclave implementation from the Key Chain implementation used prior to version 5.0.0, need to pass a valid, positive String Bool(as per Swift Official docs).
+  - `allowDeviceCredentials` (Android only, optional) : Indicates whether fallback support is allowed for the compatible Android devices.
 
 - **Returns**: `String` - The base64 encoded cryptographic signature.
 
 - **Error Codes**:
 
 - `AUTH_FAILED`: Error generating the signature.
-
-- `USER_CANCELED`: User canceled the authentication.
-
-- `LOCKOUT`: The operation was canceled because the API is locked out due to too many attempts.
-
-- `LOCKOUT_PERMANENT`: The operation was canceled because `LOCKOUT` occurred too many times
-
-- `AUTH_ERROR`: Various other biometric prompt error codes. Check the error message for more details.
 
 ### `deleteKeys()`
 
