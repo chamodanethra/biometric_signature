@@ -81,7 +81,26 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     }
   }
 
-  private fun createKeys(useDeviceCredentials: Boolean, @NonNull result: MethodChannel.Result) {
+  private fun createKeys(config: Map<String, Any>, @NonNull result: MethodChannel.Result) {
+    val useDeviceCredentials = config["useDeviceCredentials"] as Boolean
+    val enforceBiometric = config["enforceBiometric"] as Boolean
+    @Suppress("UNCHECKED_CAST")
+    val options = config["options"] as? Map<String, String>
+
+    if (enforceBiometric) {
+      authenticateWithBiometric(options) { success ->
+        if (success) {
+          proceedWithKeyCreation(useDeviceCredentials, result)
+        } else {
+          result.error(AUTH_FAILED, "Biometric authentication failed", null)
+        }
+      }
+    } else {
+      proceedWithKeyCreation(useDeviceCredentials, result)
+    }
+  }
+
+  private fun proceedWithKeyCreation(useDeviceCredentials: Boolean, result: MethodChannel.Result) {
     try {
       deleteBiometricKey()
       val keyPairGenerator: KeyPairGenerator =
@@ -139,6 +158,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       )
     }
   }
+
   private fun createSignature(options: MutableMap<String, String>?, @NonNull result: MethodChannel.Result) {
     try {
       val cancelButtonText = options?.get("cancelButtonText") ?: "Cancel"
@@ -328,6 +348,56 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       true
     } catch (e: java.lang.Exception) {
       false
+    }
+  }
+
+  private fun authenticateWithBiometric(options: Map<String, String>?, result: (Boolean) -> Unit) {
+    try {
+      val cancelButtonText = options?.get("cancelButtonText") ?: "Cancel"
+      val promptMessage = options?.get("promptMessage") ?: "Authenticate"
+
+      val biometricManager = BiometricManager.from(activity!!)
+      val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+
+      if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
+        result(false)
+        return
+      }
+
+      activity!!.setTheme(androidx.appcompat.R.style.Theme_AppCompat_Light_DarkActionBar)
+
+      val executor = ContextCompat.getMainExecutor(activity!!)
+      val biometricPrompt = BiometricPrompt(
+        activity!!,
+        executor,
+        object : BiometricPrompt.AuthenticationCallback() {
+          override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+            super.onAuthenticationError(errorCode, errString)
+            result(false)
+          }
+
+          override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
+            super.onAuthenticationSucceeded(authResult)
+            result(true)
+          }
+
+          override fun onAuthenticationFailed() {
+            super.onAuthenticationFailed()
+            result(false)
+          }
+        }
+      )
+
+      val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        .setTitle(promptMessage)
+        .setSubtitle("Verify your identity")
+        .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        .setNegativeButtonText(cancelButtonText)
+        .build()
+
+      biometricPrompt.authenticate(promptInfo)
+    } catch (e: Exception) {
+      result(false)
     }
   }
 }

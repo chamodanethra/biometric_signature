@@ -20,10 +20,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "createKeys":
-            guard let useDeviceCredentials = call.arguments as? Bool else {
-                return
-            }
-            createKeys(useDeviceCredentials: useDeviceCredentials, result: result)
+            createKeys(config: call.arguments as? [String: Any], result: result)
         case "createSignature":
             createSignature(options: call.arguments as? Dictionary<String, String>, result: result)
         case "deleteKeys":
@@ -32,6 +29,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             biometricAuthAvailable(result: result)
         case "biometricKeyExists":
             guard let checkValidity = call.arguments as? Bool else {
+                result(FlutterError(code: "INVALID_ARGUMENTS", message: "Expected a boolean value", details: nil))
                 return
             }
             biometricKeyExists(checkValidity: checkValidity, result: result)
@@ -39,6 +37,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             result(FlutterMethodNotImplemented)
         }
     }
+
 
     private func biometricAuthAvailable(result: @escaping FlutterResult) {
         let context = LAContext()
@@ -111,7 +110,44 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         SecItemDelete(encryptedKeyQuery as CFDictionary)
     }
 
-    private func createKeys(useDeviceCredentials: Bool, result: @escaping FlutterResult) {
+    private func createKeys(config: [String: Any]?, result: @escaping FlutterResult) {
+        let useDeviceCredentials = config?["useDeviceCredentials"] as? Bool ?? false
+        let enforceBiometric = config?["enforceBiometric"] as? Bool ?? false
+
+        let options = config?["options"] as? [String: Any] ?? [:]
+        let promptMessage = options["promptMessage"] as? String ?? "Authenticate"
+        
+        if enforceBiometric {
+            let context = LAContext()
+            var error: NSError?
+            
+            guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
+                dispatchMainAsync {
+                    result(FlutterError(code: Constants.authFailed,
+                                      message: "Biometric authentication not available: \(error?.localizedDescription ?? "Unknown error")",
+                                      details: nil))
+                }
+                return
+            }
+
+            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics,
+                                 localizedReason: promptMessage) { success, error in
+                if success {
+                    self.proceedWithKeyGeneration(useDeviceCredentials: useDeviceCredentials, result: result)
+                } else {
+                    self.dispatchMainAsync {
+                        result(FlutterError(code: Constants.authFailed,
+                                          message: "Biometric authentication failed: \(error?.localizedDescription ?? "User cancelled")",
+                                          details: nil))
+                    }
+                }
+            }
+        } else {
+            proceedWithKeyGeneration(useDeviceCredentials: useDeviceCredentials, result: result)
+        }
+    }
+
+    private func proceedWithKeyGeneration(useDeviceCredentials: Bool, result: @escaping FlutterResult) {
         // Delete existing keys
         deleteExistingKeys()
 
