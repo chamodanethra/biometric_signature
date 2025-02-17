@@ -40,8 +40,14 @@ class _MyAppState extends State<MyApp> {
       debugPrint("doExist : $doExist");
       if (!doExist) {
         final String? publicKey = await _biometricSignature.createKeys(
-            androidConfig: AndroidConfig(useDeviceCredentials: true),
-            iosConfig: IosConfig(useDeviceCredentials: false));
+            androidConfig: AndroidConfig(
+              useDeviceCredentials: true,
+              enforceBiometric: true,
+            ),
+            iosConfig: IosConfig(
+              useDeviceCredentials: false,
+              enforceBiometric: true,
+            ));
         debugPrint("publicKey : $publicKey");
       }
       final String? signature =
