@@ -38,6 +38,44 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         }
     }
 
+    private func promptBiometricAuth(
+        reason: String,
+        useDeviceCredentials: Bool = false,
+        onSuccess: @escaping () -> Void,
+        onError: @escaping (Error?) -> Void
+    ) {
+        let context = LAContext()
+        var error: NSError?
+        
+        // Set up authentication policy based on preferences
+        let policy: LAPolicy = useDeviceCredentials ? 
+            .deviceOwnerAuthentication : // This allows passcode fallback
+            .deviceOwnerAuthenticationWithBiometrics // Biometrics only
+        
+        // Check if the device can use biometric authentication
+        guard context.canEvaluatePolicy(policy, error: &error) else {
+            dispatchMainAsync {
+                onError(error)
+            }
+            return
+        }
+
+        // Perform authentication
+        context.evaluatePolicy(
+            policy,
+            localizedReason: reason
+        ) { success, error in
+            if success {
+                self.dispatchMainAsync {
+                    onSuccess()
+                }
+            } else {
+                self.dispatchMainAsync {
+                    onError(error)
+                }
+            }
+        }
+    }
 
     private func biometricAuthAvailable(result: @escaping FlutterResult) {
         let context = LAContext()
@@ -118,30 +156,20 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         let promptMessage = options["promptMessage"] as? String ?? "Authenticate"
         
         if enforceBiometric {
-            let context = LAContext()
-            var error: NSError?
-            
-            guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
-                dispatchMainAsync {
-                    result(FlutterError(code: Constants.authFailed,
-                                      message: "Biometric authentication not available: \(error?.localizedDescription ?? "Unknown error")",
-                                      details: nil))
-                }
-                return
-            }
-
-            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics,
-                                 localizedReason: promptMessage) { success, error in
-                if success {
+            promptBiometricAuth(
+                reason: promptMessage,
+                useDeviceCredentials: useDeviceCredentials,
+                onSuccess: {
                     self.proceedWithKeyGeneration(useDeviceCredentials: useDeviceCredentials, result: result)
-                } else {
+                },
+                onError: { error in
                     self.dispatchMainAsync {
                         result(FlutterError(code: Constants.authFailed,
                                           message: "Biometric authentication failed: \(error?.localizedDescription ?? "User cancelled")",
                                           details: nil))
                     }
                 }
-            }
+            )
         } else {
             proceedWithKeyGeneration(useDeviceCredentials: useDeviceCredentials, result: result)
         }
@@ -303,7 +331,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
     private func createSignature(options: [String: String]?, result: @escaping FlutterResult) {
         let promptMessage = options?["promptMessage"] ?? "Authenticate to sign data"
         guard let payload = options?["payload"],
-              let dataToSign = payload.data(using: .utf8) else {
+            let dataToSign = payload.data(using: .utf8) else {
             dispatchMainAsync {
                 result(FlutterError(code: Constants.invalidPayload,
                                     message: "Payload is required and must be valid UTF-8",
@@ -346,124 +374,152 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             return
         }
 
-        // 2. Retrieve EC private key from Secure Enclave
-        //    IMPORTANT: removed the direct LAContext usage
-        //    and rely on iOS to prompt for authentication when
-        //    we pass "kSecUseOperationPrompt".
+        // 2. Set up for authentication to decrypt RSA key
+        let useDeviceCredentials = options?["allowDeviceCredentials"]?.lowercased() == "true"
         let ecTag = Constants.ecKeyAlias
-
-        let ecKeyQuery: [String: Any] = [
-            kSecClass as String: kSecClassKey,
-            kSecAttrApplicationTag as String: ecTag,
-            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
-            kSecReturnRef as String: true,
-            // kSecUseAuthenticationContext as String: context,
-            kSecUseOperationPrompt as String: promptMessage
-        ]
-
-    var ecPrivateKeyRef: CFTypeRef?
-    let ecStatus = SecItemCopyMatching(ecKeyQuery as CFDictionary, &ecPrivateKeyRef)
-    guard ecStatus == errSecSuccess else {
-        dispatchMainAsync {
-            result(FlutterError(code: Constants.authFailed, message: "EC private key not found", details: nil))
+        
+        // Create a context for authentication
+        let context = LAContext()
+        var error: NSError?
+        
+        // Set up authentication policy based on preferences
+        let policy: LAPolicy = useDeviceCredentials ? 
+            .deviceOwnerAuthentication : // This allows passcode fallback
+            .deviceOwnerAuthenticationWithBiometrics // Biometrics only
+        
+        // Check if authentication is available
+        guard context.canEvaluatePolicy(policy, error: &error) else {
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.authFailed, 
+                                message: "Biometric authentication not available: \(error?.localizedDescription ?? "Unknown error")",
+                                details: nil))
+            }
+            return
         }
-        return
+        
+        // 3. Use the LAContext to evaluate policy
+        context.evaluatePolicy(policy, localizedReason: promptMessage) { success, error in
+            if !success {
+                self.dispatchMainAsync {
+                    result(FlutterError(code: Constants.authFailed,
+                                    message: "Authentication failed: \(error?.localizedDescription ?? "User cancelled")",
+                                    details: nil))
+                }
+                return
+            }
+            
+            // 4. After successful authentication, retrieve EC key with context
+            let ecKeyQuery: [String: Any] = [
+                kSecClass as String: kSecClassKey,
+                kSecAttrApplicationTag as String: ecTag,
+                kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+                kSecReturnRef as String: true,
+                kSecUseAuthenticationContext as String: context  // Use the same authentication context
+            ]
+            
+            var ecPrivateKeyRef: CFTypeRef?
+            let ecStatus = SecItemCopyMatching(ecKeyQuery as CFDictionary, &ecPrivateKeyRef)
+            
+            guard ecStatus == errSecSuccess, let ecPrivateKeyRef = ecPrivateKeyRef else {
+                self.dispatchMainAsync {
+                    result(FlutterError(code: Constants.authFailed, 
+                                    message: "EC private key not found after authentication", 
+                                    details: nil))
+                }
+                return
+            }
+            
+            // 5. Now proceed with decryption and signing
+            let ecPrivateKey = ecPrivateKeyRef as! SecKey
+            
+            // Decrypt RSA private key data using the EC private key
+            let algorithm: SecKeyAlgorithm = .eciesEncryptionStandardX963SHA256AESGCM
+            guard SecKeyIsAlgorithmSupported(ecPrivateKey, .decrypt, algorithm) else {
+                self.dispatchMainAsync {
+                    result(FlutterError(code: Constants.authFailed,
+                                        message: "EC decryption algorithm not supported",
+                                        details: nil))
+                }
+                return
+            }
+
+            var cfError: Unmanaged<CFError>?
+            guard var rsaPrivateKeyData = SecKeyCreateDecryptedData(ecPrivateKey,
+                                                                    algorithm,
+                                                                    encryptedRSAKeyData as CFData,
+                                                                    &cfError) as Data?
+            else {
+                let errorDescription = cfError?.takeRetainedValue().localizedDescription ?? "Unknown error"
+                self.dispatchMainAsync {
+                    result(FlutterError(code: Constants.authFailed,
+                                        message: "Error decrypting RSA private key: \(errorDescription)",
+                                        details: nil))
+                }
+                return
+            }
+
+            // Reconstruct RSA private key from data
+            let rsaKeyAttributes: [String: Any] = [
+                kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+                kSecAttrKeyClass as String: kSecAttrKeyClassPrivate,
+                kSecAttrKeySizeInBits as String: 2048
+            ]
+
+            guard let rsaPrivateKey = SecKeyCreateWithData(rsaPrivateKeyData as CFData,
+                                                        rsaKeyAttributes as CFDictionary,
+                                                        &cfError)
+            else {
+                let errorDescription = cfError?.takeRetainedValue().localizedDescription ?? "Unknown error"
+                self.dispatchMainAsync {
+                    result(FlutterError(code: Constants.authFailed,
+                                        message: "Error reconstructing RSA private key: \(errorDescription)",
+                                        details: nil))
+                }
+                return
+            }
+
+            // Sign data with RSA private key
+            let signAlgorithm = SecKeyAlgorithm.rsaSignatureMessagePKCS1v15SHA256
+            guard SecKeyIsAlgorithmSupported(rsaPrivateKey, .sign, signAlgorithm) else {
+                self.dispatchMainAsync {
+                    result(FlutterError(code: Constants.authFailed,
+                                        message: "RSA signing algorithm not supported",
+                                        details: nil))
+                }
+                return
+            }
+
+            guard let signature = SecKeyCreateSignature(rsaPrivateKey,
+                                                        signAlgorithm,
+                                                        dataToSign as CFData,
+                                                        &cfError) as Data?
+            else {
+                let errorDescription = cfError?.takeRetainedValue().localizedDescription ?? "Unknown error"
+                self.dispatchMainAsync {
+                    result(FlutterError(code: Constants.authFailed,
+                                        message: "Error signing data: \(errorDescription)",
+                                        details: nil))
+                }
+                return
+            }
+
+            // Zero out decrypted RSA private key data
+            rsaPrivateKeyData.resetBytes(in: 0..<rsaPrivateKeyData.count)
+
+            self.dispatchMainAsync {
+                result(signature.base64EncodedString())
+            }
+        }
     }
-    guard let ecPrivateKeyRef = ecPrivateKeyRef else {
-        dispatchMainAsync {
-            result(FlutterError(code: Constants.authFailed, message: "Failed to retrieve EC private key reference", details: nil))
-        }
-        return
-    }
-    let ecPrivateKey = ecPrivateKeyRef as! SecKey
 
-        // 3. Decrypt RSA private key data using the EC private key
-        let algorithm: SecKeyAlgorithm = .eciesEncryptionStandardX963SHA256AESGCM
-        guard SecKeyIsAlgorithmSupported(ecPrivateKey, .decrypt, algorithm) else {
-            dispatchMainAsync {
-                result(FlutterError(code: Constants.authFailed,
-                                    message: "EC decryption algorithm not supported",
-                                    details: nil))
-            }
-            return
-        }
-
-        var error: Unmanaged<CFError>?
-        guard var rsaPrivateKeyData = SecKeyCreateDecryptedData(ecPrivateKey,
-                                                                algorithm,
-                                                                encryptedRSAKeyData as CFData,
-                                                                &error) as Data?
-        else {
-            let errorDescription = error?.takeRetainedValue().localizedDescription ?? "Unknown error"
-            dispatchMainAsync {
-                result(FlutterError(code: Constants.authFailed,
-                                    message: "Error decrypting RSA private key: \(errorDescription)",
-                                    details: nil))
-            }
-            return
-        }
-
-        // 4. Reconstruct RSA private key from data
-        let rsaKeyAttributes: [String: Any] = [
-            kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
-            kSecAttrKeyClass as String: kSecAttrKeyClassPrivate,
-            kSecAttrKeySizeInBits as String: 2048
-        ]
-
-        guard let rsaPrivateKey = SecKeyCreateWithData(rsaPrivateKeyData as CFData,
-                                                       rsaKeyAttributes as CFDictionary,
-                                                       &error)
-        else {
-            let errorDescription = error?.takeRetainedValue().localizedDescription ?? "Unknown error"
-            dispatchMainAsync {
-                result(FlutterError(code: Constants.authFailed,
-                                    message: "Error reconstructing RSA private key: \(errorDescription)",
-                                    details: nil))
-            }
-            return
-        }
-
-        // 5. Sign data with RSA private key
-        let signAlgorithm = SecKeyAlgorithm.rsaSignatureMessagePKCS1v15SHA256
-        guard SecKeyIsAlgorithmSupported(rsaPrivateKey, .sign, signAlgorithm) else {
-            dispatchMainAsync {
-                result(FlutterError(code: Constants.authFailed,
-                                    message: "RSA signing algorithm not supported",
-                                    details: nil))
-            }
-            return
-        }
-
-        guard let signature = SecKeyCreateSignature(rsaPrivateKey,
-                                                    signAlgorithm,
-                                                    dataToSign as CFData,
-                                                    &error) as Data?
-        else {
-            let errorDescription = error?.takeRetainedValue().localizedDescription ?? "Unknown error"
-            dispatchMainAsync {
-                result(FlutterError(code: Constants.authFailed,
-                                    message: "Error signing data: \(errorDescription)",
-                                    details: nil))
-            }
-            return
-        }
-
-        // 6. Zero out decrypted RSA private key data
-        rsaPrivateKeyData.resetBytes(in: 0..<rsaPrivateKeyData.count)
-
-        dispatchMainAsync {
-            result(signature.base64EncodedString())
-        }
-    }
-
-private func migrateToSecureEnclave(options: [String: String]?, result: @escaping FlutterResult) {
-    // Generate EC key pair in Secure Enclave
-    let ecAccessControl = SecAccessControlCreateWithFlags(
-        kCFAllocatorDefault,
-        kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
-        [.privateKeyUsage, .biometryAny],
-        nil
-    )
+    private func migrateToSecureEnclave(options: [String: String]?, result: @escaping FlutterResult) {
+        // Generate EC key pair in Secure Enclave
+        let ecAccessControl = SecAccessControlCreateWithFlags(
+            kCFAllocatorDefault,
+            kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+            [.privateKeyUsage, .biometryAny],
+            nil
+        )
 
         guard let ecAccessControl = ecAccessControl else {
             dispatchMainAsync {
