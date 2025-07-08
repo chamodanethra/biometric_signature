@@ -31,7 +31,6 @@ const val BIOMETRIC_KEY_ALIAS = "biometric_key"
 class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     private lateinit var channel: MethodChannel
     private var activity: FlutterFragmentActivity? = null
-    private val useEc = true;
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding.activity as? FlutterFragmentActivity
@@ -95,7 +94,10 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
         }
     }
 
-    private fun createKeys(useDeviceCredentials: Boolean, result: MethodChannel.Result) {
+    private fun createKeys(arguments: Map<String, Any>, result: MethodChannel.Result) {
+        val useDeviceCredentials = arguments["useDeviceCredentials"] as Boolean
+        val useEc = arguments["useEc"] as Boolean
+
         try {
             deleteBiometricKey()
             val keyPairGenerator: KeyPairGenerator =
@@ -187,10 +189,15 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
 
             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
             val privateKey = keyStore.getKey(BIOMETRIC_KEY_ALIAS, null) as? PrivateKey
-            val signature =
-                Signature.getInstance(if (useEc) "SHA256withECDSA" else "SHA256withRSA").apply {
+            val signature = try {
+                Signature.getInstance("SHA256withECDSA").apply {
                     initSign(privateKey)
                 }
+            } catch (e: Exception) {
+                Signature.getInstance("SHA256withRSA").apply {
+                    initSign(privateKey)
+                }
+            }
             val cryptoObject = signature?.let { BiometricPrompt.CryptoObject(it) }
 
             val biometricManager = BiometricManager.from(activity!!)
@@ -356,10 +363,16 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
             if (!checkValidity) {
                 return true
             }
-            val signature = Signature.getInstance(if (useEc) "SHA256withECDSA" else "SHA256withRSA")
             val privateKey = keyStore.getKey(BIOMETRIC_KEY_ALIAS, null) as PrivateKey
-            signature.initSign(privateKey)
-            return true
+            try {
+                val signature = Signature.getInstance("SHA256withECDSA")
+                signature.initSign(privateKey)
+                return true
+            } catch (e: Exception) {
+                val signature = Signature.getInstance("SHA256withRSA")
+                signature.initSign(privateKey)
+                return true
+            }
         } catch (e: Exception) {
             return false
         }

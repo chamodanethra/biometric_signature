@@ -18,8 +18,11 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
       AndroidConfig androidConfig, IosConfig iosConfig) async {
     try {
       if (Platform.isAndroid) {
-        return await methodChannel.invokeMethod<String>(
-            'createKeys', androidConfig.useDeviceCredentials);
+        return await methodChannel.invokeMethod<Map<String, dynamic>>(
+            'createKeys', {
+          'useDeviceCredentials': androidConfig.useDeviceCredentials,
+          'useEc': androidConfig.signatureType.isEc,
+        });
       } else {
         return await methodChannel.invokeMethod<String>(
             'createKeys', iosConfig.useDeviceCredentials);
