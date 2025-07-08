@@ -91,7 +91,7 @@ This class provides methods to manage and utilize biometric authentication for s
 
 ### `createKeys(AndroidConfig config)`
 
-Generates a new RSA 2048 key pair for biometric authentication. The private key is securely stored on the device, and the public key is returned as a base64 encoded string. This method deletes any existing key pair before creating a new one. StrongBox support is available for compatible android devices. Secure Enclave support is available for iOS.
+Generates a new key pair (RSA 2048 or EC) for biometric authentication. The private key is securely stored on the device, and the public key is returned as a base64 encoded string. This method deletes any existing key pair before creating a new one. StrongBox support is available for compatible android devices. Secure Enclave support is available for iOS.
 
 - **Parameters**:
 
@@ -108,7 +108,7 @@ Generates a new RSA 2048 key pair for biometric authentication. The private key 
 
 ### `createSignature(options: Map<String, String>)`
 
-Prompts the user for biometric authentication and generates a RSA PKCS#1v1.5 SHA 256 signature using the securely stored private key. The payload to be signed is provided in the `options` map.
+Prompts the user for biometric authentication and generates a cryptographic signature (RSA PKCS#1v1.5 SHA 256 or EC) using the securely stored private key. The payload to be signed is provided in the `options` map.
 
 - **Parameters**:
 
@@ -127,7 +127,7 @@ Prompts the user for biometric authentication and generates a RSA PKCS#1v1.5 SHA
 
 ### `deleteKeys()`
 
-Deletes the existing RSA key pair used for biometric authentication.
+Deletes the existing key pair used for biometric authentication.
 
 - **Returns**: `Boolean` - `true` if the key was successfully deleted, `false` otherwise.
 
