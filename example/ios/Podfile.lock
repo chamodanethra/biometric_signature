@@ -19,9 +19,9 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/integration_test/ios"
 
 SPEC CHECKSUMS:
-  biometric_signature: ea4077f6816d9e9a8c81b110e772c3b6ac990164
+  biometric_signature: 89f8456bee939e7d1646f60785e55c2b4ed193c7
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
-  integration_test: 252f60fa39af5e17c3aa9899d35d908a0721b573
+  integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
 
 PODFILE CHECKSUM: c4c93c5f6502fe2754f48404d3594bf779584011
 

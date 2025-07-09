@@ -102,7 +102,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
             deleteBiometricKey()
             val keyPairGenerator: KeyPairGenerator =
                 KeyPairGenerator.getInstance(
-                    if (useEc) KeyProperties.KEY_ALGORITHM_EC else KeyProperties.KEY_ALGORITHM_EC,
+                    if (useEc) KeyProperties.KEY_ALGORITHM_EC else KeyProperties.KEY_ALGORITHM_RSA,
                     "AndroidKeyStore"
                 )
 
