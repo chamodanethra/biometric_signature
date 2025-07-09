@@ -1,11 +1,6 @@
-import 'dart:io';
-
 import 'package:biometric_signature/android_config.dart';
 import 'package:biometric_signature/ios_config.dart';
 import 'package:flutter/material.dart';
-import 'dart:async';
-
-import 'package:flutter/services.dart';
 import 'package:biometric_signature/biometric_signature.dart';
 
 void main() {
@@ -49,7 +44,10 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
             useDeviceCredentials: true,
             signatureType:
                 useEc ? AndroidSignatureType.ECDSA : AndroidSignatureType.RSA),
-        iosConfig: IosConfig(useDeviceCredentials: false));
+        iosConfig: IosConfig(
+            useDeviceCredentials: false,
+            signatureType:
+                useEc ? IOSSignatureType.ECDSA : IOSSignatureType.RSA));
     setState(() {
       this.publicKey = publicKey;
     });
@@ -111,13 +109,12 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (Platform.isAndroid)
-              Row(
-                children: [
-                  Text('use EC'),
-                  Switch(value: useEc, onChanged: _toggleEc),
-                ],
-              ),
+            Row(
+              children: [
+                Text('use EC'),
+                Switch(value: useEc, onChanged: _toggleEc),
+              ],
+            ),
             TextButton(
               onPressed: _createPublicKey,
               child: Text('create ${useEc ? 'EC' : 'RSA'} keys'),
