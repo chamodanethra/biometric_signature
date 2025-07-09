@@ -301,30 +301,6 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         }
 
         // 1. Retrieve encrypted RSA private key from Keychain
-        let encryptedKeyTag = getBiometricKeyTag()
-        let encryptedKeyQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: encryptedKeyTag,
-            kSecAttrAccount as String: encryptedKeyTag,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(encryptedKeyQuery as CFDictionary, &item)
-        guard status == errSecSuccess else {
-            let shouldMigrate = options?["shouldMigrate"] ?? "false"
-            if Bool(shouldMigrate) == true {
-                self.migrateToSecureEnclave(options: options, result: result)
-            } else {
-                dispatchMainAsync {
-                    result(FlutterError(code: Constants.authFailed,
-                                        message: "Encrypted RSA key not found in Keychain",
-                                        details: nil))
-                }
-            }
-            return
-        }
         guard let encryptedRSAKeyData = item as? Data else {
             dispatchMainAsync {
                 result(FlutterError(code: Constants.authFailed,
@@ -700,7 +676,7 @@ private func migrateToSecureEnclave(options: [String: String]?, result: @escapin
         
         if let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, &error) as Data? {
             // Check if it's an EC key by looking at the key size (EC keys are typically 65 bytes for secp256r1)
-            let isEc = publicKeyData.count == 65 || SecKeyGetAlgorithmID(publicKey) == kSecKeyAlgorithmECSECPrimeRandom
+            let isEc = publicKeyData.count == 65
             
             if isEc {
                 // Use the existing addHeader method for EC keys
