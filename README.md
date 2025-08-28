@@ -97,8 +97,15 @@ Generates a new RSA 2048 key pair for biometric authentication. The private key 
 
 - `androidConfig`: An `AndroidConfig` object containing following properties:
   - `useDeviceCredentials`: A bool to indicate whether Device Credentials' fallback support is needed for the compatible Android devices.
+  - `enforceBiometric`: (optional) A bool to indicate if prompt biometric authentication before generating key-pair. If authentication doesn't pass key-pair is not generated. Defaults to false
+  - `options`: A map containing the following keys:
+    - `cancelButtonText` (optional) : Text for the cancel button in the biometric prompt. Default is "Cancel".
+    - `promptMessage` : (optional): Message to display in the biometric prompt. Default is "Authentication".
 - `iosConfig`: An `IosConfig` object containing following properties:
-    - `useDeviceCredentials`: A bool to indicate whether Device Credentials' fallback support is needed.
+  - `useDeviceCredentials`: A bool to indicate whether Device Credentials' fallback support is needed.
+  - `enforceBiometric`: (optional) A bool to indicate if prompt biometric authentication before generating key-pair. If authentication doesn't pass key-pair is not generated. Defaults to false
+    - `options`: A map containing the following keys:
+      - `promptMessage` : (optional): Message to display in the biometric prompt. Default is "Authentication".
 
 - **Returns**: `String` - The base64 encoded public key.
 

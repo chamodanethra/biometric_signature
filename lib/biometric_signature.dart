@@ -7,6 +7,8 @@ class BiometricSignature {
   /// Creates a RSA key pair on the device, stores Private Key in keychain/keystore
   ///
   /// params: An optional AndroidConfig object containing the bool useDeviceCredentials, which attempts to use it on compatible devices and an optional IosConfig object containing the bool useDeviceCredentials
+  /// both configs contain bool enforceBiometric which prompts biometric before generating key-pair when true
+  /// config contains also map of options, {"promptMessage": "// your welcome message", "cancelButtonText": "Cancel"(on Android only)}
   /// Returns: The Public Key component as a String
   Future<String?> createKeys(
       {AndroidConfig? androidConfig, IosConfig? iosConfig}) async {

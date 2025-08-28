@@ -81,7 +81,30 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     }
   }
 
-  private fun createKeys(useDeviceCredentials: Boolean, @NonNull result: MethodChannel.Result) {
+  private fun createKeys(config: Map<String, Any>, @NonNull result: MethodChannel.Result) {
+    val useDeviceCredentials = config["useDeviceCredentials"] as Boolean
+    val enforceBiometric = config["enforceBiometric"] as Boolean
+    @Suppress("UNCHECKED_CAST")
+    val options = config["options"] as? Map<String, String>
+
+    if (enforceBiometric) {
+      val cancelButtonText = options?.get("cancelButtonText") ?: "Cancel"
+      val promptMessage = options?.get("promptMessage") ?: "Authenticate"
+      
+      promptBiometricAuth(
+        promptMessage = promptMessage,
+        cancelButtonText = cancelButtonText,
+        allowDeviceCredentials = false,
+        cryptoObject = null,
+        onSuccess = { _ -> proceedWithKeyCreation(useDeviceCredentials, result) },
+        onError = { _, errString -> result.error(AUTH_FAILED, "Biometric authentication failed: $errString", null) }
+      )
+    } else {
+      proceedWithKeyCreation(useDeviceCredentials, result)
+    }
+  }
+
+  private fun proceedWithKeyCreation(useDeviceCredentials: Boolean, result: MethodChannel.Result) {
     try {
       deleteBiometricKey()
       val keyPairGenerator: KeyPairGenerator =
@@ -139,6 +162,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       )
     }
   }
+
   private fun createSignature(options: MutableMap<String, String>?, @NonNull result: MethodChannel.Result) {
     try {
       val cancelButtonText = options?.get("cancelButtonText") ?: "Cancel"
@@ -158,11 +182,53 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
        }
       val cryptoObject = signature?.let { BiometricPrompt.CryptoObject(it) }
 
+      promptBiometricAuth(
+        promptMessage = promptMessage,
+        cancelButtonText = cancelButtonText,
+        allowDeviceCredentials = allowDeviceCredentials,
+        cryptoObject = cryptoObject,
+        onSuccess = { authResult ->
+          try {
+            val returnedCryptoObject = authResult.cryptoObject
+            val signatureObj = returnedCryptoObject?.signature
+            if (signatureObj == null) {
+              result.error(AUTH_FAILED, "No signature object returned", null)
+              return@promptBiometricAuth
+            }
+            signatureObj.update(payload.toByteArray(Charsets.UTF_8))
+            val signatureBytes = signatureObj.sign()
+            val signatureBase64 = Base64.encodeToString(
+              signatureBytes,
+              Base64.NO_WRAP
+            )
+            result.success(signatureBase64)
+          } catch (e: Exception) {
+            result.error(AUTH_FAILED, "Error signing data: ${e.localizedMessage}", null)
+          }
+        },
+        onError = { errorCode, errString ->
+          result.error(AUTH_FAILED, "$errString (code: $errorCode)", null)
+        }
+      )
+    } catch (e: Exception) {
+      result.error(AUTH_FAILED, "Error generating signature: ${e.message}", null)
+    }
+  }
+
+  private fun promptBiometricAuth(
+    promptMessage: String,
+    cancelButtonText: String,
+    allowDeviceCredentials: Boolean = false,
+    cryptoObject: BiometricPrompt.CryptoObject? = null,
+    onSuccess: (BiometricPrompt.AuthenticationResult) -> Unit,
+    onError: (Int, CharSequence) -> Unit
+  ) {
+    try {
       val biometricManager = BiometricManager.from(activity!!)
       val canAuthenticate: Int = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
         biometricManager.canAuthenticate(
           BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                  BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            (if (allowDeviceCredentials) BiometricManager.Authenticators.DEVICE_CREDENTIAL else 0)
         )
       } else {
         // For older devices, we just check if BIOMETRIC is available.
@@ -170,7 +236,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
       }
 
       if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
-        result.error(AUTH_FAILED, "Biometrics/Device Credentials not available", null)
+        onError(-1, "Biometrics/Device Credentials not available")
         return
       }
 
@@ -183,27 +249,17 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
         object : BiometricPrompt.AuthenticationCallback() {
           override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
             super.onAuthenticationError(errorCode, errString)
-            result.error(AUTH_FAILED, "$errString (code: $errorCode)", null)
+            onError(errorCode, errString)
           }
+          
           override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
             super.onAuthenticationSucceeded(authResult)
-            try {
-              val returnedCryptoObject = authResult.cryptoObject
-              val signatureObj = returnedCryptoObject?.signature
-              if (signatureObj == null) {
-                result.error(AUTH_FAILED, "No signature object returned", null)
-                return
-              }
-              signatureObj.update(payload.toByteArray(Charsets.UTF_8))
-              val signatureBytes = signatureObj.sign()
-              val signatureBase64 = Base64.encodeToString(
-                signatureBytes,
-                Base64.NO_WRAP
-              )
-              result.success(signatureBase64)
-            } catch (e: Exception) {
-              result.error(AUTH_FAILED, "Error signing data: ${e.localizedMessage}", null)
-            }
+            onSuccess(authResult)
+          }
+          
+          override fun onAuthenticationFailed() {
+            super.onAuthenticationFailed()
+            onError(-2, "Authentication failed")
           }
         }
       )
@@ -214,7 +270,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
         // If using device credentials fallback, do not set negative button text
         promptInfoBuilder.setAllowedAuthenticators(
           BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                  BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
         )
       } else {
         // Otherwise, fallback to only BIOMETRIC_STRONG, show negative button
@@ -229,7 +285,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
         biometricPrompt.authenticate(promptInfo)
       }
     } catch (e: Exception) {
-      result.error(AUTH_FAILED, "Error generating signature: ${e.message}", null)
+      onError(-3, "Error in biometric prompt: ${e.message ?: "Unknown error"}")
     }
   }
 
