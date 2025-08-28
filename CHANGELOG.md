@@ -13,6 +13,10 @@
 
 * Upgrading Flutter from 3.19.6 to 3.27.0
 
+## [5.1.4] - 2025-08-28
+
+* A [bug](https://github.com/chamodanethra/biometric_signature/issues/31) fix for key user not authenticated android crash.
+
 ## [5.1.3] - 2024-12-03
 
 * A [bug](https://github.com/chamodanethra/biometric_signature/issues/24) fix for android KeyStoreException crash.
