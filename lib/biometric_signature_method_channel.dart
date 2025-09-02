@@ -15,7 +15,9 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
 
   @override
   Future<String?> createKeys(
-      AndroidConfig androidConfig, IosConfig iosConfig) async {
+    AndroidConfig androidConfig,
+    IosConfig iosConfig,
+  ) async {
     try {
       if (Platform.isAndroid) {
         return await methodChannel.invokeMethod<String>('createKeys', {
@@ -46,8 +48,10 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   @override
   Future<String?> createSignature({Map<String?, String?>? options}) async {
     try {
-      final response =
-      await methodChannel.invokeMethod<String>('createSignature', options);
+      final response = await methodChannel.invokeMethod<String>(
+        'createSignature',
+        options,
+      );
       return response;
     } on PlatformException {
       rethrow;
@@ -57,8 +61,9 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   @override
   Future<String?> biometricAuthAvailable() async {
     try {
-      final response =
-      await methodChannel.invokeMethod<String>('biometricAuthAvailable');
+      final response = await methodChannel.invokeMethod<String>(
+        'biometricAuthAvailable',
+      );
       return response;
     } on PlatformException {
       rethrow;
@@ -69,7 +74,9 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   Future<bool?> biometricKeyExists(bool checkValidity) async {
     try {
       return methodChannel.invokeMethod<bool>(
-          'biometricKeyExists', checkValidity);
+        'biometricKeyExists',
+        checkValidity,
+      );
     } on PlatformException catch (e) {
       debugPrint(e.message);
       return false;

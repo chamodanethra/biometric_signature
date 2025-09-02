@@ -28,7 +28,8 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
 
   Future<String?> createKeys(AndroidConfig androidConfig, IosConfig iosConfig) {
     throw UnimplementedError(
-        'createKeys(AndroidConfig androidConfig, IosConfig iosConfig) has not been implemented.');
+      'createKeys(AndroidConfig androidConfig, IosConfig iosConfig) has not been implemented.',
+    );
   }
 
   Future<bool?> deleteKeys() {
@@ -37,16 +38,19 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
 
   Future<String?> biometricAuthAvailable() {
     throw UnimplementedError(
-        'biometricAuthAvailable() has not been implemented.');
+      'biometricAuthAvailable() has not been implemented.',
+    );
   }
 
   Future<String?> createSignature({Map<String, String?>? options}) {
     throw UnimplementedError(
-        'createSignature(Map<String, String?>? options) has not been implemented.');
+      'createSignature(Map<String, String?>? options) has not been implemented.',
+    );
   }
 
   Future<bool?> biometricKeyExists(bool checkValidity) {
     throw UnimplementedError(
-        'biometricKeyExists(bool checkValidity) has not been implemented.');
+      'biometricKeyExists(bool checkValidity) has not been implemented.',
+    );
   }
 }

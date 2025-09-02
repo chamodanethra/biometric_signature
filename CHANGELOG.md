@@ -1,3 +1,7 @@
+## [6.3.1] - 2025-09-02
+
+* fix dart formatting errors.
+
 ## [6.3.0] - 2025-09-02
 
 * Upgrading Flutter from 3.27.2 to 3.32.8.

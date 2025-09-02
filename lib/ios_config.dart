@@ -1,7 +1,4 @@
-enum IOSSignatureType {
-  RSA,
-  ECDSA,
-}
+enum IOSSignatureType { RSA, ECDSA }
 
 extension IOSSignatureTypeExtension on IOSSignatureType {
   bool get isEc => this == IOSSignatureType.ECDSA;

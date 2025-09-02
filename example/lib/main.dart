@@ -14,9 +14,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        appBar: AppBar(
-          title: const Text('biometric signature test app'),
-        ),
+        appBar: AppBar(title: const Text('biometric signature test app')),
         body: const ExampleAppBody(),
       ),
     );
@@ -40,14 +38,17 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
 
   void _createPublicKey() async {
     final String? publicKey = await _biometricSignature.createKeys(
-        androidConfig: AndroidConfig(
-            useDeviceCredentials: true,
-            signatureType:
-            useEc ? AndroidSignatureType.ECDSA : AndroidSignatureType.RSA),
-        iosConfig: IosConfig(
-            useDeviceCredentials: false,
-            signatureType:
-            useEc ? IOSSignatureType.ECDSA : IOSSignatureType.RSA));
+      androidConfig: AndroidConfig(
+        useDeviceCredentials: true,
+        signatureType: useEc
+            ? AndroidSignatureType.ECDSA
+            : AndroidSignatureType.RSA,
+      ),
+      iosConfig: IosConfig(
+        useDeviceCredentials: false,
+        signatureType: useEc ? IOSSignatureType.ECDSA : IOSSignatureType.RSA,
+      ),
+    );
     setState(() {
       this.publicKey = publicKey;
     });
@@ -83,19 +84,19 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
   void _createSignature() async {
     if (payload == null) {
       debugPrint("payload is null");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('please enter payload'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('please enter payload')));
       return;
     }
-    final signature = await _biometricSignature.createSignature(options: {
-      "payload": payload!,
-      "promptMessage": "Sign Payload",
-      "shouldMigrate": "true",
-      "allowDeviceCredentials": "true"
-    });
+    final signature = await _biometricSignature.createSignature(
+      options: {
+        "payload": payload!,
+        "promptMessage": "Sign Payload",
+        "shouldMigrate": "true",
+        "allowDeviceCredentials": "true",
+      },
+    );
     setState(() {
       this.signature = signature;
     });
@@ -127,16 +128,11 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
               children: [
                 Expanded(
                   child: TextField(
-                    decoration: const InputDecoration(
-                      labelText: 'payload',
-                    ),
+                    decoration: const InputDecoration(labelText: 'payload'),
                     onChanged: _payloadChanged,
                   ),
                 ),
-                TextButton(
-                  onPressed: _createSignature,
-                  child: Text('sign'),
-                ),
+                TextButton(onPressed: _createSignature, child: Text('sign')),
               ],
             ),
           ],
