@@ -22,7 +22,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^6.2.0
+  biometric_signature: ^6.3.0
 ```
 
 |             | Android | iOS   |
@@ -91,12 +91,12 @@ This class provides methods to manage and utilize biometric authentication for s
 
 ### `createKeys(AndroidConfig config)`
 
-Generates a new RSA 2048 key pair for biometric authentication. The private key is securely stored on the device, and the public key is returned as a base64 encoded string. This method deletes any existing key pair before creating a new one. StrongBox support is available for compatible android devices. Secure Enclave support is available for iOS.
+Generates a new key pair (RSA 2048 or EC) for biometric authentication. The private key is securely stored on the device, and the public key is returned as a base64 encoded string. This method deletes any existing key pair before creating a new one. StrongBox support is available for compatible android devices. Secure Enclave support is available for iOS.
 
 - **Parameters**:
 
 - `androidConfig`: An `AndroidConfig` object containing following properties:
-  - `useDeviceCredentials`: A bool to indicate whether Device Credentials' fallback support is needed for the compatible Android devices.
+    - `useDeviceCredentials`: A bool to indicate whether Device Credentials' fallback support is needed for the compatible Android devices.
 - `iosConfig`: An `IosConfig` object containing following properties:
     - `useDeviceCredentials`: A bool to indicate whether Device Credentials' fallback support is needed.
 
@@ -108,16 +108,16 @@ Generates a new RSA 2048 key pair for biometric authentication. The private key 
 
 ### `createSignature(options: Map<String, String>)`
 
-Prompts the user for biometric authentication and generates a RSA PKCS#1v1.5 SHA 256 signature using the securely stored private key. The payload to be signed is provided in the `options` map.
+Prompts the user for biometric authentication and generates a cryptographic signature (RSA PKCS#1v1.5 SHA 256 or EC) using the securely stored private key. The payload to be signed is provided in the `options` map.
 
 - **Parameters**:
 
 - `options`: A map containing the following keys:
-  - `cancelButtonText` (Android only, optional) : Text for the cancel button in the biometric prompt. Default is "Cancel".
-  - `promptMessage` : (optional): Message to display in the biometric prompt. Default is "Welcome".
-  - `payload`: The payload to be signed.
-  - `shouldMigrate`: (iOS only, required): To migrate to Secure Enclave implementation from the Key Chain implementation used prior to version 5.0.0, need to pass a valid, positive String Bool(as per Swift Official docs).
-  - `allowDeviceCredentials` (Android only, optional) : Indicates whether fallback support is allowed for the compatible Android devices.
+    - `cancelButtonText` (Android only, optional) : Text for the cancel button in the biometric prompt. Default is "Cancel".
+    - `promptMessage` : (optional): Message to display in the biometric prompt. Default is "Welcome".
+    - `payload`: The payload to be signed.
+    - `shouldMigrate`: (iOS only, required): To migrate to Secure Enclave implementation from the Key Chain implementation used prior to version 5.0.0, need to pass a valid, positive String Bool(as per Swift Official docs).
+    - `allowDeviceCredentials` (Android only, optional) : Indicates whether fallback support is allowed for the compatible Android devices.
 
 - **Returns**: `String` - The base64 encoded cryptographic signature.
 
@@ -127,7 +127,7 @@ Prompts the user for biometric authentication and generates a RSA PKCS#1v1.5 SHA
 
 ### `deleteKeys()`
 
-Deletes the existing RSA key pair used for biometric authentication.
+Deletes the existing key pair used for biometric authentication.
 
 - **Returns**: `Boolean` - `true` if the key was successfully deleted, `false` otherwise.
 
