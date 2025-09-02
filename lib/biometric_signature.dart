@@ -4,15 +4,15 @@ import 'package:biometric_signature/ios_config.dart';
 import 'biometric_signature_platform_interface.dart';
 
 class BiometricSignature {
-  /// Creates a RSA key pair on the device, stores Private Key in keychain/keystore
+  /// Creates a key pair on the device, stores Private Key in keychain/keystore
   ///
-  /// params: An optional AndroidConfig object containing the bool useDeviceCredentials, which attempts to use it on compatible devices and an optional IosConfig object containing the bool useDeviceCredentials
+  /// params: An optional AndroidConfig object containing the bool useDeviceCredentials and AndroidSignatureType signatureType (RSA or ECDSA), and an optional IosConfig object containing the bool useDeviceCredentials and IOSSignatureType signatureType (RSA or ECDSA)
   /// Returns: The Public Key component as a String
   Future<String?> createKeys(
       {AndroidConfig? androidConfig, IosConfig? iosConfig}) async {
     final String? response = await BiometricSignaturePlatform.instance
         .createKeys(androidConfig ?? AndroidConfig(useDeviceCredentials: false),
-            iosConfig ?? IosConfig(useDeviceCredentials: false));
+        iosConfig ?? IosConfig(useDeviceCredentials: false));
     return response;
   }
 
@@ -31,7 +31,7 @@ class BiometricSignature {
   /// - Returns: A boolean indicating whether the deletion was successful
   Future<bool?> deleteKeys() async {
     final bool? response =
-        await BiometricSignaturePlatform.instance.deleteKeys();
+    await BiometricSignaturePlatform.instance.deleteKeys();
     return response;
   }
 
@@ -40,7 +40,7 @@ class BiometricSignature {
   /// - Returns: A String indicating biometric type if available, otherwise returns none, and the reason
   Future<String?> biometricAuthAvailable() async {
     final String? response =
-        await BiometricSignaturePlatform.instance.biometricAuthAvailable();
+    await BiometricSignaturePlatform.instance.biometricAuthAvailable();
     return response;
   }
 
