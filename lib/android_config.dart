@@ -8,10 +8,7 @@ class AndroidConfig {
   });
 }
 
-enum AndroidSignatureType {
-  RSA,
-  ECDSA,
-}
+enum AndroidSignatureType { RSA, ECDSA }
 
 extension AndroidSignatureTypeExtension on AndroidSignatureType {
   bool get isEc => this == AndroidSignatureType.ECDSA;
