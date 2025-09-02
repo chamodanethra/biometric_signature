@@ -18,11 +18,15 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
       AndroidConfig androidConfig, IosConfig iosConfig) async {
     try {
       if (Platform.isAndroid) {
-        return await methodChannel.invokeMethod<String>(
-            'createKeys', androidConfig.useDeviceCredentials);
+        return await methodChannel.invokeMethod<String>('createKeys', {
+          'useDeviceCredentials': androidConfig.useDeviceCredentials,
+          'useEc': androidConfig.signatureType.isEc,
+        });
       } else {
-        return await methodChannel.invokeMethod<String>(
-            'createKeys', iosConfig.useDeviceCredentials);
+        return await methodChannel.invokeMethod<String>('createKeys', {
+          'useDeviceCredentials': iosConfig.useDeviceCredentials,
+          'useEc': iosConfig.signatureType.isEc,
+        });
       }
     } on PlatformException {
       rethrow;
@@ -43,7 +47,7 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   Future<String?> createSignature({Map<String?, String?>? options}) async {
     try {
       final response =
-          await methodChannel.invokeMethod<String>('createSignature', options);
+      await methodChannel.invokeMethod<String>('createSignature', options);
       return response;
     } on PlatformException {
       rethrow;
@@ -54,7 +58,7 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   Future<String?> biometricAuthAvailable() async {
     try {
       final response =
-          await methodChannel.invokeMethod<String>('biometricAuthAvailable');
+      await methodChannel.invokeMethod<String>('biometricAuthAvailable');
       return response;
     } on PlatformException {
       rethrow;

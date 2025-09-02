@@ -1,10 +1,10 @@
 name: biometric_signature
 description: Flutter biometric functionality for cryptographic signing and encryption using the Secure Enclave and the StrongBox
-version: 6.2.0
+version: 6.3.0
 homepage: https://github.com/chamodanethra/biometric_signature
 
 environment:
-  sdk: ^3.6.1
+  sdk: ^3.8.1
   flutter: '>=3.3.0'
 
 dependencies:
