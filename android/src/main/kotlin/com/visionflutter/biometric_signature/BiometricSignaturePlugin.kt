@@ -24,6 +24,7 @@ import java.security.*
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.RSAKeyGenParameterSpec
 import java.util.*
+import java.util.concurrent.Executors
 
 const val AUTH_FAILED = "AUTH_FAILED"
 const val INVALID_PAYLOAD = "INVALID_PAYLOAD"
@@ -99,77 +100,83 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     }
 
     private fun createKeys(arguments: Map<String, Any>, result: Result) {
-        val useDeviceCredentials = arguments["useDeviceCredentials"] as Boolean
-        val useEc = arguments["useEc"] as Boolean
+            val useDeviceCredentials = arguments["useDeviceCredentials"] as Boolean
+            val useEc = arguments["useEc"] as Boolean
 
-        try {
-            deleteBiometricKey()
-            val keyPairGenerator: KeyPairGenerator =
-                KeyPairGenerator.getInstance(
-                    if (useEc) KeyProperties.KEY_ALGORITHM_EC else KeyProperties.KEY_ALGORITHM_RSA,
-                    "AndroidKeyStore"
-                )
-
-
-            val builder =
-                KeyGenParameterSpec.Builder(BIOMETRIC_KEY_ALIAS, KeyProperties.PURPOSE_SIGN)
-                    .setDigests(KeyProperties.DIGEST_SHA256)
-
-            if (useEc)
-                builder.setAlgorithmParameterSpec(
-                    // supported strings is hard to figure out
-                    ECGenParameterSpec("secp256r1")
-                )
-            else
-                builder
-                    .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
-                    .setAlgorithmParameterSpec(
-                        RSAKeyGenParameterSpec(
-                            2048,
-                            RSAKeyGenParameterSpec.F4
+            try {
+                val createKeyExecutor = Executors.newSingleThreadExecutor()
+                createKeyExecutor.execute {
+                    deleteBiometricKey()
+                    val keyPairGenerator: KeyPairGenerator =
+                        KeyPairGenerator.getInstance(
+                            if (useEc) KeyProperties.KEY_ALGORITHM_EC else KeyProperties.KEY_ALGORITHM_RSA,
+                            "AndroidKeyStore"
                         )
-                    )
 
 
-            builder.setUserAuthenticationRequired(true)
+                    val builder =
+                        KeyGenParameterSpec.Builder(BIOMETRIC_KEY_ALIAS, KeyProperties.PURPOSE_SIGN)
+                            .setDigests(KeyProperties.DIGEST_SHA256)
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                if (useDeviceCredentials) {
-                    builder.setUserAuthenticationParameters(
-                        0,
-                        KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL
-                    )
-                } else {
-                    builder.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
-                }
-            } else {
-                builder.setUserAuthenticationValidityDurationSeconds(-1)
-            }
+                    if (useEc)
+                        builder.setAlgorithmParameterSpec(
+                            // supported strings is hard to figure out
+                            ECGenParameterSpec("secp256r1")
+                        )
+                    else
+                        builder
+                            .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
+                            .setAlgorithmParameterSpec(
+                                RSAKeyGenParameterSpec(
+                                    2048,
+                                    RSAKeyGenParameterSpec.F4
+                                )
+                            )
 
-            if (activity!!.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    try {
-                        builder.setIsStrongBoxBacked(true)
-                    } catch (e: StrongBoxUnavailableException) {
-                        // Fallback to TEE
-                        builder.setIsStrongBoxBacked(false)
+
+                    builder.setUserAuthenticationRequired(true)
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        if (useDeviceCredentials) {
+                            builder.setUserAuthenticationParameters(
+                                0,
+                                KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL
+                            )
+                        } else {
+                            builder.setUserAuthenticationParameters(
+                                0,
+                                KeyProperties.AUTH_BIOMETRIC_STRONG
+                            )
+                        }
+                    } else {
+                        builder.setUserAuthenticationValidityDurationSeconds(-1)
                     }
-                }
-            }
 
-            keyPairGenerator.initialize(builder.build())
-            val keyPair: KeyPair = keyPairGenerator.generateKeyPair()
-            val publicKey: PublicKey = keyPair.public
-            val encodedPublicKey: ByteArray = publicKey.encoded
-            var publicKeyString = Base64.encodeToString(encodedPublicKey, Base64.DEFAULT)
-            publicKeyString = publicKeyString.replace("\r", "").replace("\n", "")
-            result.success(publicKeyString)
-        } catch (e: Exception) {
-            result.error(
-                AUTH_FAILED,
-                "Error generating public-private keys: ${e.javaClass.name}: ${e.message}",
-                e.stackTraceToString()
-            )
+                    if (activity!!.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            try {
+                                builder.setIsStrongBoxBacked(true)
+                            } catch (e: StrongBoxUnavailableException) {
+                                // Fallback to TEE
+                                builder.setIsStrongBoxBacked(false)
+                            }
+                        }
+                    }
+
+                    keyPairGenerator.initialize(builder.build())
+                    val keyPair: KeyPair = keyPairGenerator.generateKeyPair()
+                    val publicKey: PublicKey = keyPair.public
+                    val encodedPublicKey: ByteArray = publicKey.encoded
+                    var publicKeyString = Base64.encodeToString(encodedPublicKey, Base64.DEFAULT)
+                    publicKeyString = publicKeyString.replace("\r", "").replace("\n", "")
+                    result.success(publicKeyString)
+                }
+            } catch (e: Exception) {
+                result.error(
+                    AUTH_FAILED,
+                    "Error generating public-private keys: ${e.javaClass.name}: ${e.message}",
+                    e.stackTraceToString()
+                )
         }
     }
 
