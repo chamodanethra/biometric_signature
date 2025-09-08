@@ -63,7 +63,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
-        if (activity !is FlutterFragmentActivity || activity == null) {
+        if (activity !is FlutterFragmentActivity) {
             result.error(
                 "INCOMPATIBLE_ACTIVITY",
                 "BiometricSignaturePlugin requires your app to use FlutterFragmentActivity",
@@ -98,7 +98,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
         }
     }
 
-    private fun createKeys(arguments: Map<String, Any>, result: MethodChannel.Result) {
+    private fun createKeys(arguments: Map<String, Any>, result: Result) {
         val useDeviceCredentials = arguments["useDeviceCredentials"] as Boolean
         val useEc = arguments["useEc"] as Boolean
 
@@ -133,7 +133,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
 
             builder.setUserAuthenticationRequired(true)
 
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 if (useDeviceCredentials) {
                     builder.setUserAuthenticationParameters(
                         0,
@@ -147,7 +147,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
             }
 
             if (activity!!.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)) {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     try {
                         builder.setIsStrongBoxBacked(true)
                     } catch (e: StrongBoxUnavailableException) {
@@ -175,7 +175,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
 
     private fun createSignature(
         options: MutableMap<String, String>?,
-        result: MethodChannel.Result
+        result: Result
     ) {
         try {
             val cancelButtonText = options?.get("cancelButtonText") ?: "Cancel"
@@ -368,7 +368,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
                 )
             )
         } else {
-            var errorString = when (canAuthenticate) {
+            val errorString = when (canAuthenticate) {
                 BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "BIOMETRIC_ERROR_NO_HARDWARE"
                 BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "BIOMETRIC_ERROR_HW_UNAVAILABLE"
                 BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "BIOMETRIC_ERROR_NONE_ENROLLED"
