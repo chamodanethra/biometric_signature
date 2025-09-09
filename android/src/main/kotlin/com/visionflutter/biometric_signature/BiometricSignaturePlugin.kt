@@ -24,6 +24,7 @@ import java.security.*
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.RSAKeyGenParameterSpec
 import java.util.*
+import java.util.concurrent.Executors
 
 const val AUTH_FAILED = "AUTH_FAILED"
 const val INVALID_PAYLOAD = "INVALID_PAYLOAD"
@@ -103,67 +104,73 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
         val useEc = arguments["useEc"] as Boolean
 
         try {
-            deleteBiometricKey()
-            val keyPairGenerator: KeyPairGenerator =
-                KeyPairGenerator.getInstance(
-                    if (useEc) KeyProperties.KEY_ALGORITHM_EC else KeyProperties.KEY_ALGORITHM_RSA,
-                    "AndroidKeyStore"
-                )
+            val createKeyExecutor = Executors.newSingleThreadExecutor()
+            createKeyExecutor.execute {
+                deleteBiometricKey()
+                val keyPairGenerator: KeyPairGenerator =
+                    KeyPairGenerator.getInstance(
+                        if (useEc) KeyProperties.KEY_ALGORITHM_EC else KeyProperties.KEY_ALGORITHM_RSA,
+                        "AndroidKeyStore"
+                    )
 
 
-            val builder =
-                KeyGenParameterSpec.Builder(BIOMETRIC_KEY_ALIAS, KeyProperties.PURPOSE_SIGN)
-                    .setDigests(KeyProperties.DIGEST_SHA256)
+                val builder =
+                    KeyGenParameterSpec.Builder(BIOMETRIC_KEY_ALIAS, KeyProperties.PURPOSE_SIGN)
+                        .setDigests(KeyProperties.DIGEST_SHA256)
 
-            if (useEc)
-                builder.setAlgorithmParameterSpec(
-                    // supported strings is hard to figure out
-                    ECGenParameterSpec("secp256r1")
-                )
-            else
-                builder
-                    .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
-                    .setAlgorithmParameterSpec(
-                        RSAKeyGenParameterSpec(
-                            2048,
-                            RSAKeyGenParameterSpec.F4
+                if (useEc)
+                    builder.setAlgorithmParameterSpec(
+                        // supported strings is hard to figure out
+                        ECGenParameterSpec("secp256r1")
+                    )
+                else
+                    builder
+                        .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
+                        .setAlgorithmParameterSpec(
+                            RSAKeyGenParameterSpec(
+                                2048,
+                                RSAKeyGenParameterSpec.F4
+                            )
                         )
-                    )
 
 
-            builder.setUserAuthenticationRequired(true)
+                builder.setUserAuthenticationRequired(true)
 
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                if (useDeviceCredentials) {
-                    builder.setUserAuthenticationParameters(
-                        0,
-                        KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL
-                    )
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    if (useDeviceCredentials) {
+                        builder.setUserAuthenticationParameters(
+                            0,
+                            KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL
+                        )
+                    } else {
+                        builder.setUserAuthenticationParameters(
+                            0,
+                            KeyProperties.AUTH_BIOMETRIC_STRONG
+                        )
+                    }
                 } else {
-                    builder.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
+                    builder.setUserAuthenticationValidityDurationSeconds(-1)
                 }
-            } else {
-                builder.setUserAuthenticationValidityDurationSeconds(-1)
-            }
 
-            if (activity!!.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)) {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                    try {
-                        builder.setIsStrongBoxBacked(true)
-                    } catch (e: StrongBoxUnavailableException) {
-                        // Fallback to TEE
-                        builder.setIsStrongBoxBacked(false)
+                if (activity!!.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)) {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                        try {
+                            builder.setIsStrongBoxBacked(true)
+                        } catch (e: StrongBoxUnavailableException) {
+                            // Fallback to TEE
+                            builder.setIsStrongBoxBacked(false)
+                        }
                     }
                 }
-            }
 
-            keyPairGenerator.initialize(builder.build())
-            val keyPair: KeyPair = keyPairGenerator.generateKeyPair()
-            val publicKey: PublicKey = keyPair.public
-            val encodedPublicKey: ByteArray = publicKey.encoded
-            var publicKeyString = Base64.encodeToString(encodedPublicKey, Base64.DEFAULT)
-            publicKeyString = publicKeyString.replace("\r", "").replace("\n", "")
-            result.success(publicKeyString)
+                keyPairGenerator.initialize(builder.build())
+                val keyPair: KeyPair = keyPairGenerator.generateKeyPair()
+                val publicKey: PublicKey = keyPair.public
+                val encodedPublicKey: ByteArray = publicKey.encoded
+                var publicKeyString = Base64.encodeToString(encodedPublicKey, Base64.DEFAULT)
+                publicKeyString = publicKeyString.replace("\r", "").replace("\n", "")
+                result.success(publicKeyString)
+            }
         } catch (e: Exception) {
             result.error(
                 AUTH_FAILED,
@@ -192,9 +199,13 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
             val privateKey = keyStore.getKey(BIOMETRIC_KEY_ALIAS, null) as PrivateKey
             val algo = when (privateKey.algorithm) {
-                "EC"  -> "SHA256withECDSA"
+                "EC" -> "SHA256withECDSA"
                 "RSA" -> "SHA256withRSA"
-                else  -> return result.error(AUTH_FAILED, "Unsupported key algo: ${privateKey.algorithm}", null)
+                else -> return result.error(
+                    AUTH_FAILED,
+                    "Unsupported key algo: ${privateKey.algorithm}",
+                    null
+                )
             }
             val signature = Signature.getInstance(algo).apply { initSign(privateKey) }
             val cryptoObject = signature?.let { BiometricPrompt.CryptoObject(it) }
@@ -349,7 +360,7 @@ class BiometricSignaturePlugin : FlutterPlugin, MethodCallHandler, ActivityAware
                 }
             } else {
                 if (otherBiometrics.size == 1 && otherBiometrics[0] != ",") {
-                    return  otherBiometrics[0]
+                    return otherBiometrics[0]
                 } else {
                     return "biometric"
                 }
