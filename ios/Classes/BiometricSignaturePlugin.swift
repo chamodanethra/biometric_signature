@@ -84,8 +84,13 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         ]
         let rsaStatus = SecItemDelete(encryptedKeyQuery as CFDictionary)
 
-        let success = (ecStatus == errSecSuccess || ecStatus == errSecItemNotFound) &&
-                      (rsaStatus == errSecSuccess || rsaStatus == errSecItemNotFound)
+        // Delete the saved domain-state baseline
+        let dsOk = deleteSavedDomainState()
+
+        let success =
+            (ecStatus == errSecSuccess || ecStatus == errSecItemNotFound) &&
+            (rsaStatus == errSecSuccess || rsaStatus == errSecItemNotFound) &&
+            dsOk
         dispatchMainAsync {
             result(success)
         }
@@ -109,6 +114,9 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             kSecAttrAccount as String: encryptedKeyTag
         ]
         SecItemDelete(encryptedKeyQuery as CFDictionary)
+
+        // Delete the saved domain-state baseline
+        deleteSavedDomainState()
     }
 
     private func createKeys(useDeviceCredentials: Bool, result: @escaping FlutterResult) {
@@ -245,6 +253,9 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             }
             return
         }
+
+        // Persist the domain state
+        saveCurrentDomainState()
 
         // Get RSA public key data
         guard let rsaPublicKeyData = SecKeyCopyExternalRepresentation(rsaPublicKey, &error) as Data? else {
@@ -544,6 +555,7 @@ private func migrateToSecureEnclave(options: [String: String]?, result: @escapin
     }
 
     private func doesBiometricKeyExist(checkValidity: Bool = false) -> Bool {
+        // --- 1) Check EC private key exists
         let ecTag = Constants.ecKeyAlias
         let ecKeyQuery: [String: Any] = [
             kSecClass as String: kSecClassKey,
@@ -555,41 +567,96 @@ private func migrateToSecureEnclave(options: [String: String]?, result: @escapin
         let ecStatus = SecItemCopyMatching(ecKeyQuery as CFDictionary, &ecItem)
         let ecKeyExists = (ecStatus == errSecSuccess)
 
-        // Check if encrypted RSA key exists
+        // --- 2) Check encrypted RSA blob exists
         let encryptedKeyTag = getBiometricKeyTag()
         let encryptedKeyQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: encryptedKeyTag,
             kSecAttrAccount as String: encryptedKeyTag,
             kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var rsaItem: CFTypeRef?
         let rsaStatus = SecItemCopyMatching(encryptedKeyQuery as CFDictionary, &rsaItem)
         let rsaKeyExists = (rsaStatus == errSecSuccess)
 
-        if !ecKeyExists || !rsaKeyExists {
-            return false
-        }
+        guard ecKeyExists, rsaKeyExists else { return false }
+        guard checkValidity else { return true }
 
-        if !checkValidity {
-            return true
-        }
+        // --- 3) Non-interactive validity check using domain state
+        // If we have never stored a domain state (migration case),
+        // store the current one and consider the key valid this time.
+        let ctx = LAContext()
+        var laError: NSError?
+        if ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &laError),
+           let currentState = ctx.evaluatedPolicyDomainState {
 
-        // Validate the EC key by attempting to decrypt the RSA key
-        guard let ecItem = ecItem else {
-            return false
-        }
-        let ecPrivateKey = ecItem as! SecKey
-
-        let algorithm: SecKeyAlgorithm = .eciesEncryptionStandardX963SHA256AESGCM
-        guard SecKeyIsAlgorithmSupported(ecPrivateKey, .decrypt, algorithm) else {
-            return false
-        }
-
-        guard rsaItem is Data else {
-            return false
+            if let savedState = loadSavedDomainState() {
+                if savedState != currentState {
+                    // Biometric database changed -> treat keys as invalid
+                    return false
+                }
+            } else {
+                // First run / upgrade path: persist current domain state
+                // so future checks can detect changes.
+                let _ = { saveCurrentDomainState() }()
+            }
         }
         return true
+    }
+
+
+    private let domainStateService = "com.visionflutter.biometric_signature.domain_state"
+    private let domainStateAccount = "biometric_domain_state_v1"
+
+    private func saveCurrentDomainState() {
+        let ctx = LAContext()
+        var error: NSError?
+        guard ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error),
+              let state = ctx.evaluatedPolicyDomainState else {
+            return
+        }
+
+        // Upsert into Keychain as a generic password item
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: domainStateService,
+            kSecAttrAccount as String: domainStateAccount,
+        ]
+
+        let attributes: [String: Any] = [kSecValueData as String: state]
+
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            var addQuery = query
+            addQuery[kSecValueData as String] = state
+            _ = SecItemAdd(addQuery as CFDictionary, nil)
+        }
+    }
+
+    private func loadSavedDomainState() -> Data? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: domainStateService,
+            kSecAttrAccount as String: domainStateAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var out: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &out)
+        if status == errSecSuccess, let d = out as? Data { return d }
+        return nil
+    }
+
+    private func deleteSavedDomainState() -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: domainStateService,
+            kSecAttrAccount as String: domainStateAccount
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        // Treat "not found" as success for idempotency
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 
     private func getBiometricKeyTag() -> Data {

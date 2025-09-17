@@ -1,3 +1,7 @@
+## [6.2.1] - 2025-09-17
+
+* Suggesting a fix for [issue](https://github.com/chamodanethra/biometric_signature/issues/39).
+
 ## [6.2.0] - 2025-01-15
 
 * Upgrading Flutter from 3.27.0 to 3.27.2.
