@@ -1,3 +1,7 @@
+## [6.4.0] - 2025-09-17
+
+* Suggesting a fix for [issue](https://github.com/chamodanethra/biometric_signature/issues/36) using Kotlin coroutines.
+
 ## [6.3.1] - 2025-09-02
 
 * fix dart formatting errors.
