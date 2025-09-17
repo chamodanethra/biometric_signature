@@ -1,3 +1,7 @@
+## [6.4.1] - 2025-09-18
+
+* Suggesting a fix for [issue](https://github.com/chamodanethra/biometric_signature/issues/39).
+
 ## [6.4.0] - 2025-09-17
 
 * Suggesting a fix for [issue](https://github.com/chamodanethra/biometric_signature/issues/36) using Kotlin coroutines.
@@ -12,6 +16,10 @@
 * Updating the README.md file descriptions.
 * Adding ECDSA Key support for cryptographic operations.
 * Suggesting a fix for [issue](https://github.com/chamodanethra/biometric_signature/issues/30).
+
+## [6.2.1] - 2025-09-17
+
+* Suggesting a fix for [issue](https://github.com/chamodanethra/biometric_signature/issues/39).
 
 ## [6.2.0] - 2025-01-15
 
