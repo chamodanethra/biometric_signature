@@ -22,12 +22,12 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^6.4.1
+  biometric_signature: ^6.4.2
 ```
 
 |             | Android | iOS   |
 |-------------|---------|-------|
-| **Support** | SDK 23+ | 12.0+ |
+| **Support** | SDK 23+ | 13.0+ |
 
 ### iOS Integration
 
@@ -116,8 +116,8 @@ Prompts the user for biometric authentication and generates a cryptographic sign
     - `cancelButtonText` (Android only, optional) : Text for the cancel button in the biometric prompt. Default is "Cancel".
     - `promptMessage` : (optional): Message to display in the biometric prompt. Default is "Welcome".
     - `payload`: The payload to be signed.
-    - `shouldMigrate`: (iOS only, required): To migrate to Secure Enclave implementation from the Key Chain implementation used prior to version 5.0.0, need to pass a valid, positive String Bool(as per Swift Official docs).
-    - `allowDeviceCredentials` (Android only, optional) : Indicates whether fallback support is allowed for the compatible Android devices.
+    - `shouldMigrate`: (iOS only, optional): To migrate to Secure Enclave implementation from the Key Chain implementation used prior to version 5.0.0, need to pass a valid, positive String Bool(as per Swift Official docs).
+    - `allowDeviceCredentials` (Android only, optional) : To indicate whether fallback support is allowed for the compatible Android devices, pass a boolean String .
 
 - **Returns**: `String` - The base64 encoded cryptographic signature.
 

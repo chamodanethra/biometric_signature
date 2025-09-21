@@ -1,3 +1,8 @@
+## [6.4.2] - 2025-09-21
+
+* The migrate path for iOS from 5.x is preserved.
+* ReadMe.md updates.
+
 ## [6.4.1] - 2025-09-18
 
 * Suggesting a fix for [issue](https://github.com/chamodanethra/biometric_signature/issues/39).

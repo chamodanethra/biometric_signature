@@ -6,8 +6,8 @@ import Security
 private enum Constants {
     static let authFailed = "AUTH_FAILED"
     static let invalidPayload = "INVALID_PAYLOAD"
-    static let biometricKeyAlias = "biometric_key"        // used for RSA blob (service/account)
-    static let ecKeyAlias = "com.visionflutter.eckey".data(using: .utf8)! // applicationTag (Data)
+    static let biometricKeyAlias = "biometric_key"
+    static let ecKeyAlias = "com.visionflutter.eckey".data(using: .utf8)!
 }
 
 // MARK: - Domain State (biometry change detection)
@@ -329,8 +329,13 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(encryptedKeyQuery as CFDictionary, &item)
         if status != errSecSuccess {
-            // No RSA key found, try EC-only mode
-            createECSignature(dataToSign: dataToSign, promptMessage: promptMessage, result: result)
+            let shouldMigrate = Bool(options?["shouldMigrate"] ?? "false") ?? false
+            if shouldMigrate {
+                self.migrateToSecureEnclave(options: options, result: result)
+            } else {
+                // No RSA: EC-only signing
+                createECSignature(dataToSign: dataToSign, promptMessage: promptMessage, result: result)
+            }
             return
         }
 
@@ -343,15 +348,18 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         }
 
         // 2. Retrieve EC private key from Secure Enclave
-        //    IMPORTANT: removed the direct LAContext usage
-        //    and rely on iOS to prompt for authentication when
-        //    we pass "kSecUseOperationPrompt".
         let ecTag = Constants.ecKeyAlias
+
+        let context = LAContext()
+        context.localizedFallbackTitle = ""
+        context.localizedReason = promptMessage
+
         let ecKeyQuery: [String: Any] = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: ecTag,
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
             kSecReturnRef as String: true,
+            kSecUseAuthenticationContext as String: context,
             kSecUseOperationPrompt as String: promptMessage
         ]
 
@@ -414,7 +422,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             return
         }
 
-        // Zero the decrypted RSA private key bytes in-memory
+        // 6. Zero the decrypted RSA private key bytes in memory
         rsaPrivateKeyData.resetBytes(in: 0..<rsaPrivateKeyData.count)
 
         dispatchMainAsync { result(signature.base64EncodedString()) }
@@ -492,8 +500,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         var error: Unmanaged<CFError>?
         guard let ecPrivateKey = SecKeyCreateRandomKey(ecKeyAttributes as CFDictionary, &error) else {
             dispatchMainAsync {
-                let errorDescription = error?.takeRetainedValue().localizedDescription ?? "Unknown error"
-                result(FlutterError(code: Constants.authFailed, message: "Error generating EC key: \(errorDescription)", details: nil))
+                let msg = error?.takeRetainedValue().localizedDescription ?? "Unknown error"
+                result(FlutterError(code: Constants.authFailed, message: "Error generating EC key: \(msg)", details: nil))
             }
             return
         }
@@ -540,9 +548,9 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         }
 
         guard let encryptedRSAKeyData = SecKeyCreateEncryptedData(ecPublicKey, algorithm, rsaPrivateKeyData as CFData, &error) as Data? else {
-            let errorDescription = error?.takeRetainedValue().localizedDescription ?? "Unknown error"
+            let msg = error?.takeRetainedValue().localizedDescription ?? "Unknown error"
             dispatchMainAsync {
-                result(FlutterError(code: Constants.authFailed, message: "Error encrypting RSA private key: \(errorDescription)", details: nil))
+                result(FlutterError(code: Constants.authFailed, message: "Error encrypting RSA private key: \(msg)", details: nil))
             }
             return
         }
@@ -578,12 +586,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
     }
 
     private func getBiometricType(_ context: LAContext?) -> String {
-        if context?.biometryType == .faceID {
-            return "FaceID"
-        } else if context?.biometryType == .touchID {
-            return "TouchID"
-        }
-        return "none, NO_BIOMETRICS"
+        return context?.biometryType == .faceID ? "FaceID" :
+               context?.biometryType == .touchID ? "TouchID" : "none, NO_BIOMETRICS"
     }
 
     private func doesBiometricKeyExist(checkValidity: Bool = false) -> Bool {
