@@ -22,7 +22,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^6.4.3
+  biometric_signature: ^7.0.0
 ```
 
 |             | Android | iOS   |
@@ -108,18 +108,20 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
 
 - `AUTH_FAILED`: Error generating public-private keys.
 
-### `createSignature(options: Map<String, String>)`
+### `createSignature(SignatureOptions options)`
 
-Prompts the user for biometric authentication and generates a cryptographic signature (RSA PKCS#1v1.5 SHA 256 or EC) using the securely stored private key. The payload to be signed is provided in the `options` map.
+Prompts the user for biometric authentication and generates a cryptographic signature (RSA PKCS#1v1.5 SHA-256 or EC) using the securely stored private key.
 
 - **Parameters**:
 
-- `options`: A map containing the following keys:
-    - `cancelButtonText` (Android only, optional) : Text for the cancel button in the biometric prompt. Default is "Cancel".
-    - `promptMessage` : (optional): Message to display in the biometric prompt. Default is "Welcome".
-    - `payload`: The payload to be signed.
-    - `shouldMigrate`: (iOS only, optional): To migrate to Secure Enclave implementation from the Key Chain implementation used prior to version 5.0.0, need to pass a valid, positive String Bool(as per Swift Official docs).
-    - `allowDeviceCredentials` (Android only, optional) : To indicate whether fallback support is allowed for the compatible Android devices, pass a boolean String .
+- `options`: A `SignatureOptions` instance that specifies:
+    - `payload` (required): The UTF-8 payload to sign.
+    - `promptMessage` (optional): Message displayed in the biometric prompt. Default is "Authenticate".
+    - `androidOptions` (optional): An `AndroidSignatureOptions` object offering:
+        - `cancelButtonText`: Overrides the cancel button label. Defaults to `Cancel`.
+        - `allowDeviceCredentials`: Enables device-credential fallback on compatible Android devices.
+    - `iosOptions` (optional): An `IosSignatureOptions` object offering:
+        - `shouldMigrate`: Triggers migration from pre-5.x Keychain storage to Secure Enclave.
 
 - **Returns**: `String` - The base64 encoded cryptographic signature.
 
@@ -174,6 +176,7 @@ Checks if the biometric key pair exists on the device. Optionally, it can also v
 ```dart
 import 'package:flutter/material.dart';
 import 'package:biometric_signature/biometric_signature.dart';
+import 'package:biometric_signature/signature_options.dart';
 
 void main() {
   runApp(MyApp());
@@ -205,11 +208,18 @@ class BiometricAuthButton extends StatelessWidget {
           try {
             final String? publicKey = await _biometricSignature
                 .createKeys();
-            final String? signature = await _biometricSignature
-                .createSignature(
-                options: {
-                  "payload": "Payload to sign",
-                  "promptMessage": "You are Welcome!"});
+            final String? signature = await _biometricSignature.createSignature(
+              SignatureOptions(
+                payload: "Payload to sign",
+                promptMessage: "You are Welcome!",
+                androidOptions: const AndroidSignatureOptions(
+                  allowDeviceCredentials: true,
+                ),
+                iosOptions: const IosSignatureOptions(
+                  shouldMigrate: true,
+                ),
+              ),
+            );
           } on PlatformException catch (e) {
             debugPrint(e.message);
             debugPrint(e.code);

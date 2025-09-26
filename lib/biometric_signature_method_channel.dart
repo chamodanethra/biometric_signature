@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'biometric_signature_platform_interface.dart';
+import 'signature_options.dart';
 
 /// An implementation of [BiometricSignaturePlatform] that uses method channels.
 class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
@@ -46,11 +47,11 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   }
 
   @override
-  Future<String?> createSignature({Map<String?, String?>? options}) async {
+  Future<String?> createSignature(SignatureOptions options) async {
     try {
       final response = await methodChannel.invokeMethod<String>(
         'createSignature',
-        options,
+        options.toMethodChannelMap(),
       );
       return response;
     } on PlatformException {

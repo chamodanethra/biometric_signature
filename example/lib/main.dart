@@ -2,6 +2,7 @@ import 'package:biometric_signature/android_config.dart';
 import 'package:biometric_signature/ios_config.dart';
 import 'package:flutter/material.dart';
 import 'package:biometric_signature/biometric_signature.dart';
+import 'package:biometric_signature/signature_options.dart';
 
 void main() {
   runApp(const MyApp());
@@ -90,12 +91,14 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
       return;
     }
     final signature = await _biometricSignature.createSignature(
-      options: {
-        "payload": payload!,
-        "promptMessage": "Sign Payload",
-        "shouldMigrate": "true",
-        "allowDeviceCredentials": "true",
-      },
+      SignatureOptions(
+        payload: payload!,
+        promptMessage: "Sign Payload",
+        androidOptions: const AndroidSignatureOptions(
+          allowDeviceCredentials: true,
+        ),
+        iosOptions: const IosSignatureOptions(shouldMigrate: true),
+      ),
     );
     setState(() {
       this.signature = signature;

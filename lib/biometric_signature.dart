@@ -2,6 +2,7 @@ import 'package:biometric_signature/android_config.dart';
 import 'package:biometric_signature/ios_config.dart';
 
 import 'biometric_signature_platform_interface.dart';
+import 'signature_options.dart';
 
 class BiometricSignature {
   /// Creates a key pair on the device, stores Private Key in keychain/keystore
@@ -20,14 +21,24 @@ class BiometricSignature {
     return response;
   }
 
-  /// Creates a digital signature using biometric authentication
+  /// Creates a digital signature using biometric authentication.
   ///
-  /// params: A map of options, {"payload": "// your payload", "promptMessage": "// your welcome message", "cancelButtonText": "Cancel"(on Android only), "shouldMigrate": "true"(on iOS only), "allowDeviceCredentials": "false"(on Android only)}
-  /// - Returns: Either the created signature as a base64 encoded string or an error
-  Future<String?> createSignature({Map<String, String>? options}) async {
+  /// params: A [SignatureOptions] instance containing the payload to sign, an
+  /// optional prompt message, and platform-specific configuration.
+  /// - Returns: Either the created signature as a base64 encoded string or an
+  /// error.
+  Future<String?> createSignature(SignatureOptions options) async {
     final String? response = await BiometricSignaturePlatform.instance
-        .createSignature(options: options);
+        .createSignature(options);
     return response;
+  }
+
+  /// Legacy helper maintained for migration from the map-based API.
+  @Deprecated('Use createSignature(SignatureOptions options) instead.')
+  Future<String?> createSignatureFromLegacyOptions(
+    Map<String, String> options,
+  ) async {
+    return createSignature(SignatureOptions.fromLegacyMap(options));
   }
 
   /// Delete the biometric key if exists

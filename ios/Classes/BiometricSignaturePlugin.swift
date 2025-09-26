@@ -97,7 +97,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
                 result(FlutterError(code: Constants.invalidPayload, message: "Invalid arguments", details: nil))
             }
         case "createSignature":
-            createSignature(options: call.arguments as? Dictionary<String, String>, result: result)
+            createSignature(options: call.arguments as? [String: Any], result: result)
         case "deleteKeys":
             deleteKeys(result: result)
         case "biometricAuthAvailable":
@@ -105,8 +105,6 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         case "biometricKeyExists":
             guard let checkValidity = call.arguments as? Bool else { return }
             biometricKeyExists(checkValidity: checkValidity, result: result)
-        case "migrateToSecureEnclave":
-            migrateToSecureEnclave(options: call.arguments as? [String: String], result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -308,9 +306,10 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         dispatchMainAsync { result(publicKeyString) }
     }
 
-    private func createSignature(options: [String: String]?, result: @escaping FlutterResult) {
-        let promptMessage = options?["promptMessage"] ?? "Authenticate to sign data"
-        guard let payload = options?["payload"], let dataToSign = payload.data(using: .utf8) else {
+    private func createSignature(options: [String: Any]?, result: @escaping FlutterResult) {
+        let promptMessage = (options?["promptMessage"] as? String) ?? "Authenticate"
+        guard let payload = options?["payload"] as? String,
+              let dataToSign = payload.data(using: .utf8) else {
             dispatchMainAsync {
                 result(FlutterError(code: Constants.invalidPayload, message: "Payload is required and must be valid UTF-8", details: nil))
             }
@@ -329,7 +328,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(encryptedKeyQuery as CFDictionary, &item)
         if status != errSecSuccess {
-            let shouldMigrate = Bool(options?["shouldMigrate"] ?? "false") ?? false
+            let shouldMigrate = parseBool(options?["shouldMigrate"]) ?? false
             if shouldMigrate {
                 self.migrateToSecureEnclave(options: options, result: result)
             } else {
@@ -469,7 +468,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         dispatchMainAsync { result(signature.base64EncodedString()) }
     }
 
-    private func migrateToSecureEnclave(options: [String: String]?, result: @escaping FlutterResult) {
+    private func migrateToSecureEnclave(options: [String: Any]?, result: @escaping FlutterResult) {
         // Generate EC key pair in Secure Enclave
         let ecAccessControl = SecAccessControlCreateWithFlags(
             kCFAllocatorDefault,
@@ -576,9 +575,22 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         rsaPrivateKeyData.resetBytes(in: 0..<rsaPrivateKeyData.count)
 
         var modOptions = options
-        modOptions?["shouldMigrate"] = "false"
+        modOptions?["shouldMigrate"] = false
         self.createSignature(options: modOptions, result: result)
         return
+    }
+
+    private func parseBool(_ value: Any?) -> Bool? {
+        if let boolValue = value as? Bool {
+            return boolValue
+        }
+        if let numberValue = value as? NSNumber {
+            return numberValue.boolValue
+        }
+        if let stringValue = value as? String {
+            return Bool(stringValue)
+        }
+        return nil
     }
 
     private func dispatchMainAsync(_ block: @escaping () -> Void) {

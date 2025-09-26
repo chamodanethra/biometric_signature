@@ -3,6 +3,7 @@ import 'package:biometric_signature/ios_config.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'biometric_signature_method_channel.dart';
+import 'signature_options.dart';
 
 abstract class BiometricSignaturePlatform extends PlatformInterface {
   /// Constructs a BiometricSignaturePlatform.
@@ -42,9 +43,9 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
     );
   }
 
-  Future<String?> createSignature({Map<String, String?>? options}) {
+  Future<String?> createSignature(SignatureOptions options) {
     throw UnimplementedError(
-      'createSignature(Map<String, String?>? options) has not been implemented.',
+      'createSignature(SignatureOptions options) has not been implemented.',
     );
   }
 

@@ -1,3 +1,12 @@
+## [7.0.0] - 2025-09-26
+
+* **Breaking**: Replace the map-based `createSignature` API with typed `SignatureOptions`, plus platform-specific option classes.
+* Added `createSignatureFromLegacyOptions` helper to ease migration from the legacy API.
+* Fixed Android `allowDeviceCredentials` parsing so boolean values are honoured.
+* Updated the iOS plugin to accept native booleans for `shouldMigrate`.
+* Improved Android native Kotlin coroutines implementation.
+* Updated native dependencies.
+
 ## [6.4.2] - 2025-09-21
 
 * The migrate path for iOS from 5.x is preserved.

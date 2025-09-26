@@ -144,7 +144,11 @@ class BiometricSignaturePlugin :
                 val cancelButtonText = (options["cancelButtonText"] as? String) ?: "Cancel"
                 val promptMessage = (options["promptMessage"] as? String) ?: "Authenticate"
                 val payload = (options["payload"] as? String)
-                val allowDeviceCredentials = (options["allowDeviceCredentials"] as? Boolean) == true
+                val allowDeviceCredentials = when (val raw = options["allowDeviceCredentials"]) {
+                    is Boolean -> raw
+                    is String -> raw.equals("true", ignoreCase = true)
+                    else -> false
+                }
 
                 pluginScope.launch {
                     try {
