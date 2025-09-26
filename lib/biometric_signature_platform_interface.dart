@@ -5,6 +5,8 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'biometric_signature_method_channel.dart';
 import 'signature_options.dart';
 
+/// Platform interface that defines the methods exposed to plugin
+/// implementations.
 abstract class BiometricSignaturePlatform extends PlatformInterface {
   /// Constructs a BiometricSignaturePlatform.
   BiometricSignaturePlatform() : super(token: _token);
@@ -27,28 +29,33 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
     _instance = instance;
   }
 
+  /// Creates a key pair using the supplied platform-specific configuration.
   Future<String?> createKeys(AndroidConfig androidConfig, IosConfig iosConfig) {
     throw UnimplementedError(
       'createKeys(AndroidConfig androidConfig, IosConfig iosConfig) has not been implemented.',
     );
   }
 
+  /// Deletes the stored biometric key if present.
   Future<bool?> deleteKeys() {
     throw UnimplementedError('deleteKeys() has not been implemented.');
   }
 
+  /// Returns information about the biometric availability on the device.
   Future<String?> biometricAuthAvailable() {
     throw UnimplementedError(
       'biometricAuthAvailable() has not been implemented.',
     );
   }
 
+  /// Creates a signature for the given payload using biometrics.
   Future<String?> createSignature(SignatureOptions options) {
     throw UnimplementedError(
       'createSignature(SignatureOptions options) has not been implemented.',
     );
   }
 
+  /// Checks whether the biometric key exists, optionally validating the key.
   Future<bool?> biometricKeyExists(bool checkValidity) {
     throw UnimplementedError(
       'biometricKeyExists(bool checkValidity) has not been implemented.',

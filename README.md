@@ -22,7 +22,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^7.0.0
+  biometric_signature: ^7.0.1
 ```
 
 |             | Android | iOS   |
@@ -116,7 +116,7 @@ Prompts the user for biometric authentication and generates a cryptographic sign
 
 - `options`: A `SignatureOptions` instance that specifies:
     - `payload` (required): The UTF-8 payload to sign.
-    - `promptMessage` (optional): Message displayed in the biometric prompt. Default is "Authenticate".
+    - `promptMessage` (optional): Message displayed in the biometric prompt. Default to `Authenticate`.
     - `androidOptions` (optional): An `AndroidSignatureOptions` object offering:
         - `cancelButtonText`: Overrides the cancel button label. Defaults to `Cancel`.
         - `allowDeviceCredentials`: Enables device-credential fallback on compatible Android devices.

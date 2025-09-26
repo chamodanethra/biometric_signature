@@ -1,3 +1,6 @@
+## [7.0.1] - 2025-09-26
+* Updating documentations.
+
 ## [7.0.0] - 2025-09-26
 
 * **Breaking**: Replace the map-based `createSignature` API with typed `SignatureOptions`, plus platform-specific option classes.
