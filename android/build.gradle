@@ -57,7 +57,8 @@ android {
     }
 
     dependencies {
-        implementation("androidx.biometric:biometric-ktx:1.4.0-alpha02")
+        implementation("androidx.biometric:biometric:1.4.0-alpha04")
         implementation("androidx.appcompat:appcompat:1.6.1")
+        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     }
 }

@@ -20,6 +20,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
+import io.flutter.plugin.common.StandardMethodCodec
 import kotlinx.coroutines.*
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.security.KeyPair
@@ -38,6 +39,10 @@ const val AUTH_FAILED = "AUTH_FAILED"
 const val INVALID_PAYLOAD = "INVALID_PAYLOAD"
 const val BIOMETRIC_KEY_ALIAS = "biometric_key"
 
+// Optional timeouts to keep blocking operations bounded (biometric prompt stays user-driven)
+private const val KEYGEN_TIMEOUT_MS = 30_000L
+private const val SIGN_TIMEOUT_MS = 30_000L
+
 class BiometricSignaturePlugin :
     FlutterPlugin,
     MethodCallHandler,
@@ -47,36 +52,50 @@ class BiometricSignaturePlugin :
     private lateinit var appContext: Context
     private var activity: FlutterFragmentActivity? = null
 
-    // Coroutine scope tied to plugin lifecycle
-    private val pluginScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    // ---- Structured concurrency for the plugin lifecycle ----
+    private val pluginJob = SupervisorJob()
+    private val exceptionHandler = CoroutineExceptionHandler { _, e ->
+        android.util.Log.e("BiometricSignature", "Unhandled coroutine error", e)
+    }
+    private val pluginScope = CoroutineScope(Dispatchers.Main.immediate + pluginJob + exceptionHandler)
 
+    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        appContext = binding.applicationContext
+
+        // Run handlers on a background TaskQueue (Flutter best practice for potentially heavy work)
+        val queue = binding.binaryMessenger.makeBackgroundTaskQueue()
+        channel = MethodChannel(
+            binding.binaryMessenger,
+            "biometric_signature",
+            StandardMethodCodec.INSTANCE,
+            queue
+        )
+        channel.setMethodCallHandler(this)
+    }
+
+    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        channel.setMethodCallHandler(null)
+        pluginJob.cancel() // cancels all running coroutines
+    }
+
+    // ---- ActivityAware ----
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding.activity as? FlutterFragmentActivity
-    }
-
-    override fun onDetachedFromActivity() {
-        activity = null
-    }
-
-    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
-        onAttachedToActivity(binding)
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
         onDetachedFromActivity()
     }
 
-    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        appContext = binding.applicationContext
-        channel = MethodChannel(binding.binaryMessenger, "biometric_signature")
-        channel.setMethodCallHandler(this)
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        onAttachedToActivity(binding)
     }
 
-    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        channel.setMethodCallHandler(null)
-        pluginScope.cancel() // cancel any running coroutines
+    override fun onDetachedFromActivity() {
+        activity = null
     }
 
+    // ---- Method channel handler ----
     override fun onMethodCall(call: MethodCall, result: Result) {
         val act = activity
         if (act !is FlutterFragmentActivity) {
@@ -92,20 +111,29 @@ class BiometricSignaturePlugin :
             "createKeys" -> {
                 @Suppress("UNCHECKED_CAST")
                 val args = call.arguments<Map<String, Any?>>() ?: emptyMap()
+                val useDeviceCredentials = (args["useDeviceCredentials"] as? Boolean) == true
+                val useEc = (args["useEc"] as? Boolean) == true
+
                 pluginScope.launch {
                     try {
-                        val useDeviceCredentials = (args["useDeviceCredentials"] as? Boolean) == true
-                        val useEc = (args["useEc"] as? Boolean) == true
-                        val publicKeyB64 = withContext(Dispatchers.IO) {
-                            generateKeyPairAndReturnPublicKeyB64(act, useEc, useDeviceCredentials)
+                        val publicKeyB64 = withTimeout(KEYGEN_TIMEOUT_MS) {
+                            withContext(Dispatchers.IO) {
+                                generateKeyPairAndReturnPublicKeyB64(act, useEc, useDeviceCredentials)
+                            }
                         }
-                        result.success(publicKeyB64)
+                        withContext(Dispatchers.Main.immediate) { result.success(publicKeyB64) }
+                    } catch (ce: CancellationException) {
+                        withContext(Dispatchers.Main.immediate) {
+                            result.error("CANCELLED", ce.message ?: "Operation cancelled", null)
+                        }
                     } catch (t: Throwable) {
-                        result.error(
-                            AUTH_FAILED,
-                            "Error generating public-private keys: ${t.javaClass.simpleName}: ${t.message}",
-                            t.stackTraceToString()
-                        )
+                        withContext(Dispatchers.Main.immediate) {
+                            result.error(
+                                AUTH_FAILED,
+                                "Error generating keys: ${t.javaClass.simpleName}: ${t.message}",
+                                t.stackTraceToString()
+                            )
+                        }
                     }
                 }
             }
@@ -113,15 +141,17 @@ class BiometricSignaturePlugin :
             "createSignature" -> {
                 @Suppress("UNCHECKED_CAST")
                 val options = call.arguments<Map<String, Any?>>() ?: emptyMap()
+                val cancelButtonText = (options["cancelButtonText"] as? String) ?: "Cancel"
+                val promptMessage = (options["promptMessage"] as? String) ?: "Authenticate"
+                val payload = (options["payload"] as? String)
+                val allowDeviceCredentials = (options["allowDeviceCredentials"] as? Boolean) == true
+
                 pluginScope.launch {
                     try {
-                        val cancelButtonText = (options["cancelButtonText"] as? String) ?: "Cancel"
-                        val promptMessage = (options["promptMessage"] as? String) ?: "Authenticate"
-                        val payload = (options["payload"] as? String)
-                        val allowDeviceCredentials = (options["allowDeviceCredentials"] as? Boolean) == true
-
                         if (payload == null || !isValidUTF8(payload)) {
-                            result.error(INVALID_PAYLOAD, "Payload is required and must be valid UTF-8", null)
+                            withContext(Dispatchers.Main.immediate) {
+                                result.error(INVALID_PAYLOAD, "Payload is required and must be valid UTF-8", null)
+                            }
                             return@launch
                         }
 
@@ -150,7 +180,13 @@ class BiometricSignaturePlugin :
                         val biometricManager = BiometricManager.from(act)
                         val can = biometricManager.canAuthenticate(authenticators)
                         if (can != BiometricManager.BIOMETRIC_SUCCESS) {
-                            result.error(AUTH_FAILED, "Biometrics/Device Credentials not available (code: $can)", null)
+                            withContext(Dispatchers.Main.immediate) {
+                                result.error(
+                                    AUTH_FAILED,
+                                    "Biometrics/Device Credentials not available (code: $can)",
+                                    null
+                                )
+                            }
                             return@launch
                         }
 
@@ -167,82 +203,89 @@ class BiometricSignaturePlugin :
 
                         val promptInfo = promptInfoBuilder.build()
 
-                        // Show prompt & await result on main thread
+                        // Show biometric prompt and await result (Main executor inside, suspension via continuation)
                         val authResult = authenticateWithBiometric(act, promptInfo, cryptoObject)
 
-                        // Sign on IO
-                        val signatureBase64 = withContext(Dispatchers.IO) {
-                            val sig = authResult.cryptoObject?.signature
-                                ?: throw IllegalStateException("No signature object returned")
-                            sig.update(payload.toByteArray(Charsets.UTF_8))
-                            val signed = sig.sign()
-                            Base64.encodeToString(signed, Base64.NO_WRAP)
+                        // Sign payload (bounded)
+                        val signatureBase64 = withTimeout(SIGN_TIMEOUT_MS) {
+                            withContext(Dispatchers.IO) {
+                                val sig = authResult.cryptoObject?.signature
+                                    ?: throw IllegalStateException("No signature object returned")
+                                sig.update(payload.toByteArray(Charsets.UTF_8))
+                                val signed = sig.sign()
+                                Base64.encodeToString(signed, Base64.NO_WRAP)
+                            }
                         }
 
-                        result.success(signatureBase64)
+                        withContext(Dispatchers.Main.immediate) { result.success(signatureBase64) }
+                    } catch (ce: CancellationException) {
+                        withContext(Dispatchers.Main.immediate) {
+                            result.error("CANCELLED", ce.message ?: "Operation cancelled", null)
+                        }
                     } catch (t: Throwable) {
-                        result.error(AUTH_FAILED, "Error generating signature: ${t.message}", null)
+                        withContext(Dispatchers.Main.immediate) {
+                            result.error(AUTH_FAILED, "Error generating signature: ${t.message}", null)
+                        }
                     }
                 }
             }
 
             "deleteKeys" -> {
                 pluginScope.launch {
-                    val deleted = withContext(Dispatchers.IO) { deleteBiometricKey() }
-                    if (deleted) result.success(true) else
-                        result.error(AUTH_FAILED, "Error deleting biometric key from keystore", null)
+                    try {
+                        val deleted = withContext(Dispatchers.IO) { deleteBiometricKey() }
+                        withContext(Dispatchers.Main.immediate) {
+                            if (deleted) result.success(true)
+                            else result.error(AUTH_FAILED, "Error deleting biometric key from keystore", null)
+                        }
+                    } catch (t: Throwable) {
+                        withContext(Dispatchers.Main.immediate) {
+                            result.error(AUTH_FAILED, "Error deleting key: ${t.message}", null)
+                        }
+                    }
                 }
             }
 
             "biometricAuthAvailable" -> {
-                fun processBiometricString(rawString: String): String {
-
-                    var identifiedFingerprint = false
-                    val pm = appContext.packageManager
-
-                    if (pm.hasSystemFeature(PackageManager.FEATURE_FINGERPRINT)) {
-                        val fm = appContext.getSystemService(FingerprintManager::class.java)
-                        val enrolled = try {
-                            fm?.hasEnrolledFingerprints() == true
-                        } catch (_: SecurityException) {
-                            true
-                        }
-                        identifiedFingerprint = fm?.isHardwareDetected == true && enrolled
-                    }
-
-                    val otherString = listOf("face", "iris", ",")
-                    val otherBiometrics =
-                        otherString.filter { rawString.contains(it, ignoreCase = true) }
-
-                    if (identifiedFingerprint) {
-                        if (otherBiometrics.size == 0) {
-                            return "fingerprint"
-                        } else {
-                            return "biometric"
-                        }
-                    } else {
-                        if (otherBiometrics.size == 1 && otherBiometrics[0] != ",") {
-                            return otherBiometrics[0]
-                        } else {
-                            return "biometric"
-                        }
-                    }
-                }
-
                 pluginScope.launch {
-                    val biometricManager = BiometricManager.from(act!!)
+                    val actNonNull = activity!!
+                    val biometricManager = BiometricManager.from(actNonNull)
                     val canAuthenticate =
                         biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
 
+                    fun processBiometricString(rawString: String): String {
+                        var identifiedFingerprint = false
+                        val pm = appContext.packageManager
+
+                        if (pm.hasSystemFeature(PackageManager.FEATURE_FINGERPRINT)) {
+                            val fm = appContext.getSystemService(FingerprintManager::class.java)
+                            val enrolled = try {
+                                fm?.hasEnrolledFingerprints() == true
+                            } catch (_: SecurityException) {
+                                true
+                            }
+                            identifiedFingerprint = fm?.isHardwareDetected == true && enrolled
+                        }
+
+                        val otherString = listOf("face", "iris", ",")
+                        val otherBiometrics = otherString.filter { rawString.contains(it, ignoreCase = true) }
+
+                        return if (identifiedFingerprint) {
+                            if (otherBiometrics.isEmpty()) "fingerprint" else "biometric"
+                        } else {
+                            if (otherBiometrics.size == 1 && otherBiometrics[0] != ",") otherBiometrics[0] else "biometric"
+                        }
+                    }
+
                     if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
-                        result.success(
-                            processBiometricString(
-                                BiometricManager.from(activity!!)
-                                    .getStrings(BiometricManager.Authenticators.BIOMETRIC_STRONG)?.buttonLabel.toString()
-                            )
-                        )
+                        val label = BiometricManager.from(actNonNull)
+                            .getStrings(BiometricManager.Authenticators.BIOMETRIC_STRONG)?.buttonLabel
+                            .toString()
+                        withContext(Dispatchers.Main.immediate) {
+                            result.success(processBiometricString(label))
+                        }
                     } else {
-                        var errorString = when (canAuthenticate) {
+                        val errorString = when (canAuthenticate) {
                             BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "BIOMETRIC_ERROR_NO_HARDWARE"
                             BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "BIOMETRIC_ERROR_HW_UNAVAILABLE"
                             BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "BIOMETRIC_ERROR_NONE_ENROLLED"
@@ -251,7 +294,9 @@ class BiometricSignaturePlugin :
                             BiometricManager.BIOMETRIC_STATUS_UNKNOWN -> "BIOMETRIC_STATUS_UNKNOWN"
                             else -> "NO_BIOMETRICS"
                         }
-                        result.success("none, $errorString")
+                        withContext(Dispatchers.Main.immediate) {
+                            result.success("none, $errorString")
+                        }
                     }
                 }
             }
@@ -260,7 +305,7 @@ class BiometricSignaturePlugin :
                 val checkValidity = (call.arguments<Boolean?>()) == true
                 pluginScope.launch {
                     val exists = withContext(Dispatchers.IO) { doesBiometricKeyExist(checkValidity) }
-                    result.success(exists)
+                    withContext(Dispatchers.Main.immediate) { result.success(exists) }
                 }
             }
 
@@ -292,14 +337,12 @@ class BiometricSignaturePlugin :
             }
         }
         val prompt = BiometricPrompt(activity, executor, callback)
-        if (cryptoObject != null) {
-            prompt.authenticate(promptInfo, cryptoObject)
-        } else {
-            prompt.authenticate(promptInfo)
-        }
-        // No direct programmatic cancel API; if coroutine cancels, we just drop the result.
+        if (cryptoObject != null) prompt.authenticate(promptInfo, cryptoObject)
+        else prompt.authenticate(promptInfo)
+
         cont.invokeOnCancellation {
-            // Optionally log or dismiss UI if you manage your own dialog layer.
+            // No direct cancel API to dismiss system prompt programmatically.
+            // If you add your own UI layer in the future, dismiss it here.
         }
     }
 
