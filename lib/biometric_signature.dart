@@ -18,11 +18,11 @@ class BiometricSignature {
     AndroidConfig? androidConfig,
     IosConfig? iosConfig,
   }) async {
-    final String? response =
-        await BiometricSignaturePlatform.instance.createKeys(
-      androidConfig ?? AndroidConfig(useDeviceCredentials: false),
-      iosConfig ?? IosConfig(useDeviceCredentials: false),
-    );
+    final String? response = await BiometricSignaturePlatform.instance
+        .createKeys(
+          androidConfig ?? AndroidConfig(useDeviceCredentials: false),
+          iosConfig ?? IosConfig(useDeviceCredentials: false),
+        );
     return response;
   }
 
@@ -33,8 +33,8 @@ class BiometricSignature {
   /// Returns: Either the created signature as a base64 encoded string or an
   /// error.
   Future<String?> createSignature(SignatureOptions options) async {
-    final String? response =
-        await BiometricSignaturePlatform.instance.createSignature(options);
+    final String? response = await BiometricSignaturePlatform.instance
+        .createSignature(options);
     return response;
   }
 
@@ -50,8 +50,8 @@ class BiometricSignature {
   ///
   /// Returns: A [bool] indicating whether the deletion was successful
   Future<bool?> deleteKeys() async {
-    final bool? response =
-        await BiometricSignaturePlatform.instance.deleteKeys();
+    final bool? response = await BiometricSignaturePlatform.instance
+        .deleteKeys();
     return response;
   }
 
@@ -59,8 +59,8 @@ class BiometricSignature {
   ///
   /// Returns: A [String] indicating biometric type if available, otherwise returns none, and the reason
   Future<String?> biometricAuthAvailable() async {
-    final String? response =
-        await BiometricSignaturePlatform.instance.biometricAuthAvailable();
+    final String? response = await BiometricSignaturePlatform.instance
+        .biometricAuthAvailable();
     return response;
   }
 

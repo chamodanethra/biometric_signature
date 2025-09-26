@@ -1,3 +1,6 @@
+## [7.0.2] - 2025-09-26
+* Fix formatting errors.
+
 ## [7.0.1] - 2025-09-26
 * Updating documentations.
 
