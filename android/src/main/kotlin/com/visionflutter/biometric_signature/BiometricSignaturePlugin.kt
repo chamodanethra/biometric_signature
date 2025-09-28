@@ -37,6 +37,7 @@ import kotlin.coroutines.resumeWithException
 
 const val AUTH_FAILED = "AUTH_FAILED"
 const val INVALID_PAYLOAD = "INVALID_PAYLOAD"
+const val CANCELLED = "CANCELLED"
 const val BIOMETRIC_KEY_ALIAS = "biometric_key"
 
 // Optional timeouts to keep blocking operations bounded (biometric prompt stays user-driven)
@@ -124,7 +125,7 @@ class BiometricSignaturePlugin :
                         withContext(Dispatchers.Main.immediate) { result.success(publicKeyB64) }
                     } catch (ce: CancellationException) {
                         withContext(Dispatchers.Main.immediate) {
-                            result.error("CANCELLED", ce.message ?: "Operation cancelled", null)
+                            result.error(CANCELLED, ce.message ?: "Operation cancelled", null)
                         }
                     } catch (t: Throwable) {
                         withContext(Dispatchers.Main.immediate) {
@@ -224,7 +225,7 @@ class BiometricSignaturePlugin :
                         withContext(Dispatchers.Main.immediate) { result.success(signatureBase64) }
                     } catch (ce: CancellationException) {
                         withContext(Dispatchers.Main.immediate) {
-                            result.error("CANCELLED", ce.message ?: "Operation cancelled", null)
+                            result.error(CANCELLED, ce.message ?: "Operation cancelled", null)
                         }
                     } catch (t: Throwable) {
                         withContext(Dispatchers.Main.immediate) {
@@ -240,11 +241,11 @@ class BiometricSignaturePlugin :
                         val deleted = withContext(Dispatchers.IO) { deleteBiometricKey() }
                         withContext(Dispatchers.Main.immediate) {
                             if (deleted) result.success(true)
-                            else result.error(AUTH_FAILED, "Error deleting biometric key from keystore", null)
+                            else result.error(AUTH_FAILED, "Error deleting the biometric key", null)
                         }
                     } catch (t: Throwable) {
                         withContext(Dispatchers.Main.immediate) {
-                            result.error(AUTH_FAILED, "Error deleting key: ${t.message}", null)
+                            result.error(AUTH_FAILED, "Error deleting the biometric key: ${t.message}", null)
                         }
                     }
                 }

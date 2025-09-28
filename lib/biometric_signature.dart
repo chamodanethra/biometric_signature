@@ -9,10 +9,10 @@ class BiometricSignature {
   /// Creates a key pair on the device and stores the private key in the
   /// StrongBox or KeyStore/Secure Enclave.
   ///
-  /// params: An optional AndroidConfig object containing the bool
-  /// useDeviceCredentials and AndroidSignatureType signatureType (RSA or ECDSA),
-  /// and an optional IosConfig object containing the bool useDeviceCredentials
-  /// and IOSSignatureType signatureType (RSA or ECDSA)
+  /// params: An optional [AndroidConfig] object containing the [bool]
+  /// useDeviceCredentials and [AndroidSignatureType] signatureType (RSA or ECDSA),
+  /// and an optional [IosConfig] object containing the [bool] useDeviceCredentials
+  /// and [IOSSignatureType] signatureType (RSA or ECDSA)
   /// Returns: The public key component encoded as a [String].
   Future<String?> createKeys({
     AndroidConfig? androidConfig,
@@ -48,7 +48,7 @@ class BiometricSignature {
 
   /// Deletes the biometric key if it exists.
   ///
-  /// Returns: A [bool] indicating whether the deletion was successful
+  /// Returns: A [bool] indicating whether the deletion was successful or an error
   Future<bool?> deleteKeys() async {
     final bool? response = await BiometricSignaturePlatform.instance
         .deleteKeys();

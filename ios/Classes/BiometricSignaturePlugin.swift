@@ -156,7 +156,13 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         let success = (ecStatus == errSecSuccess || ecStatus == errSecItemNotFound)
                    && (rsaStatus == errSecSuccess || rsaStatus == errSecItemNotFound)
                    && dsOK
-        dispatchMainAsync { result(success) }
+        dispatchMainAsync {
+            if success {
+                result(true)
+            } else {
+                result(FlutterError(code: Constants.authFailed, message: "Error deleting the biometric key", details: nil))
+            }
+        }
     }
 
     private func deleteExistingKeys() {

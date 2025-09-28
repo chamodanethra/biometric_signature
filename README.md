@@ -96,17 +96,18 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
 - **Parameters**:
 
 - `androidConfig`: An `AndroidConfig` object containing following properties:
-    - `useDeviceCredentials`: A bool to indicate whether Device Credentials' fallback support is needed for the compatible Android devices.
-    - `signatureType`: An enum value of AndroidSignatureType.
+    - `useDeviceCredentials`: A `bool` to indicate whether Device Credentials' fallback support is needed for the compatible Android devices.
+    - `signatureType`: An enum value of `AndroidSignatureType`.
 - `iosConfig`: An `IosConfig` object containing following properties:
-    - `useDeviceCredentials`: A bool to indicate whether Device Credentials' fallback support is needed.
-    - `signatureType`: An enum value of IOSSignatureType.
+    - `useDeviceCredentials`: A `bool` to indicate whether Device Credentials' fallback support is needed.
+    - `signatureType`: An enum value of `IOSSignatureType`.
 
 - **Returns**: `String` - The base64 encoded public key.
 
 - **Error Codes**:
 
-- `AUTH_FAILED`: Error generating public-private keys.
+- `AUTH_FAILED`: Error generating keys.
+- `CANCELLED`: Timed out waiting for 30_000 ms.
 
 ### `createSignature(SignatureOptions options)`
 
@@ -127,17 +128,19 @@ Prompts the user for biometric authentication and generates a cryptographic sign
 
 - **Error Codes**:
 
+- `INVALID_PAYLOAD`: Payload is required and must be valid UTF-8.
 - `AUTH_FAILED`: Error generating the signature.
+- `CANCELLED`: Timed out waiting for 30_000 ms.
 
 ### `deleteKeys()`
 
 Deletes the existing key pair used for biometric authentication.
 
-- **Returns**: `Boolean` - `true` if the key was successfully deleted, `false` otherwise.
+- **Returns**: `Bool` - `true` if the key was successfully deleted.
 
 - **Error Codes**:
 
-- `AUTH_FAILED`: Error deleting the biometric key from the keystore.
+- `AUTH_FAILED`: Error deleting the biometric key
 
 ### `biometricAuthAvailable()`
 
@@ -145,7 +148,7 @@ Checks if biometric authentication is available on the device. On Android, it sp
 
 - **Returns**: `String` - The type of biometric authentication available (`fingerprint`, `face`, `iris`, `TouchID`, `FaceID`, or `biometric`) or a string indicating the error if no biometrics are available.
 
-- **Error Values**:
+- **Possible negative returns in Android**:
 
 - `none, BIOMETRIC_ERROR_NO_HARDWARE`: No biometric hardware available.
 
@@ -161,13 +164,13 @@ Checks if biometric authentication is available on the device. On Android, it sp
 
 - `none, NO_BIOMETRICS`: No biometrics.
 
-### `biometricKeyExists(checkValidity: Boolean)`
+### `biometricKeyExists(checkValidity: Bool)`
 
 Checks if the biometric key pair exists on the device. Optionally, it can also verify the validity of the key by attempting to initialize a signature with it. The key will become irreversibly invalidated once the secure lock screen is disabled (reconfigured to None, Swipe or other mode which does not authenticate the user) or when the secure lock screen is forcibly reset (e.g., by a Device Administrator). Since the key requires that user authentication takes place for every use of the key, it is also irreversibly invalidated once a new biometric is enrolled or once no more biometrics are enrolled.
 
 -   **Parameters**:
-    -   `checkValidity`: A boolean indicating whether to check the validity of the key by initializing a signature. Default is `false`.
--   **Returns**: `Boolean` - `true` if the key pair exists (and is valid if `checkValidity` is `true`), `false` otherwise.
+    -   `checkValidity`: A bool indicating whether to check the validity of the key by initializing a signature. Default is `false`.
+-   **Returns**: `Bool` - `true` if the key pair exists (and is valid if `checkValidity` is `true`), `false` otherwise.
 -   **Error Codes**:
     -   `AUTH_FAILED`: Error checking if the biometric key exists.
 
