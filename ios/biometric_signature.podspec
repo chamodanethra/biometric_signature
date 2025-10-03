@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'biometric_signature'
-  s.version          = '7.0.3'
+  s.version          = '7.0.4'
   s.summary          = 'A new Flutter plugin project.'
   s.description      = <<-DESC
 A new Flutter plugin project.

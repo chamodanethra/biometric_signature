@@ -22,7 +22,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^7.0.3
+  biometric_signature: ^7.0.4
 ```
 
 |             | Android | iOS   |
@@ -164,7 +164,7 @@ Checks if biometric authentication is available on the device. On Android, it sp
 
 - `none, NO_BIOMETRICS`: No biometrics.
 
-### `biometricKeyExists(checkValidity: Bool)`
+### `biometricKeyExists(checkValidity: bool)`
 
 Checks if the biometric key pair exists on the device. Optionally, it can also verify the validity of the key by attempting to initialize a signature with it. The key will become irreversibly invalidated once the secure lock screen is disabled (reconfigured to None, Swipe or other mode which does not authenticate the user) or when the secure lock screen is forcibly reset (e.g., by a Device Administrator). Since the key requires that user authentication takes place for every use of the key, it is also irreversibly invalidated once a new biometric is enrolled or once no more biometrics are enrolled.
 
