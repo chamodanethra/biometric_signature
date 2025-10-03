@@ -1,6 +1,7 @@
 ## [7.0.4] - 2025-10-03
 * ReadMe.md updates.
-* Reverting back to previous iOS IPHONEOS_DEPLOYMENT_TARGET(12.0)
+* Reverting back to previous iOS IPHONEOS_DEPLOYMENT_TARGET(12.0).
+* Added 3 practical-world examples.
 
 ## [7.0.3] - 2025-09-28
 * Updating documentations.
