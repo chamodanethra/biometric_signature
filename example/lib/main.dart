@@ -97,7 +97,7 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
         androidOptions: const AndroidSignatureOptions(
           allowDeviceCredentials: true,
         ),
-        iosOptions: const IosSignatureOptions(shouldMigrate: true),
+        iosOptions: const IosSignatureOptions(shouldMigrate: false),
       ),
     );
     setState(() {

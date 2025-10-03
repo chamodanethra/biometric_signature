@@ -27,7 +27,7 @@ dependencies:
 
 |             | Android | iOS   |
 |-------------|---------|-------|
-| **Support** | SDK 23+ | 13.0+ |
+| **Support** | SDK 23+ | 12.0+ |
 
 ### iOS Integration
 
