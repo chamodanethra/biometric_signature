@@ -168,13 +168,16 @@ All examples demonstrate:
 
 ### Initialize Biometric Service
 ```dart
+import 'package:biometric_signature/key_material.dart';
+
 final biometric = BiometricSignature();
 
 // Check availability
 final available = await biometric.biometricAuthAvailable();
 
 // Create keys
-final publicKey = await biometric.createKeys(
+final keyResult = await biometric.createKeys(
+  keyFormat: KeyFormat.pem,
   androidConfig: AndroidConfig(
     useDeviceCredentials: false,
     signatureType: AndroidSignatureType.RSA,
@@ -184,22 +187,28 @@ final publicKey = await biometric.createKeys(
     signatureType: IOSSignatureType.RSA,
   ),
 );
+
+final pemPublicKey = keyResult?.publicKey.asString();
 ```
 
 ### Sign Data
 ```dart
-final signature = await biometric.createSignature(
+final signatureResult = await biometric.createSignature(
   SignatureOptions(
     payload: 'data_to_sign',
     promptMessage: 'Authenticate to continue',
+    keyFormat: KeyFormat.raw,
   ),
 );
+
+final signatureBase64 = signatureResult?.signature.toBase64();
 ```
 
 ### Error Handling
 ```dart
 try {
-  final signature = await biometric.createSignature(options);
+  final signatureResult = await biometric.createSignature(options);
+  final signatureHex = signatureResult?.signature.toHex();
 } on PlatformException catch (e) {
   if (e.code == 'AUTH_FAILED') {
     // Handle authentication failure
@@ -229,4 +238,3 @@ Found an issue or want to improve an example? Contributions are welcome!
 ## 📄 License
 
 These examples are part of the biometric_signature plugin and follow the same license.
-

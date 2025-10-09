@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:math';
-import 'package:crypto/crypto.dart';
 import 'package:passwordless_login_example/models/user.dart';
 import 'package:passwordless_login_example/models/auth_challenge.dart';
 import 'package:biometric_signature/biometric_signature.dart';
@@ -8,7 +7,6 @@ import 'package:biometric_signature/signature_options.dart';
 import 'package:biometric_signature/android_config.dart';
 import 'package:biometric_signature/ios_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/services.dart';
 
 /// Simulates a backend authentication service
 /// In production, replace with actual REST API calls
@@ -30,7 +28,7 @@ class AuthService {
     }
 
     // Generate biometric keys
-    final publicKey = await _biometric.createKeys(
+    final keyResult = await _biometric.createKeys(
       androidConfig: AndroidConfig(
         useDeviceCredentials: false,
         signatureType: AndroidSignatureType.RSA,
@@ -41,9 +39,11 @@ class AuthService {
       ),
     );
 
-    if (publicKey == null) {
+    if (keyResult == null) {
       throw Exception('Failed to generate cryptographic keys');
     }
+
+    final publicKey = keyResult.publicKey.toBase64();
 
     // Create user
     final user = User(
@@ -110,7 +110,7 @@ class AuthService {
     }
 
     // Sign challenge with biometric
-    final signature = await _biometric.createSignature(
+    final signatureResult = await _biometric.createSignature(
       SignatureOptions(
         payload: challenge.nonce,
         promptMessage: 'Login as $username',
@@ -123,6 +123,8 @@ class AuthService {
         ),
       ),
     );
+
+    final signature = signatureResult?.signature.toBase64();
 
     if (signature == null) {
       throw Exception('Authentication failed');
