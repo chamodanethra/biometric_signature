@@ -118,6 +118,7 @@ Prompts the user for biometric authentication and generates a cryptographic sign
 - `options`: A `SignatureOptions` instance that specifies:
   - `payload` (required): The UTF-8 payload to sign.
   - `promptTitle` (optional): Message displayed in the biometric prompt. Default to `Authenticate`.
+  - `promptSubtitle` (optional): Smaller message displayed in the biometric prompt. Default is null/empty.
   - `androidOptions` (optional): An `AndroidSignatureOptions` object offering:
     - `cancelButtonText`: Overrides the cancel button label. Defaults to `Cancel`.
     - `allowDeviceCredentials`: Enables device-credential fallback on compatible Android devices.
@@ -215,6 +216,7 @@ class BiometricAuthButton extends StatelessWidget {
               SignatureOptions(
                 payload: "Payload to sign",
                 promptTitle: "You are Welcome!",
+                promptSubtitle "yes you are",
                 androidOptions: const AndroidSignatureOptions(
                   allowDeviceCredentials: true,
                 ),
