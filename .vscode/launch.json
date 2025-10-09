@@ -5,23 +5,6 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "flutter_biometric_signature",
-            "request": "launch",
-            "type": "dart"
-        },
-        {
-            "name": "flutter_biometric_signature (profile mode)",
-            "request": "launch",
-            "type": "dart",
-            "flutterMode": "profile"
-        },
-        {
-            "name": "flutter_biometric_signature (release mode)",
-            "request": "launch",
-            "type": "dart",
-            "flutterMode": "release"
-        },
-        {
             "name": "banking_app",
             "cwd": "banking_app",
             "request": "launch",
