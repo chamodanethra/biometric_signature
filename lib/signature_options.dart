@@ -1,3 +1,5 @@
+import 'key_material.dart';
+
 /// Options that control how a signature request behaves on each platform.
 class SignatureOptions {
   /// Creates a new [SignatureOptions] instance.
@@ -6,6 +8,7 @@ class SignatureOptions {
     this.promptMessage,
     this.androidOptions,
     this.iosOptions,
+    this.keyFormat = KeyFormat.base64,
   });
 
   /// Payload string that will be signed and returned in the response.
@@ -20,11 +23,15 @@ class SignatureOptions {
   /// Platform-specific overrides for iOS.
   final IosSignatureOptions? iosOptions;
 
+  /// Preferred output format for both public key and signature.
+  final KeyFormat keyFormat;
+
   /// Converts the options into a flat map that the method channel expects.
   Map<String, dynamic> toMethodChannelMap() {
     final Map<String, dynamic> map = {
       'payload': payload,
       if (promptMessage != null) 'promptMessage': promptMessage,
+      'keyFormat': keyFormat.wireValue,
     };
 
     if (androidOptions != null) {
@@ -36,30 +43,6 @@ class SignatureOptions {
     }
 
     return map;
-  }
-
-  /// Creates a [SignatureOptions] instance from the legacy plugin map API.
-  factory SignatureOptions.fromLegacyMap(Map<String, String> legacy) {
-    final String? payload = legacy['payload'];
-    if (payload == null) {
-      throw ArgumentError('`payload` is required to create SignatureOptions');
-    }
-
-    final android = AndroidSignatureOptions(
-      cancelButtonText: legacy['cancelButtonText'],
-      allowDeviceCredentials: _parseBool(legacy['allowDeviceCredentials']),
-    );
-
-    final ios = IosSignatureOptions(
-      shouldMigrate: _parseBool(legacy['shouldMigrate']),
-    );
-
-    return SignatureOptions(
-      payload: payload,
-      promptMessage: legacy['promptMessage'],
-      androidOptions: android.hasValues ? android : null,
-      iosOptions: ios.hasValues ? ios : null,
-    );
   }
 }
 
@@ -105,19 +88,5 @@ class IosSignatureOptions {
   /// Converts iOS-specific options to a method-channel friendly map.
   Map<String, dynamic> toMethodChannelMap() {
     return {if (shouldMigrate != null) 'shouldMigrate': shouldMigrate};
-  }
-}
-
-bool? _parseBool(String? value) {
-  if (value == null) {
-    return null;
-  }
-  switch (value.toLowerCase()) {
-    case 'true':
-      return true;
-    case 'false':
-      return false;
-    default:
-      return null;
   }
 }

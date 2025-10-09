@@ -1,5 +1,5 @@
 PODS:
-  - biometric_signature (7.0.4):
+  - biometric_signature (8.0.0):
     - Flutter
   - Flutter (1.0.0)
   - shared_preferences_foundation (0.0.1):
@@ -20,7 +20,7 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
 
 SPEC CHECKSUMS:
-  biometric_signature: 2154a7da7e4862eefce99212658f4f456c223260
+  biometric_signature: 78e1e05cd887f1ebfc4e31d842839f045a6b5890
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
   shared_preferences_foundation: fcdcbc04712aee1108ac7fda236f363274528f78
 

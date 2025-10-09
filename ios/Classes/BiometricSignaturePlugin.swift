@@ -6,9 +6,39 @@ import Security
 private enum Constants {
     static let authFailed = "AUTH_FAILED"
     static let invalidPayload = "INVALID_PAYLOAD"
+    static let invalidArguments = "INVALID_ARGUMENTS"
     static let biometricKeyAlias = "biometric_key"
     static let ecKeyAlias = "com.visionflutter.eckey".data(using: .utf8)!
 }
+
+private enum KeyFormat: String {
+    case base64 = "BASE64"
+    case pem = "PEM"
+    case raw = "RAW"
+    case hex = "HEX"
+
+    static func from(_ raw: Any?) -> KeyFormat {
+        guard let string = raw as? String,
+              let format = KeyFormat(rawValue: string.uppercased()) else {
+            return .base64
+        }
+        return format
+    }
+
+    var channelValue: String { rawValue }
+}
+
+private struct FormattedOutput {
+    let value: Any
+    let format: KeyFormat
+    let pemLabel: String?
+}
+
+private let iso8601Formatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter
+}()
 
 // MARK: - Domain State (biometry change detection)
 private enum DomainState {
@@ -89,12 +119,15 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             if let arguments = call.arguments as? [String: Any] {
                 let useDeviceCredentials = arguments["useDeviceCredentials"] as? Bool ?? false
                 let useEc = arguments["useEc"] as? Bool ?? false
-                createKeys(useDeviceCredentials: useDeviceCredentials, useEc: useEc, result: result)
-            } else if let useDeviceCredentials = call.arguments as? Bool {
-                // Backward compatibility
-                createKeys(useDeviceCredentials: useDeviceCredentials, useEc: false, result: result)
+                let keyFormat = KeyFormat.from(arguments["keyFormat"])
+                createKeys(
+                    useDeviceCredentials: useDeviceCredentials,
+                    useEc: useEc,
+                    keyFormat: keyFormat,
+                    result: result
+                )
             } else {
-                result(FlutterError(code: Constants.invalidPayload, message: "Invalid arguments", details: nil))
+                result(FlutterError(code: Constants.invalidArguments, message: "Invalid arguments", details: nil))
             }
         case "createSignature":
             createSignature(options: call.arguments as? [String: Any], result: result)
@@ -188,7 +221,12 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         _ = DomainState.deleteSaved()
     }
 
-    private func createKeys(useDeviceCredentials: Bool, useEc: Bool, result: @escaping FlutterResult) {
+    private func createKeys(
+        useDeviceCredentials: Bool,
+        useEc: Bool,
+        keyFormat: KeyFormat,
+        result: @escaping FlutterResult
+    ) {
         // Delete existing keys (and baseline)
         deleteExistingKeys()
 
@@ -243,9 +281,14 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         DomainState.saveCurrent()
 
         if useEc {
-            // EC-only: return EC public key (X9.63 uncompressed + header)
-            let publicKeyString = getPublicKeyString(ecPublicKey)
-            dispatchMainAsync { result(publicKeyString) }
+            // EC-only: return EC public key
+            guard let response = buildKeyResponse(publicKey: ecPublicKey, format: keyFormat, algorithm: "EC") else {
+                dispatchMainAsync {
+                    result(FlutterError(code: Constants.authFailed, message: "Failed to encode EC public key", details: nil))
+                }
+                return
+            }
+            dispatchMainAsync { result(response) }
             return
         }
 
@@ -307,13 +350,18 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             return
         }
 
-        // Get RSA public key data
-        let publicKeyString = getPublicKeyString(rsaPublicKey)
-        dispatchMainAsync { result(publicKeyString) }
+        guard let response = buildKeyResponse(publicKey: rsaPublicKey, format: keyFormat, algorithm: "RSA") else {
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.authFailed, message: "Failed to encode RSA public key", details: nil))
+            }
+            return
+        }
+        dispatchMainAsync { result(response) }
     }
 
     private func createSignature(options: [String: Any]?, result: @escaping FlutterResult) {
         let promptMessage = (options?["promptMessage"] as? String) ?? "Authenticate"
+        let keyFormat = KeyFormat.from(options?["keyFormat"])
         guard let payload = options?["payload"] as? String,
               let dataToSign = payload.data(using: .utf8) else {
             dispatchMainAsync {
@@ -336,10 +384,15 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         if status != errSecSuccess {
             let shouldMigrate = parseBool(options?["shouldMigrate"]) ?? false
             if shouldMigrate {
-                self.migrateToSecureEnclave(options: options, result: result)
+                self.migrateToSecureEnclave(options: options, keyFormat: keyFormat, result: result)
             } else {
                 // No RSA: EC-only signing
-                createECSignature(dataToSign: dataToSign, promptMessage: promptMessage, result: result)
+                createECSignature(
+                    dataToSign: dataToSign,
+                    promptMessage: promptMessage,
+                    keyFormat: keyFormat,
+                    result: result
+                )
             }
             return
         }
@@ -429,11 +482,34 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
 
         // 6. Zero the decrypted RSA private key bytes in memory
         rsaPrivateKeyData.resetBytes(in: 0..<rsaPrivateKeyData.count)
+        guard let rsaPublicKey = SecKeyCopyPublicKey(rsaPrivateKey) else {
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.authFailed, message: "RSA public key not found", details: nil))
+            }
+            return
+        }
 
-        dispatchMainAsync { result(signature.base64EncodedString()) }
+        guard let response = buildSignatureResponse(
+            publicKey: rsaPublicKey,
+            signature: signature,
+            algorithm: "RSA",
+            format: keyFormat
+        ) else {
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.authFailed, message: "Failed to format RSA signature", details: nil))
+            }
+            return
+        }
+
+        dispatchMainAsync { result(response) }
     }
 
-    private func createECSignature(dataToSign: Data, promptMessage: String, result: @escaping FlutterResult) {
+    private func createECSignature(
+        dataToSign: Data,
+        promptMessage: String,
+        keyFormat: KeyFormat,
+        result: @escaping FlutterResult
+    ) {
         // Retrieve EC private key from Secure Enclave
         let ecTag = Constants.ecKeyAlias
         let ecKeyQuery: [String: Any] = [
@@ -453,6 +529,13 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         }
         let ecPrivateKey = ecPrivateKeyRef as! SecKey
 
+        guard let ecPublicKey = SecKeyCopyPublicKey(ecPrivateKey) else {
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.authFailed, message: "EC public key not found", details: nil))
+            }
+            return
+        }
+
         // Sign data with EC private key
         let signAlgorithm = SecKeyAlgorithm.ecdsaSignatureMessageX962SHA256
         guard SecKeyIsAlgorithmSupported(ecPrivateKey, .sign, signAlgorithm) else {
@@ -470,11 +553,26 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             }
             return
         }
+        guard let response = buildSignatureResponse(
+            publicKey: ecPublicKey,
+            signature: signature,
+            algorithm: "EC",
+            format: keyFormat
+        ) else {
+            dispatchMainAsync {
+                result(FlutterError(code: Constants.authFailed, message: "Failed to format EC signature", details: nil))
+            }
+            return
+        }
 
-        dispatchMainAsync { result(signature.base64EncodedString()) }
+        dispatchMainAsync { result(response) }
     }
 
-    private func migrateToSecureEnclave(options: [String: Any]?, result: @escaping FlutterResult) {
+    private func migrateToSecureEnclave(
+        options: [String: Any]?,
+        keyFormat: KeyFormat,
+        result: @escaping FlutterResult
+    ) {
         // Generate EC key pair in Secure Enclave
         let ecAccessControl = SecAccessControlCreateWithFlags(
             kCFAllocatorDefault,
@@ -580,10 +678,111 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         SecItemDelete(unencryptedKeyQuery as CFDictionary)
         rsaPrivateKeyData.resetBytes(in: 0..<rsaPrivateKeyData.count)
 
-        var modOptions = options
-        modOptions?["shouldMigrate"] = false
+        var modOptions = options ?? [:]
+        modOptions["shouldMigrate"] = false
+        modOptions["keyFormat"] = keyFormat.channelValue
         self.createSignature(options: modOptions, result: result)
         return
+    }
+
+    private func buildKeyResponse(publicKey: SecKey, format: KeyFormat, algorithm: String) -> [String: Any]? {
+        guard let formatted = formatPublicKey(publicKey, format: format) else { return nil }
+        var response: [String: Any] = [
+            "publicKey": formatted.value,
+            "publicKeyFormat": formatted.format.channelValue,
+            "algorithm": algorithm,
+            "keySize": keySizeInBits(publicKey),
+            "keyFormat": format.channelValue
+        ]
+        if let label = formatted.pemLabel {
+            response["publicKeyPemLabel"] = label
+        }
+        return response
+    }
+
+    private func buildSignatureResponse(publicKey: SecKey, signature: Data, algorithm: String, format: KeyFormat) -> [String: Any]? {
+        guard let formattedKey = formatPublicKey(publicKey, format: format) else { return nil }
+        let formattedSignature = formatSignature(signature, format: format)
+        var response: [String: Any] = [
+            "publicKey": formattedKey.value,
+            "publicKeyFormat": formattedKey.format.channelValue,
+            "signature": formattedSignature.value,
+            "signatureFormat": formattedSignature.format.channelValue,
+            "algorithm": algorithm,
+            "keySize": keySizeInBits(publicKey),
+            "timestamp": isoTimestamp(),
+            "keyFormat": format.channelValue
+        ]
+        if let keyLabel = formattedKey.pemLabel {
+            response["publicKeyPemLabel"] = keyLabel
+        }
+        if let signatureLabel = formattedSignature.pemLabel {
+            response["signaturePemLabel"] = signatureLabel
+        }
+        return response
+    }
+
+    private func formatPublicKey(_ key: SecKey, format: KeyFormat) -> FormattedOutput? {
+        guard let data = subjectPublicKeyInfo(for: key) else { return nil }
+        return formatData(data, format: format, pemLabel: "PUBLIC KEY")
+    }
+
+    private func formatSignature(_ data: Data, format: KeyFormat) -> FormattedOutput {
+        return formatData(data, format: format, pemLabel: "SIGNATURE")
+    }
+
+    private func formatData(_ data: Data, format: KeyFormat, pemLabel: String) -> FormattedOutput {
+        switch format {
+        case .base64:
+            return FormattedOutput(value: data.base64EncodedString(), format: .base64, pemLabel: nil)
+        case .hex:
+            return FormattedOutput(value: hexString(from: data), format: .hex, pemLabel: nil)
+        case .raw:
+            return FormattedOutput(value: FlutterStandardTypedData(bytes: data), format: .raw, pemLabel: nil)
+        case .pem:
+            let body = chunkedBase64(data.base64EncodedString())
+            let pem = "-----BEGIN \(pemLabel)-----\n\(body)\n-----END \(pemLabel)-----"
+            return FormattedOutput(value: pem, format: .pem, pemLabel: pemLabel)
+        }
+    }
+
+    private func subjectPublicKeyInfo(for key: SecKey) -> Data? {
+        var error: Unmanaged<CFError>?
+        guard let publicKeyData = SecKeyCopyExternalRepresentation(key, &error) as Data? else {
+            return nil
+        }
+        let attributes = SecKeyCopyAttributes(key) as? [String: Any]
+        let keyType = attributes?[kSecAttrKeyType as String] as? String
+        let isEc = keyType == (kSecAttrKeyTypeECSECPrimeRandom as String) || publicKeyData.count == 65
+        return BiometricSignaturePlugin.addHeader(publicKeyData: publicKeyData, isEc: isEc)
+    }
+
+    private func keySizeInBits(_ key: SecKey) -> Int {
+        guard let attributes = SecKeyCopyAttributes(key) as? [String: Any],
+              let bits = attributes[kSecAttrKeySizeInBits as String] as? Int else {
+            return 0
+        }
+        return bits
+    }
+
+    private func isoTimestamp() -> String {
+        return iso8601Formatter.string(from: Date())
+    }
+
+    private func chunkedBase64(_ string: String, chunkSize: Int = 64) -> String {
+        guard !string.isEmpty else { return string }
+        var chunks: [String] = []
+        var index = string.startIndex
+        while index < string.endIndex {
+            let end = string.index(index, offsetBy: chunkSize, limitedBy: string.endIndex) ?? string.endIndex
+            chunks.append(String(string[index..<end]))
+            index = end
+        }
+        return chunks.joined(separator: "\n")
+    }
+
+    private func hexString(from data: Data) -> String {
+        return data.map { String(format: "%02x", $0) }.joined()
     }
 
     private func parseBool(_ value: Any?) -> Bool? {
@@ -651,17 +850,6 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
     private func getBiometricKeyTag() -> Data {
         let BIOMETRIC_KEY_ALIAS = Constants.biometricKeyAlias
         return BIOMETRIC_KEY_ALIAS.data(using: .utf8)!
-    }
-
-    private func getPublicKeyString(_ publicKey: SecKey) -> String {
-        var error: Unmanaged<CFError>?
-        if let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, &error) as Data? {
-            // Check if it's an EC key by looking at the key size (EC keys are typically 65 bytes for secp256r1)
-            let isEc = publicKeyData.count == 65
-            let withHeader = BiometricSignaturePlugin.addHeader(publicKeyData: publicKeyData, isEc: isEc)
-            return withHeader?.base64EncodedString() ?? ""
-        }
-        return ""
     }
 
     private static let encodedRSAEncryptionOID: [UInt8] = [

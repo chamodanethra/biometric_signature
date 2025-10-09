@@ -2,9 +2,9 @@ name: biometric_signature
 description: Hardware-backed biometric authentication for Flutter. Create cryptographic signatures using device biometrics with keys stored in Secure Enclave/StrongBox.
 topics: [biometrics, secure-enclave, strongbox, rsa, ecdsa]
 screenshots:
-  - description: "General use-case"
-    path: assets/usecase.png
-version: 7.0.4
+  - description: "Logo"
+    path: assets/logo.png
+version: 8.0.0
 homepage: https://github.com/chamodanethra/biometric_signature
 
 environment:

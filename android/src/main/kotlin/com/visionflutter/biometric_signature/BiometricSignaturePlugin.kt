@@ -29,9 +29,14 @@ import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.Signature
+import java.security.interfaces.ECPublicKey
+import java.security.interfaces.RSAPublicKey
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.RSAKeyGenParameterSpec
+import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.Date
+import java.util.TimeZone
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -43,6 +48,38 @@ const val BIOMETRIC_KEY_ALIAS = "biometric_key"
 // Optional timeouts to keep blocking operations bounded (biometric prompt stays user-driven)
 private const val KEYGEN_TIMEOUT_MS = 30_000L
 private const val SIGN_TIMEOUT_MS = 30_000L
+
+private enum class KeyFormat {
+    BASE64,
+    PEM,
+    RAW,
+    HEX;
+
+    companion object {
+        fun from(raw: Any?): KeyFormat {
+            val normalized = (raw as? String)?.uppercase(Locale.US)
+            return when (normalized) {
+                "PEM" -> PEM
+                "RAW" -> RAW
+                "HEX" -> HEX
+                else -> BASE64
+            }
+        }
+    }
+}
+
+private data class FormattedOutput(
+    val value: Any,
+    val format: KeyFormat,
+    val pemLabel: String? = null,
+)
+
+private data class SigningSetup(
+    val cryptoObject: BiometricPrompt.CryptoObject,
+    val algorithm: String,
+    val publicKey: PublicKey,
+    val privateKey: PrivateKey,
+)
 
 class BiometricSignaturePlugin :
     FlutterPlugin,
@@ -114,15 +151,21 @@ class BiometricSignaturePlugin :
                 val args = call.arguments<Map<String, Any?>>() ?: emptyMap()
                 val useDeviceCredentials = (args["useDeviceCredentials"] as? Boolean) == true
                 val useEc = (args["useEc"] as? Boolean) == true
+                val keyFormat = KeyFormat.from(args["keyFormat"])
 
                 pluginScope.launch {
                     try {
-                        val publicKeyB64 = withTimeout(KEYGEN_TIMEOUT_MS) {
+                        val payload = withTimeout(KEYGEN_TIMEOUT_MS) {
                             withContext(Dispatchers.IO) {
-                                generateKeyPairAndReturnPublicKeyB64(act, useEc, useDeviceCredentials)
+                                generateKeyMaterial(
+                                    ctx = act,
+                                    useEc = useEc,
+                                    useDeviceCredentials = useDeviceCredentials,
+                                    format = keyFormat,
+                                )
                             }
                         }
-                        withContext(Dispatchers.Main.immediate) { result.success(publicKeyB64) }
+                        withContext(Dispatchers.Main.immediate) { result.success(payload) }
                     } catch (ce: CancellationException) {
                         withContext(Dispatchers.Main.immediate) {
                             result.error(CANCELLED, ce.message ?: "Operation cancelled", null)
@@ -150,6 +193,7 @@ class BiometricSignaturePlugin :
                     is String -> raw.equals("true", ignoreCase = true)
                     else -> false
                 }
+                val keyFormat = KeyFormat.from(options["keyFormat"])
 
                 pluginScope.launch {
                     try {
@@ -160,18 +204,26 @@ class BiometricSignaturePlugin :
                             return@launch
                         }
 
-                        // Load private key & create Signature/CryptoObject off main thread
-                        val (algo, cryptoObject) = withContext(Dispatchers.IO) {
+                        // Load private/public key & create Signature/CryptoObject off main thread
+                        val signingSetup = withContext(Dispatchers.IO) {
                             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-                            val privateKey = keyStore.getKey(BIOMETRIC_KEY_ALIAS, null) as? PrivateKey
+                            val entry = keyStore.getEntry(BIOMETRIC_KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry
                                 ?: throw IllegalStateException("Private key not found. Call createKeys() first.")
+                            val privateKey = entry.privateKey
+                            val publicKey = entry.certificate?.publicKey
+                                ?: throw IllegalStateException("Public key not found for alias $BIOMETRIC_KEY_ALIAS")
                             val sigAlgo = when (privateKey.algorithm.uppercase(Locale.US)) {
                                 "EC" -> "SHA256withECDSA"
                                 "RSA" -> "SHA256withRSA"
                                 else -> throw IllegalStateException("Unsupported key algo: ${privateKey.algorithm}")
                             }
                             val signature = Signature.getInstance(sigAlgo).apply { initSign(privateKey) }
-                            sigAlgo to BiometricPrompt.CryptoObject(signature)
+                            SigningSetup(
+                                cryptoObject = BiometricPrompt.CryptoObject(signature),
+                                algorithm = sigAlgo,
+                                publicKey = publicKey,
+                                privateKey = privateKey,
+                            )
                         }
 
                         val authenticators =
@@ -207,22 +259,37 @@ class BiometricSignaturePlugin :
                         }
 
                         val promptInfo = promptInfoBuilder.build()
+                        val cryptoObject = signingSetup.cryptoObject
 
                         // Show biometric prompt and await result (Main executor inside, suspension via continuation)
                         val authResult = authenticateWithBiometric(act, promptInfo, cryptoObject)
 
                         // Sign payload (bounded)
-                        val signatureBase64 = withTimeout(SIGN_TIMEOUT_MS) {
+                        val signatureBytes = withTimeout(SIGN_TIMEOUT_MS) {
                             withContext(Dispatchers.IO) {
                                 val sig = authResult.cryptoObject?.signature
                                     ?: throw IllegalStateException("No signature object returned")
                                 sig.update(payload.toByteArray(Charsets.UTF_8))
-                                val signed = sig.sign()
-                                Base64.encodeToString(signed, Base64.NO_WRAP)
+                                sig.sign()
                             }
                         }
 
-                        withContext(Dispatchers.Main.immediate) { result.success(signatureBase64) }
+                        val formattedSignature = formatValue(signatureBytes, keyFormat, "SIGNATURE")
+                        val formattedPublicKey = formatValue(signingSetup.publicKey.encoded, keyFormat)
+                        val response = hashMapOf<String, Any?>(
+                            "publicKey" to formattedPublicKey.value,
+                            "publicKeyFormat" to formattedPublicKey.format.name,
+                            "signature" to formattedSignature.value,
+                            "signatureFormat" to formattedSignature.format.name,
+                            "algorithm" to signingSetup.privateKey.algorithm.uppercase(Locale.US),
+                            "keySize" to keySizeBits(signingSetup.publicKey),
+                            "timestamp" to isoTimestamp(),
+                            "keyFormat" to keyFormat.name,
+                        )
+                        formattedPublicKey.pemLabel?.let { response["publicKeyPemLabel"] = it }
+                        formattedSignature.pemLabel?.let { response["signaturePemLabel"] = it }
+
+                        withContext(Dispatchers.Main.immediate) { result.success(response) }
                     } catch (ce: CancellationException) {
                         withContext(Dispatchers.Main.immediate) {
                             result.error(CANCELLED, ce.message ?: "Operation cancelled", null)
@@ -354,11 +421,36 @@ class BiometricSignaturePlugin :
     // ---------- Keystore helpers ----------
 
     @Throws(Exception::class)
-    private fun generateKeyPairAndReturnPublicKeyB64(
+    private fun generateKeyMaterial(
         ctx: Context,
         useEc: Boolean,
-        useDeviceCredentials: Boolean
-    ): String {
+        useDeviceCredentials: Boolean,
+        format: KeyFormat,
+    ): Map<String, Any?> {
+        val keyPair = generateKeyPair(
+            ctx = ctx,
+            useEc = useEc,
+            useDeviceCredentials = useDeviceCredentials,
+        )
+        val publicKey = keyPair.public
+        val formatted = formatValue(publicKey.encoded, format)
+        val response = hashMapOf<String, Any?>(
+            "publicKey" to formatted.value,
+            "publicKeyFormat" to formatted.format.name,
+            "algorithm" to publicKey.algorithm.uppercase(Locale.US),
+            "keySize" to keySizeBits(publicKey),
+            "keyFormat" to format.name,
+        )
+        formatted.pemLabel?.let { response["publicKeyPemLabel"] = it }
+        return response
+    }
+
+    @Throws(Exception::class)
+    private fun generateKeyPair(
+        ctx: Context,
+        useEc: Boolean,
+        useDeviceCredentials: Boolean,
+    ): KeyPair {
         deleteBiometricKey()
 
         val algorithm = if (useEc) KeyProperties.KEY_ALGORITHM_EC else KeyProperties.KEY_ALGORITHM_RSA
@@ -399,16 +491,62 @@ class BiometricSignaturePlugin :
         }
 
         kpg.initialize(builder.build())
-        val kp: KeyPair = kpg.generateKeyPair()
-        val publicKey: PublicKey = kp.public
-        val raw = publicKey.encoded
-        return Base64.encodeToString(raw, Base64.NO_WRAP)
+        return kpg.generateKeyPair()
     }
 
     private fun isValidUTF8(payload: String): Boolean = try {
         payload.toByteArray(Charsets.UTF_8); true
     } catch (_: Exception) {
         false
+    }
+
+    private fun formatValue(bytes: ByteArray, format: KeyFormat, pemLabel: String = "PUBLIC KEY"): FormattedOutput {
+        return when (format) {
+            KeyFormat.BASE64 -> FormattedOutput(
+                value = Base64.encodeToString(bytes, Base64.NO_WRAP),
+                format = KeyFormat.BASE64,
+            )
+            KeyFormat.HEX -> FormattedOutput(
+                value = bytes.joinToString(separator = "") { String.format("%02x", it) },
+                format = KeyFormat.HEX,
+            )
+            KeyFormat.RAW -> FormattedOutput(
+                value = bytes,
+                format = KeyFormat.RAW,
+            )
+            KeyFormat.PEM -> {
+                val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                val body = chunkBase64(base64)
+                val pem = "-----BEGIN $pemLabel-----\n$body\n-----END $pemLabel-----"
+                FormattedOutput(value = pem, format = KeyFormat.PEM, pemLabel = pemLabel)
+            }
+        }
+    }
+
+    private fun chunkBase64(base64: String, chunk: Int = 64): String {
+        if (base64.isEmpty()) return base64
+        val builder = StringBuilder()
+        var index = 0
+        while (index < base64.length) {
+            val end = minOf(index + chunk, base64.length)
+            builder.append(base64.substring(index, end)).append('\n')
+            index = end
+        }
+        return builder.toString().trimEnd()
+    }
+
+    private fun keySizeBits(publicKey: PublicKey): Int {
+        return when (publicKey) {
+            is RSAPublicKey -> publicKey.modulus.bitLength()
+            is ECPublicKey -> publicKey.params.order.bitLength()
+            else -> 0
+        }
+    }
+
+    private fun isoTimestamp(): String {
+        val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+        formatter.timeZone = TimeZone.getTimeZone("UTC")
+        return formatter.format(Date())
     }
 
     private fun doesBiometricKeyExist(checkValidity: Boolean = false): Boolean {

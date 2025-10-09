@@ -1,8 +1,8 @@
 import 'package:biometric_signature/android_config.dart';
-import 'package:biometric_signature/ios_config.dart';
-import 'package:flutter/material.dart';
 import 'package:biometric_signature/biometric_signature.dart';
+import 'package:biometric_signature/ios_config.dart';
 import 'package:biometric_signature/signature_options.dart';
+import 'package:flutter/material.dart';
 
 void main() {
   runApp(const MyApp());
@@ -33,12 +33,12 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
   final _biometricSignature = BiometricSignature();
 
   bool useEc = true;
-  String? publicKey;
+  KeyCreationResult? keyMaterial;
+  SignatureResult? signatureResult;
   String? payload;
-  String? signature;
 
-  void _createPublicKey() async {
-    final String? publicKey = await _biometricSignature.createKeys(
+  Future<void> _createPublicKey() async {
+    final result = await _biometricSignature.createKeys(
       androidConfig: AndroidConfig(
         useDeviceCredentials: true,
         signatureType: useEc
@@ -50,23 +50,23 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
         signatureType: useEc ? IOSSignatureType.ECDSA : IOSSignatureType.RSA,
       ),
     );
-    setState(() {
-      this.publicKey = publicKey;
-    });
-    debugPrint("publicKey : $publicKey");
+    setState(() => keyMaterial = result);
+    if (result != null) {
+      final display =
+          result.publicKey.asString() ?? result.publicKey.toBase64();
+      debugPrint('publicKey (${result.publicKey.format.wireValue}): $display');
+    }
     debugPrint(await _biometricSignature.biometricAuthAvailable());
   }
 
   void _toggleEc(bool newValue) {
-    setState(() {
-      useEc = newValue;
-    });
+    setState(() => useEc = newValue);
     _biometricSignature.deleteKeys().then((success) {
-      debugPrint("deleteKeys success: $success");
+      debugPrint('deleteKeys success: $success');
       if (success ?? false) {
         setState(() {
-          // ignore: unnecessary_this
-          this.publicKey = null;
+          keyMaterial = null;
+          signatureResult = null;
         });
       }
     });
@@ -78,32 +78,33 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
     }
     setState(() {
       payload = value;
-      signature = null;
+      signatureResult = null;
     });
   }
 
-  void _createSignature() async {
-    if (payload == null) {
-      debugPrint("payload is null");
+  Future<void> _createSignature() async {
+    if (payload == null || payload!.isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('please enter payload')));
       return;
     }
-    final signature = await _biometricSignature.createSignature(
+    final result = await _biometricSignature.createSignature(
       SignatureOptions(
         payload: payload!,
-        promptMessage: "Sign Payload",
+        promptMessage: 'Sign Payload',
         androidOptions: const AndroidSignatureOptions(
           allowDeviceCredentials: true,
         ),
         iosOptions: const IosSignatureOptions(shouldMigrate: false),
       ),
     );
-    setState(() {
-      this.signature = signature;
-    });
-    debugPrint("signature : $signature");
+    setState(() => signatureResult = result);
+    if (result != null) {
+      final display =
+          result.signature.asString() ?? result.signature.toBase64();
+      debugPrint('signature (${result.signature.format.wireValue}): $display');
+    }
   }
 
   @override
@@ -116,7 +117,7 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
           children: [
             Row(
               children: [
-                Text('use EC'),
+                const Text('use EC'),
                 Switch(value: useEc, onChanged: _toggleEc),
               ],
             ),
@@ -124,9 +125,17 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
               onPressed: _createPublicKey,
               child: Text('create ${useEc ? 'EC' : 'RSA'} keys'),
             ),
-            if (publicKey != null) Text('publicKey: \n$publicKey'),
+            if (keyMaterial != null)
+              Text(
+                'publicKey (${keyMaterial!.publicKey.format.wireValue}):\n'
+                '${keyMaterial!.publicKey.asString() ?? keyMaterial!.publicKey.toBase64()}',
+              ),
             const Spacer(),
-            if (signature != null) Text('signature: \n$signature'),
+            if (signatureResult != null)
+              Text(
+                'signature (${signatureResult!.signature.format.wireValue}):\n'
+                '${signatureResult!.signature.asString() ?? signatureResult!.signature.toBase64()}',
+              ),
             Row(
               children: [
                 Expanded(
@@ -135,7 +144,10 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
                     onChanged: _payloadChanged,
                   ),
                 ),
-                TextButton(onPressed: _createSignature, child: Text('sign')),
+                TextButton(
+                  onPressed: _createSignature,
+                  child: const Text('sign'),
+                ),
               ],
             ),
           ],

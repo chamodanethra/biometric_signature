@@ -1,11 +1,11 @@
 import 'dart:io';
-
 import 'package:biometric_signature/android_config.dart';
 import 'package:biometric_signature/ios_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'biometric_signature_platform_interface.dart';
+import 'key_material.dart';
 import 'signature_options.dart';
 
 /// An implementation of [BiometricSignaturePlatform] that uses method channels.
@@ -15,21 +15,28 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   final methodChannel = const MethodChannel('biometric_signature');
 
   @override
-  Future<String?> createKeys(
+  Future<Map<String, dynamic>?> createKeys(
     AndroidConfig androidConfig,
-    IosConfig iosConfig,
-  ) async {
+    IosConfig iosConfig, {
+    required KeyFormat keyFormat,
+  }) async {
     try {
       if (Platform.isAndroid) {
-        return await methodChannel.invokeMethod<String>('createKeys', {
-          'useDeviceCredentials': androidConfig.useDeviceCredentials,
-          'useEc': androidConfig.signatureType.isEc,
-        });
+        final response = await methodChannel
+            .invokeMethod<dynamic>('createKeys', {
+              'useDeviceCredentials': androidConfig.useDeviceCredentials,
+              'useEc': androidConfig.signatureType.isEc,
+              'keyFormat': keyFormat.wireValue,
+            });
+        return _normalizeMapResponse(response);
       } else {
-        return await methodChannel.invokeMethod<String>('createKeys', {
-          'useDeviceCredentials': iosConfig.useDeviceCredentials,
-          'useEc': iosConfig.signatureType.isEc,
-        });
+        final response = await methodChannel
+            .invokeMethod<dynamic>('createKeys', {
+              'useDeviceCredentials': iosConfig.useDeviceCredentials,
+              'useEc': iosConfig.signatureType.isEc,
+              'keyFormat': keyFormat.wireValue,
+            });
+        return _normalizeMapResponse(response);
       }
     } on PlatformException {
       rethrow;
@@ -47,13 +54,15 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
   }
 
   @override
-  Future<String?> createSignature(SignatureOptions options) async {
+  Future<Map<String, dynamic>?> createSignature(
+    SignatureOptions options,
+  ) async {
     try {
-      final response = await methodChannel.invokeMethod<String>(
+      final response = await methodChannel.invokeMethod<dynamic>(
         'createSignature',
         options.toMethodChannelMap(),
       );
-      return response;
+      return _normalizeMapResponse(response);
     } on PlatformException {
       rethrow;
     }
@@ -82,5 +91,15 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
       debugPrint(e.message);
       return false;
     }
+  }
+
+  Map<String, dynamic>? _normalizeMapResponse(dynamic response) {
+    if (response == null) {
+      return null;
+    }
+    if (response is Map) {
+      return Map<String, dynamic>.from(response);
+    }
+    throw StateError('Unsupported response type ${response.runtimeType}');
   }
 }

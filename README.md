@@ -22,7 +22,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^7.0.4
+  biometric_signature: ^8.0.0
 ```
 
 |             | Android | iOS   |
@@ -68,6 +68,9 @@ Update your project's `AndroidManifest.xml` file to include the
 
 ```dart
 import 'package:biometric_signature/biometric_signature.dart';
+import 'package:biometric_signature/android_config.dart';
+import 'package:biometric_signature/ios_config.dart';
+import 'package:biometric_signature/signature_options.dart';
 ```
 
 3. Initialize the Biometric Signature instance:
@@ -89,33 +92,37 @@ When a user enrolls in biometrics, a key pair is generated. The private key is s
 
 This class provides methods to manage and utilize biometric authentication for secure server interactions. It supports both Android and iOS platforms.
 
-### `createKeys(AndroidConfig androidConfig, IosConfig iosConfig)`
+### `createKeys({ androidConfig, iosConfig, keyFormat })`
 
-Generates a new key pair (RSA 2048 or EC) for biometric authentication. The private key is securely stored on the device, and the public key is returned as a base64 encoded string. This method deletes any existing key pair before creating a new one. StrongBox support is available for compatible android devices. Secure Enclave support is available for iOS.
+Generates a new key pair (RSA 2048 or EC) for biometric authentication. The private key is securely stored on the device, while the `KeyCreationResult` returned from this call contains a `FormattedValue` with the public key in the requested representation. StrongBox support is available for compatible Android devices and Secure Enclave support is available for iOS.
 
 - **Parameters**:
+    -`androidConfig`: An `AndroidConfig` object containing following properties:
+        - `useDeviceCredentials`: A `bool` to indicate whether Device Credentials' fallback support is needed for the compatible Android devices.
+        - `signatureType`: An enum value of `AndroidSignatureType`.
+    - `iosConfig`: An `IosConfig` object containing following properties:
+        - `useDeviceCredentials`: A `bool` to indicate whether Device Credentials' fallback support is needed.
+        - `signatureType`: An enum value of `IOSSignatureType`.
+    - `keyFormat` *(optional)*: A `KeyFormat` value describing how the public key should be returned. Defaults to `KeyFormat.base64` for backward compatibility.
 
-- `androidConfig`: An `AndroidConfig` object containing following properties:
-    - `useDeviceCredentials`: A `bool` to indicate whether Device Credentials' fallback support is needed for the compatible Android devices.
-    - `signatureType`: An enum value of `AndroidSignatureType`.
-- `iosConfig`: An `IosConfig` object containing following properties:
-    - `useDeviceCredentials`: A `bool` to indicate whether Device Credentials' fallback support is needed.
-    - `signatureType`: An enum value of `IOSSignatureType`.
+- **Returns**: `Future<KeyCreationResult?>`. Access the formatted public key through `result.publicKey`, e.g.:
 
-- **Returns**: `String` - The base64 encoded public key.
+```dart
+final keyResult = await biometricSignature.createKeys(keyFormat: KeyFormat.pem);
+final pem = keyResult?.publicKey.asString();
+final derBytes = keyResult?.publicKey.toBytes();
+```
 
 - **Error Codes**:
-
-- `AUTH_FAILED`: Error generating keys.
-- `CANCELLED`: Timed out waiting for 30_000 ms.
+  - `AUTH_FAILED`: Error generating keys.
+  - `CANCELLED`: Timed out waiting for 30_000 ms.
 
 ### `createSignature(SignatureOptions options)`
 
-Prompts the user for biometric authentication and generates a cryptographic signature (RSA PKCS#1v1.5 SHA-256 or EC) using the securely stored private key.
+Prompts the user for biometric authentication and generates a cryptographic signature (RSA PKCS#1v1.5 SHA-256 or ECDSA) using the securely stored private key. The new response is a `SignatureResult` that carries both the signature and public key in the requested output format.
 
 - **Parameters**:
-
-- `options`: A `SignatureOptions` instance that specifies:
+  - `options`: A `SignatureOptions` instance that specifies:
     - `payload` (required): The UTF-8 payload to sign.
     - `promptMessage` (optional): Message displayed in the biometric prompt. Default to `Authenticate`.
     - `androidOptions` (optional): An `AndroidSignatureOptions` object offering:
@@ -123,14 +130,40 @@ Prompts the user for biometric authentication and generates a cryptographic sign
         - `allowDeviceCredentials`: Enables device-credential fallback on compatible Android devices.
     - `iosOptions` (optional): An `IosSignatureOptions` object offering:
         - `shouldMigrate`: Triggers migration from pre-5.x Keychain storage to Secure Enclave.
+    - `keyFormat` *(optional)*: Preferred output format (`KeyFormat.base64` by default). This is a new parameter.
 
-- **Returns**: `String` - The base64 encoded cryptographic signature.
+- **Returns**: `Future<SignatureResult?>`. Use the `FormattedValue` helpers to obtain the representation you need:
+
+```dart
+final signatureResult = await biometricSignature.createSignature(
+    SignatureOptions(
+        payload: 'Payload to sign',
+        keyFormat: KeyFormat.raw,
+        promptMessage: 'Authenticate to Sign',
+        androidOptions: const AndroidSignatureOptions(allowDeviceCredentials: true),
+        iosOptions: const IosSignatureOptions(shouldMigrate: false),
+    ),
+);
+
+final Uint8List rawSignature = signatureResult!.signature.toBytes();
+final String base64Signature = signatureResult.signature.toBase64();
+```
 
 - **Error Codes**:
+  - `INVALID_PAYLOAD`: Payload is required and must be valid UTF-8.
+  - `AUTH_FAILED`: Error generating the signature.
+  - `CANCELLED`: Timed out waiting for 30_000 ms.
 
-- `INVALID_PAYLOAD`: Payload is required and must be valid UTF-8.
-- `AUTH_FAILED`: Error generating the signature.
-- `CANCELLED`: Timed out waiting for 30_000 ms.
+#### Supported output formats
+
+`KeyFormat` lets you decide how both the public key and signature are returned:
+
+- `KeyFormat.base64` &mdash; URL/transport friendly string (default).
+- `KeyFormat.pem` &mdash; PEM block with headers, using SubjectPublicKeyInfo on both platforms.
+- `KeyFormat.raw` &mdash; `Uint8List` (DER bytes for public keys, raw signature bytes).
+- `KeyFormat.hex` &mdash; Lowercase hexadecimal string.
+
+Each `FormattedValue` exposes helpers such as `toBase64()`, `toBytes()`, `toHex()` and `asString()` so you can easily convert between representations.
 
 ### `deleteKeys()`
 
@@ -177,58 +210,87 @@ Checks if the biometric key pair exists on the device. Optionally, it can also v
 ## Example
 
 ```dart
-import 'package:flutter/material.dart';
+import 'package:biometric_signature/android_config.dart';
 import 'package:biometric_signature/biometric_signature.dart';
+import 'package:biometric_signature/ios_config.dart';
 import 'package:biometric_signature/signature_options.dart';
+import 'package:flutter/material.dart';
 
-void main() {
-  runApp(MyApp());
-}
+void main() => runApp(const MyApp());
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(title: Text('Biometric Signature Example')),
-        body: Center(child: BiometricAuthButton()),
-      ),
-    );
+    return const MaterialApp(home: Scaffold(body: BiometricDemo()));
   }
 }
 
-class BiometricAuthButton extends StatelessWidget {
-  final BiometricSignature _biometricSignature = BiometricSignature();
+class BiometricDemo extends StatefulWidget {
+  const BiometricDemo({super.key});
+
+  @override
+  State<BiometricDemo> createState() => _BiometricDemoState();
+}
+
+class _BiometricDemoState extends State<BiometricDemo> {
+  final _biometricSignature = BiometricSignature();
+  KeyCreationResult? keyResult;
+  SignatureResult? signatureResult;
+
+  Future<void> _generateKeys() async {
+    keyResult = await _biometricSignature.createKeys(
+      keyFormat: KeyFormat.pem,
+      androidConfig: AndroidConfig(
+        useDeviceCredentials: true,
+        signatureType: AndroidSignatureType.RSA,
+      ),
+      iosConfig: IosConfig(
+        useDeviceCredentials: false,
+        signatureType: IOSSignatureType.RSA,
+      ),
+    );
+    debugPrint('Public key (${keyResult.publicKey.format.wireValue}):\n${keyResult?.publicKey.asString()}');
+    setState(() {});
+  }
+
+  Future<void> _sign() async {
+    signatureResult = await _biometricSignature.createSignature(
+      SignatureOptions(
+        payload: 'Payload to sign',
+        keyFormat: KeyFormat.base64,
+        promptMessage: 'Authenticate to Sign',
+        androidOptions: const AndroidSignatureOptions(allowDeviceCredentials: true),
+        iosOptions: const IosSignatureOptions(shouldMigrate: false),
+      ),
+    );
+    debugPrint('Signature (${signatureResult.signature.format.wireValue}): ${signatureResult?.signature}');
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ElevatedButton(
-      child: Text('Authenticate with Biometrics'),
-      onPressed: () async {
-        final biometrics = await _biometricSignature
-            .biometricAuthAvailable();
-        if (!biometrics!.contains("none, ")) {
-          try {
-            final String? publicKey = await _biometricSignature
-                .createKeys();
-            final String? signature = await _biometricSignature.createSignature(
-              SignatureOptions(
-                payload: "Payload to sign",
-                promptMessage: "You are Welcome!",
-                androidOptions: const AndroidSignatureOptions(
-                  allowDeviceCredentials: true,
-                ),
-                iosOptions: const IosSignatureOptions(
-                  shouldMigrate: true,
-                ),
-              ),
-            );
-          } on PlatformException catch (e) {
-            debugPrint(e.message);
-            debugPrint(e.code);
-          }
-        }
-      },
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ElevatedButton(
+            onPressed: _generateKeys,
+            child: const Text('Create keys (PEM)'),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: _sign,
+            child: const Text('Sign payload (RAW)'),
+          ),
+          if (signatureResult != null) ...[
+            const SizedBox(height: 16),
+            Text('Signature HEX:\n${signatureResult!.signature.toHex()}'),
+          ],
+        ],
+      ),
     );
   }
 }
