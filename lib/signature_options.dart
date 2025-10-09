@@ -3,7 +3,8 @@ class SignatureOptions {
   /// Creates a new [SignatureOptions] instance.
   const SignatureOptions({
     required this.payload,
-    this.promptMessage,
+    this.promptTitle,
+    this.promptSubtitle,
     this.androidOptions,
     this.iosOptions,
   });
@@ -12,7 +13,11 @@ class SignatureOptions {
   final String payload;
 
   /// Custom prompt message shown in the biometric authentication dialog.
-  final String? promptMessage;
+  final String? promptTitle;
+
+  /// Custom prompt subtitle shown in the biometric authentication dialog.
+  /// ANDROID ONLY
+  final String? promptSubtitle;
 
   /// Platform-specific overrides for Android.
   final AndroidSignatureOptions? androidOptions;
@@ -24,7 +29,8 @@ class SignatureOptions {
   Map<String, dynamic> toMethodChannelMap() {
     final Map<String, dynamic> map = {
       'payload': payload,
-      if (promptMessage != null) 'promptMessage': promptMessage,
+      if (promptTitle != null) 'promptTitle': promptTitle,
+      if (promptSubtitle != null) 'promptSubtitle': promptSubtitle,
     };
 
     if (androidOptions != null) {
@@ -56,7 +62,8 @@ class SignatureOptions {
 
     return SignatureOptions(
       payload: payload,
-      promptMessage: legacy['promptMessage'],
+      promptTitle: legacy['promptTitle'],
+      promptSubtitle: legacy['promptSubtitle'],
       androidOptions: android.hasValues ? android : null,
       iosOptions: ios.hasValues ? ios : null,
     );

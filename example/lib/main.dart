@@ -93,7 +93,8 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
     final signature = await _biometricSignature.createSignature(
       SignatureOptions(
         payload: payload!,
-        promptMessage: "Sign Payload",
+        promptTitle: "Sign Payload",
+        promptSubtitle: "Please sign the payload",
         androidOptions: const AndroidSignatureOptions(
           allowDeviceCredentials: true,
         ),
