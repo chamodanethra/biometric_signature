@@ -234,9 +234,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
 
         guard let ecPublicKey = SecKeyCopyPublicKey(ecPrivateKey) else {
             dispatchMainAsync {
-                result(FlutterError(code: Constants.authFailed,
-                                    message: "Error getting EC public key",
-                                    details: nil))
+                result(FlutterError(code: Constants.authFailed, message: "Error getting EC public key", details: nil))
             }
             return
         }
@@ -652,8 +650,18 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
 
     private func getBiometricKeyTag() -> Data {
         let BIOMETRIC_KEY_ALIAS = Constants.biometricKeyAlias
-        let tag = BIOMETRIC_KEY_ALIAS.data(using: .utf8)
-        return tag!
+        return BIOMETRIC_KEY_ALIAS.data(using: .utf8)!
+    }
+
+    private func getPublicKeyString(_ publicKey: SecKey) -> String {
+        var error: Unmanaged<CFError>?
+        if let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, &error) as Data? {
+            // Check if it's an EC key by looking at the key size (EC keys are typically 65 bytes for secp256r1)
+            let isEc = publicKeyData.count == 65
+            let withHeader = BiometricSignaturePlugin.addHeader(publicKeyData: publicKeyData, isEc: isEc)
+            return withHeader?.base64EncodedString() ?? ""
+        }
+        return ""
     }
 
     private static let encodedRSAEncryptionOID: [UInt8] = [
@@ -667,6 +675,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
 
     private static func addHeader(publicKeyData: Data?, isEc: Bool = false) -> Data? {
         guard let publicKeyData = publicKeyData else { return nil }
+        return isEc ? addECHeader(publicKeyData: publicKeyData) : addRSAHeader(publicKeyData: publicKeyData)
+    }
 
     private static func addRSAHeader(publicKeyData: Data?) -> Data? {
         guard let publicKeyData = publicKeyData else { return nil }
@@ -674,7 +684,25 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         var encKey = Data()
         let bitLen: UInt = (publicKeyData.count + 1 < 128) ? 1 : UInt(((publicKeyData.count + 1) / 256) + 2)
         builder[0] = 0x30
-        let i = encodedRSAEncryptionOID.count + 2 + Int(bitstringEncLength) + publicKeyData.count
+        let i = encodedRSAEncryptionOID.count + 2 + Int(bitLen) + publicKeyData.count
+        var j = encodedLength(&builder[1], i)
+        encKey.append(&builder, count: Int(j + 1))
+        encKey.append(encodedRSAEncryptionOID, count: encodedRSAEncryptionOID.count)
+        builder[0] = 0x03
+        j = encodedLength(&builder[1], publicKeyData.count + 1)
+        builder[j + 1] = 0x00
+        encKey.append(&builder, count: Int(j + 2))
+        encKey.append(publicKeyData)
+        return encKey
+    }
+
+    private static func addECHeader(publicKeyData: Data?) -> Data? {
+        guard let publicKeyData = publicKeyData else { return nil }
+        var builder = [UInt8](repeating: 0, count: 15)
+        var encKey = Data()
+        let bitLen: UInt = (publicKeyData.count + 1 < 128) ? 1 : UInt(((publicKeyData.count + 1) / 256) + 2)
+        builder[0] = 0x30
+        let i = encodedECEncryptionOID.count + 2 + Int(bitLen) + publicKeyData.count
         var j = encodedLength(&builder[1], i)
         encKey.append(&builder, count: Int(j + 1))
         encKey.append(encodedECEncryptionOID, count: encodedECEncryptionOID.count)
@@ -686,8 +714,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         return encKey
     }
 
-    private static func encodedLength(_ buf: UnsafeMutablePointer<UInt8>?,
-                                      _ length: size_t) -> size_t {
+    private static func encodedLength(_ buf: UnsafeMutablePointer<UInt8>?, _ length: size_t) -> size_t {
         var length = length
         if length < 128 {
             buf?[0] = UInt8(length)
