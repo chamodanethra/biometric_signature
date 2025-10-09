@@ -22,7 +22,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^6.2.0
+  biometric_signature: ^7.0.4
 ```
 
 |             | Android | iOS   |
@@ -89,51 +89,58 @@ When a user enrolls in biometrics, a key pair is generated. The private key is s
 
 This class provides methods to manage and utilize biometric authentication for secure server interactions. It supports both Android and iOS platforms.
 
-### `createKeys(AndroidConfig config)`
+### `createKeys(AndroidConfig androidConfig, IosConfig iosConfig)`
 
 Generates a new key pair (RSA 2048 or EC) for biometric authentication. The private key is securely stored on the device, and the public key is returned as a base64 encoded string. This method deletes any existing key pair before creating a new one. StrongBox support is available for compatible android devices. Secure Enclave support is available for iOS.
 
 - **Parameters**:
 
 - `androidConfig`: An `AndroidConfig` object containing following properties:
-  - `useDeviceCredentials`: A bool to indicate whether Device Credentials' fallback support is needed for the compatible Android devices.
+  - `useDeviceCredentials`: A `bool` to indicate whether Device Credentials' fallback support is needed for the compatible Android devices.
+  - `signatureType`: An enum value of `AndroidSignatureType`.
 - `iosConfig`: An `IosConfig` object containing following properties:
-    - `useDeviceCredentials`: A bool to indicate whether Device Credentials' fallback support is needed.
+  - `useDeviceCredentials`: A `bool` to indicate whether Device Credentials' fallback support is needed.
+  - `signatureType`: An enum value of `IOSSignatureType`.
 
 - **Returns**: `String` - The base64 encoded public key.
 
 - **Error Codes**:
 
-- `AUTH_FAILED`: Error generating public-private keys.
+- `AUTH_FAILED`: Error generating keys.
+- `CANCELLED`: Timed out waiting for 30_000 ms.
 
-### `createSignature(options: Map<String, String>)`
+### `createSignature(SignatureOptions options)`
 
-Prompts the user for biometric authentication and generates a cryptographic signature (RSA PKCS#1v1.5 SHA 256 or EC) using the securely stored private key. The payload to be signed is provided in the `options` map.
+Prompts the user for biometric authentication and generates a cryptographic signature (RSA PKCS#1v1.5 SHA-256 or EC) using the securely stored private key.
 
 - **Parameters**:
 
-- `options`: A map containing the following keys:
-  - `cancelButtonText` (Android only, optional) : Text for the cancel button in the biometric prompt. Default is "Cancel".
-  - `promptMessage` : (optional): Message to display in the biometric prompt. Default is "Welcome".
-  - `payload`: The payload to be signed.
-  - `shouldMigrate`: (iOS only, required): To migrate to Secure Enclave implementation from the Key Chain implementation used prior to version 5.0.0, need to pass a valid, positive String Bool(as per Swift Official docs).
-  - `allowDeviceCredentials` (Android only, optional) : Indicates whether fallback support is allowed for the compatible Android devices.
+- `options`: A `SignatureOptions` instance that specifies:
+  - `payload` (required): The UTF-8 payload to sign.
+  - `promptMessage` (optional): Message displayed in the biometric prompt. Default to `Authenticate`.
+  - `androidOptions` (optional): An `AndroidSignatureOptions` object offering:
+    - `cancelButtonText`: Overrides the cancel button label. Defaults to `Cancel`.
+    - `allowDeviceCredentials`: Enables device-credential fallback on compatible Android devices.
+  - `iosOptions` (optional): An `IosSignatureOptions` object offering:
+    - `shouldMigrate`: Triggers migration from pre-5.x Keychain storage to Secure Enclave.
 
 - **Returns**: `String` - The base64 encoded cryptographic signature.
 
 - **Error Codes**:
 
+- `INVALID_PAYLOAD`: Payload is required and must be valid UTF-8.
 - `AUTH_FAILED`: Error generating the signature.
+- `CANCELLED`: Timed out waiting for 30_000 ms.
 
 ### `deleteKeys()`
 
 Deletes the existing key pair used for biometric authentication.
 
-- **Returns**: `Boolean` - `true` if the key was successfully deleted, `false` otherwise.
+- **Returns**: `Bool` - `true` if the key was successfully deleted.
 
 - **Error Codes**:
 
-- `AUTH_FAILED`: Error deleting the biometric key from the keystore.
+- `AUTH_FAILED`: Error deleting the biometric key
 
 ### `biometricAuthAvailable()`
 
@@ -141,7 +148,7 @@ Checks if biometric authentication is available on the device. On Android, it sp
 
 - **Returns**: `String` - The type of biometric authentication available (`fingerprint`, `face`, `iris`, `TouchID`, `FaceID`, or `biometric`) or a string indicating the error if no biometrics are available.
 
-- **Error Values**:
+- **Possible negative returns in Android**:
 
 - `none, BIOMETRIC_ERROR_NO_HARDWARE`: No biometric hardware available.
 
@@ -157,21 +164,22 @@ Checks if biometric authentication is available on the device. On Android, it sp
 
 - `none, NO_BIOMETRICS`: No biometrics.
 
-### `biometricKeyExists(checkValidity: Boolean)`
+### `biometricKeyExists(checkValidity: bool)`
 
 Checks if the biometric key pair exists on the device. Optionally, it can also verify the validity of the key by attempting to initialize a signature with it. The key will become irreversibly invalidated once the secure lock screen is disabled (reconfigured to None, Swipe or other mode which does not authenticate the user) or when the secure lock screen is forcibly reset (e.g., by a Device Administrator). Since the key requires that user authentication takes place for every use of the key, it is also irreversibly invalidated once a new biometric is enrolled or once no more biometrics are enrolled.
 
--   **Parameters**:
-    -   `checkValidity`: A boolean indicating whether to check the validity of the key by initializing a signature. Default is `false`.
--   **Returns**: `Boolean` - `true` if the key pair exists (and is valid if `checkValidity` is `true`), `false` otherwise.
--   **Error Codes**:
-    -   `AUTH_FAILED`: Error checking if the biometric key exists.
+- **Parameters**:
+  - `checkValidity`: A bool indicating whether to check the validity of the key by initializing a signature. Default is `false`.
+- **Returns**: `Bool` - `true` if the key pair exists (and is valid if `checkValidity` is `true`), `false` otherwise.
+- **Error Codes**:
+  - `AUTH_FAILED`: Error checking if the biometric key exists.
 
 ## Example
 
 ```dart
 import 'package:flutter/material.dart';
 import 'package:biometric_signature/biometric_signature.dart';
+import 'package:biometric_signature/signature_options.dart';
 
 void main() {
   runApp(MyApp());
@@ -203,11 +211,18 @@ class BiometricAuthButton extends StatelessWidget {
           try {
             final String? publicKey = await _biometricSignature
                 .createKeys();
-            final String? signature = await _biometricSignature
-                .createSignature(
-                options: {
-                  "payload": "Payload to sign",
-                  "promptMessage": "You are Welcome!"});
+            final String? signature = await _biometricSignature.createSignature(
+              SignatureOptions(
+                payload: "Payload to sign",
+                promptMessage: "You are Welcome!",
+                androidOptions: const AndroidSignatureOptions(
+                  allowDeviceCredentials: true,
+                ),
+                iosOptions: const IosSignatureOptions(
+                  shouldMigrate: true,
+                ),
+              ),
+            );
           } on PlatformException catch (e) {
             debugPrint(e.message);
             debugPrint(e.code);

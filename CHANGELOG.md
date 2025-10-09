@@ -1,9 +1,60 @@
+## [7.0.4] - 2025-10-03
+* ReadMe.md updates.
+* Reverting back to previous iOS IPHONEOS_DEPLOYMENT_TARGET(12.0).
+* Added 3 practical-world examples.
+
+## [7.0.3] - 2025-09-28
+* Updating documentations.
+* Minor bug fixes.
+
+## [7.0.2] - 2025-09-26
+* Fix formatting errors.
+
+## [7.0.1] - 2025-09-26
+* Updating documentations.
+
+## [7.0.0] - 2025-09-26
+
+* **Breaking**: Replace the map-based `createSignature` API with typed `SignatureOptions`, plus platform-specific option classes.
+* Added `createSignatureFromLegacyOptions` helper to ease migration from the legacy API.
+* Fixed Android `allowDeviceCredentials` parsing so boolean values are honoured.
+* Updated the iOS plugin to accept native booleans for `shouldMigrate`.
+* Improved Android native Kotlin coroutines implementation.
+* Updated native dependencies.
+
+## [6.4.2] - 2025-09-21
+
+* The migrate path for iOS from 5.x is preserved.
+* ReadMe.md updates.
+
+## [6.4.1] - 2025-09-18
+
+* Suggesting a fix for [issue](https://github.com/chamodanethra/biometric_signature/issues/39).
+
+## [6.4.0] - 2025-09-17
+
+* Suggesting a fix for [issue](https://github.com/chamodanethra/biometric_signature/issues/36) using Kotlin coroutines.
+
+## [6.3.1] - 2025-09-02
+
+* fix dart formatting errors.
+
+## [6.3.0] - 2025-09-02
+
+* Upgrading Flutter from 3.27.2 to 3.32.8.
+* Updating the README.md file descriptions.
+* Adding ECDSA Key support for cryptographic operations.
+* Suggesting a fix for [issue](https://github.com/chamodanethra/biometric_signature/issues/30).
+
+## [6.2.1] - 2025-09-17
+
+* Suggesting a fix for [issue](https://github.com/chamodanethra/biometric_signature/issues/39).
+
 ## [6.2.0] - 2025-01-15
 
 * Upgrading Flutter from 3.27.0 to 3.27.2.
 * Updating the README.md file descriptions.
 * Device Credentials' fallback support for compatible devices can be configured.
-
 
 ## [6.1.0] - 2025-01-06
 
@@ -12,6 +63,10 @@
 ## [6.0.0] - 2024-12-29
 
 * Upgrading Flutter from 3.19.6 to 3.27.0
+
+## [5.1.4] - 2025-08-28
+
+* A [bug](https://github.com/chamodanethra/biometric_signature/issues/31) fix for key user not authenticated android crash.
 
 ## [5.1.3] - 2024-12-03
 

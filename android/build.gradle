@@ -3,14 +3,14 @@ version = "1.0-SNAPSHOT"
 
 buildscript {
     // https://github.com/juliansteenbakker/mobile_scanner/issues/729#issuecomment-1758610026
-    ext.kotlin_version = "1.8.22"
+    ext.kotlin_version = "2.1.0"
     repositories {
         google()
         mavenCentral()
     }
 
     dependencies {
-        classpath("com.android.tools.build:gradle:8.1.0")
+        classpath("com.android.tools.build:gradle:8.7.3")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
     }
 }
@@ -57,7 +57,8 @@ android {
     }
 
     dependencies {
-        implementation("androidx.biometric:biometric-ktx:1.4.0-alpha02")
+        implementation("androidx.biometric:biometric:1.4.0-alpha04")
         implementation("androidx.appcompat:appcompat:1.6.1")
+        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     }
 }
