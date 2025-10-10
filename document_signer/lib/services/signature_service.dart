@@ -102,7 +102,7 @@ class SignatureService {
       final signatureValue = await _biometric.createSignature(
         SignatureOptions(
           payload: payload,
-          promptMessage: 'Sign "${document.title}"',
+          promptTitle: 'Sign "${document.title}"',
           androidOptions: const AndroidSignatureOptions(
             cancelButtonText: 'Cancel',
             allowDeviceCredentials: false,

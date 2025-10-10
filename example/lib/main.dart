@@ -1,8 +1,8 @@
 import 'package:biometric_signature/android_config.dart';
 import 'package:biometric_signature/ios_config.dart';
+import 'package:biometric_signature/signature_options.dart';
 import 'package:flutter/material.dart';
 import 'package:biometric_signature/biometric_signature.dart';
-import 'package:biometric_signature/signature_options.dart';
 
 void main() {
   runApp(const MyApp());
@@ -15,7 +15,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        appBar: AppBar(title: const Text('biometric signature test app')),
+        appBar: AppBar(
+          title: const Text('biometric signature test app'),
+        ),
         body: const ExampleAppBody(),
       ),
     );
@@ -39,22 +41,18 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
 
   void _createPublicKey() async {
     final String? publicKey = await _biometricSignature.createKeys(
-      androidConfig: AndroidConfig(
-        useDeviceCredentials: true,
-        signatureType: useEc
-            ? AndroidSignatureType.ECDSA
-            : AndroidSignatureType.RSA,
-      ),
-      iosConfig: IosConfig(
-        useDeviceCredentials: false,
-        signatureType: useEc ? IOSSignatureType.ECDSA : IOSSignatureType.RSA,
-      ),
-    );
+        androidConfig: AndroidConfig(
+            useDeviceCredentials: true,
+            signatureType:
+                useEc ? AndroidSignatureType.ECDSA : AndroidSignatureType.RSA),
+        iosConfig: IosConfig(
+            useDeviceCredentials: false,
+            signatureType:
+                useEc ? IOSSignatureType.ECDSA : IOSSignatureType.RSA));
     setState(() {
       this.publicKey = publicKey;
     });
     debugPrint("publicKey : $publicKey");
-    debugPrint(await _biometricSignature.biometricAuthAvailable());
   }
 
   void _toggleEc(bool newValue) {
@@ -85,15 +83,18 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
   void _createSignature() async {
     if (payload == null) {
       debugPrint("payload is null");
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('please enter payload')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('please enter payload'),
+        ),
+      );
       return;
     }
     final signature = await _biometricSignature.createSignature(
       SignatureOptions(
         payload: payload!,
-        promptMessage: "Sign Payload",
+        promptTitle: "Sign Payload",
+        promptSubtitle: "Please sign the payload",
         androidOptions: const AndroidSignatureOptions(
           allowDeviceCredentials: true,
         ),
@@ -131,11 +132,16 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
               children: [
                 Expanded(
                   child: TextField(
-                    decoration: const InputDecoration(labelText: 'payload'),
+                    decoration: const InputDecoration(
+                      labelText: 'payload',
+                    ),
                     onChanged: _payloadChanged,
                   ),
                 ),
-                TextButton(onPressed: _createSignature, child: Text('sign')),
+                TextButton(
+                  onPressed: _createSignature,
+                  child: Text('sign'),
+                ),
               ],
             ),
           ],

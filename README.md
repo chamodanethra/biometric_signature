@@ -96,11 +96,11 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
 - **Parameters**:
 
 - `androidConfig`: An `AndroidConfig` object containing following properties:
-    - `useDeviceCredentials`: A `bool` to indicate whether Device Credentials' fallback support is needed for the compatible Android devices.
-    - `signatureType`: An enum value of `AndroidSignatureType`.
+  - `useDeviceCredentials`: A `bool` to indicate whether Device Credentials' fallback support is needed for the compatible Android devices.
+  - `signatureType`: An enum value of `AndroidSignatureType`.
 - `iosConfig`: An `IosConfig` object containing following properties:
-    - `useDeviceCredentials`: A `bool` to indicate whether Device Credentials' fallback support is needed.
-    - `signatureType`: An enum value of `IOSSignatureType`.
+  - `useDeviceCredentials`: A `bool` to indicate whether Device Credentials' fallback support is needed.
+  - `signatureType`: An enum value of `IOSSignatureType`.
 
 - **Returns**: `String` - The base64 encoded public key.
 
@@ -116,13 +116,14 @@ Prompts the user for biometric authentication and generates a cryptographic sign
 - **Parameters**:
 
 - `options`: A `SignatureOptions` instance that specifies:
-    - `payload` (required): The UTF-8 payload to sign.
-    - `promptMessage` (optional): Message displayed in the biometric prompt. Default to `Authenticate`.
-    - `androidOptions` (optional): An `AndroidSignatureOptions` object offering:
-        - `cancelButtonText`: Overrides the cancel button label. Defaults to `Cancel`.
-        - `allowDeviceCredentials`: Enables device-credential fallback on compatible Android devices.
-    - `iosOptions` (optional): An `IosSignatureOptions` object offering:
-        - `shouldMigrate`: Triggers migration from pre-5.x Keychain storage to Secure Enclave.
+  - `payload` (required): The UTF-8 payload to sign.
+  - `promptTitle` (optional): Message displayed in the biometric prompt. Default to `Authenticate`.
+  - `promptSubtitle` (optional): Smaller message displayed in the biometric prompt. Default is null/empty.
+  - `androidOptions` (optional): An `AndroidSignatureOptions` object offering:
+    - `cancelButtonText`: Overrides the cancel button label. Defaults to `Cancel`.
+    - `allowDeviceCredentials`: Enables device-credential fallback on compatible Android devices.
+  - `iosOptions` (optional): An `IosSignatureOptions` object offering:
+    - `shouldMigrate`: Triggers migration from pre-5.x Keychain storage to Secure Enclave.
 
 - **Returns**: `String` - The base64 encoded cryptographic signature.
 
@@ -168,11 +169,11 @@ Checks if biometric authentication is available on the device. On Android, it sp
 
 Checks if the biometric key pair exists on the device. Optionally, it can also verify the validity of the key by attempting to initialize a signature with it. The key will become irreversibly invalidated once the secure lock screen is disabled (reconfigured to None, Swipe or other mode which does not authenticate the user) or when the secure lock screen is forcibly reset (e.g., by a Device Administrator). Since the key requires that user authentication takes place for every use of the key, it is also irreversibly invalidated once a new biometric is enrolled or once no more biometrics are enrolled.
 
--   **Parameters**:
-    -   `checkValidity`: A bool indicating whether to check the validity of the key by initializing a signature. Default is `false`.
--   **Returns**: `Bool` - `true` if the key pair exists (and is valid if `checkValidity` is `true`), `false` otherwise.
--   **Error Codes**:
-    -   `AUTH_FAILED`: Error checking if the biometric key exists.
+- **Parameters**:
+  - `checkValidity`: A bool indicating whether to check the validity of the key by initializing a signature. Default is `false`.
+- **Returns**: `Bool` - `true` if the key pair exists (and is valid if `checkValidity` is `true`), `false` otherwise.
+- **Error Codes**:
+  - `AUTH_FAILED`: Error checking if the biometric key exists.
 
 ## Example
 
@@ -214,7 +215,8 @@ class BiometricAuthButton extends StatelessWidget {
             final String? signature = await _biometricSignature.createSignature(
               SignatureOptions(
                 payload: "Payload to sign",
-                promptMessage: "You are Welcome!",
+                promptTitle: "You are Welcome!",
+                promptSubtitle "yes you are",
                 androidOptions: const AndroidSignatureOptions(
                   allowDeviceCredentials: true,
                 ),

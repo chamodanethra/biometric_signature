@@ -191,7 +191,7 @@ final publicKey = await biometric.createKeys(
 final signature = await biometric.createSignature(
   SignatureOptions(
     payload: 'data_to_sign',
-    promptMessage: 'Authenticate to continue',
+    promptTitle: 'Authenticate to continue',
   ),
 );
 ```

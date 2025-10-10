@@ -77,12 +77,12 @@ class BiometricService {
   }
 
   /// Sign data with biometric authentication
-  Future<String> signData(String payload, String promptMessage) async {
+  Future<String> signData(String payload, String promptTitle) async {
     try {
       final signature = await _biometric.createSignature(
         SignatureOptions(
           payload: payload,
-          promptMessage: promptMessage,
+          promptTitle: promptTitle,
           androidOptions: const AndroidSignatureOptions(
             cancelButtonText: 'Cancel',
             allowDeviceCredentials: false,

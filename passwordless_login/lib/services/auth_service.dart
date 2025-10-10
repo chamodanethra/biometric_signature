@@ -113,7 +113,7 @@ class AuthService {
     final signature = await _biometric.createSignature(
       SignatureOptions(
         payload: challenge.nonce,
-        promptMessage: 'Login as $username',
+        promptTitle: 'Login as $username',
         androidOptions: const AndroidSignatureOptions(
           cancelButtonText: 'Cancel',
           allowDeviceCredentials: false,

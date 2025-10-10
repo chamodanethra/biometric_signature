@@ -313,7 +313,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
     }
 
     private func createSignature(options: [String: Any]?, result: @escaping FlutterResult) {
-        let promptMessage = (options?["promptMessage"] as? String) ?? "Authenticate"
+        let promptTitle = (options?["promptTitle"] as? String) ?? "Authenticate"
         guard let payload = options?["payload"] as? String,
               let dataToSign = payload.data(using: .utf8) else {
             dispatchMainAsync {
@@ -339,7 +339,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
                 self.migrateToSecureEnclave(options: options, result: result)
             } else {
                 // No RSA: EC-only signing
-                createECSignature(dataToSign: dataToSign, promptMessage: promptMessage, result: result)
+                createECSignature(dataToSign: dataToSign, promptTitle: promptTitle, result: result)
             }
             return
         }
@@ -357,7 +357,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
 
         let context = LAContext()
         context.localizedFallbackTitle = ""
-        context.localizedReason = promptMessage
+        context.localizedReason = promptTitle
 
         let ecKeyQuery: [String: Any] = [
             kSecClass as String: kSecClassKey,
@@ -365,7 +365,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
             kSecReturnRef as String: true,
             kSecUseAuthenticationContext as String: context,
-            kSecUseOperationPrompt as String: promptMessage
+            kSecUseOperationPrompt as String: promptTitle
         ]
 
         var ecPrivateKeyRef: CFTypeRef?
@@ -433,7 +433,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         dispatchMainAsync { result(signature.base64EncodedString()) }
     }
 
-    private func createECSignature(dataToSign: Data, promptMessage: String, result: @escaping FlutterResult) {
+    private func createECSignature(dataToSign: Data, promptTitle: String, result: @escaping FlutterResult) {
         // Retrieve EC private key from Secure Enclave
         let ecTag = Constants.ecKeyAlias
         let ecKeyQuery: [String: Any] = [
@@ -441,7 +441,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             kSecAttrApplicationTag as String: ecTag,
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
             kSecReturnRef as String: true,
-            kSecUseOperationPrompt as String: promptMessage
+            kSecUseOperationPrompt as String: promptTitle
         ]
         var ecPrivateKeyRef: CFTypeRef?
         let ecStatus = SecItemCopyMatching(ecKeyQuery as CFDictionary, &ecPrivateKeyRef)
