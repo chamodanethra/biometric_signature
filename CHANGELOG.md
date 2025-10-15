@@ -1,3 +1,13 @@
+## [8.0.0] - 2025-10-15
+
+* **Breaking**: `createKeys` now returns a `KeyCreationResult` instead of a plain base64 string, enabling configurable output formats.
+* **Breaking**: `createSignature` returns a `SignatureResult` that includes both the formatted signature and public key metadata.
+* Added `KeyFormat` support across Dart, Android, and iOS with BASE64, PEM, RAW (DER/bytes), and HEX representations.
+* Android: refactored native layer to emit structured maps, generate PEM blocks directly, and expose raw DER bytes when requested.
+* iOS: aligned public key formatting with SubjectPublicKeyInfo, added PEM/RAW/HEX conversions, and unified signature responses.
+* Updated documentation, examples, and helper classes to illustrate working with `FormattedValue` utilities.
+* Removed `createSignatureFromLegacyOptions` helper.
+
 ## [7.0.4] - 2025-10-03
 * ReadMe.md updates.
 * Reverting back to previous iOS IPHONEOS_DEPLOYMENT_TARGET(12.0).

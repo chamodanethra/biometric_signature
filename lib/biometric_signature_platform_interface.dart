@@ -3,6 +3,7 @@ import 'package:biometric_signature/ios_config.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'biometric_signature_method_channel.dart';
+import 'key_material.dart';
 import 'signature_options.dart';
 
 /// Platform interface that defines the methods exposed to plugin
@@ -30,9 +31,13 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
   }
 
   /// Creates a key pair using the supplied platform-specific configuration.
-  Future<String?> createKeys(AndroidConfig androidConfig, IosConfig iosConfig) {
+  Future<Map<String, dynamic>?> createKeys(
+    AndroidConfig androidConfig,
+    IosConfig iosConfig, {
+    required KeyFormat keyFormat,
+  }) {
     throw UnimplementedError(
-      'createKeys(AndroidConfig androidConfig, IosConfig iosConfig) has not been implemented.',
+      'createKeys(AndroidConfig androidConfig, IosConfig iosConfig, {required KeyFormat keyFormat, required int keySize}) has not been implemented.',
     );
   }
 
@@ -49,7 +54,7 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
   }
 
   /// Creates a signature for the given payload using biometrics.
-  Future<String?> createSignature(SignatureOptions options) {
+  Future<Map<String, dynamic>?> createSignature(SignatureOptions options) {
     throw UnimplementedError(
       'createSignature(SignatureOptions options) has not been implemented.',
     );

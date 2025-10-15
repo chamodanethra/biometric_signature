@@ -37,7 +37,7 @@ class BiometricService {
   /// Initialize biometric keys (first-time setup)
   Future<String> initializeKeys() async {
     try {
-      final publicKey = await _biometric.createKeys(
+      final keyResult = await _biometric.createKeys(
         androidConfig: AndroidConfig(
           useDeviceCredentials: false,
           signatureType: AndroidSignatureType.RSA,
@@ -48,7 +48,8 @@ class BiometricService {
         ),
       );
 
-      if (publicKey != null) {
+      if (keyResult != null) {
+        final publicKey = keyResult.publicKey.toBase64();
         // Store public key for future reference
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_publicKeyKey, publicKey);
@@ -79,7 +80,7 @@ class BiometricService {
   /// Sign data with biometric authentication
   Future<String> signData(String payload, String promptMessage) async {
     try {
-      final signature = await _biometric.createSignature(
+      final signatureResult = await _biometric.createSignature(
         SignatureOptions(
           payload: payload,
           promptMessage: promptMessage,
@@ -93,8 +94,8 @@ class BiometricService {
         ),
       );
 
-      if (signature != null) {
-        return signature;
+      if (signatureResult != null) {
+        return signatureResult.signature.toBase64();
       }
       throw Exception('Failed to create signature');
     } on PlatformException catch (e) {
