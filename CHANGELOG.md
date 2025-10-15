@@ -1,4 +1,4 @@
-## [8.0.0] - 2025-10-09
+## [8.0.0] - 2025-10-15
 
 * **Breaking**: `createKeys` now returns a `KeyCreationResult` instead of a plain base64 string, enabling configurable output formats.
 * **Breaking**: `createSignature` returns a `SignatureResult` that includes both the formatted signature and public key metadata.
