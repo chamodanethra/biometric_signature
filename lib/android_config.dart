@@ -1,3 +1,4 @@
+// ignore_for_file: constant_identifier_names
 /// Android-specific configuration for enrolling or using biometric keys.
 class AndroidConfig {
   /// Whether device credentials (PIN/pattern/password) can unlock the key
