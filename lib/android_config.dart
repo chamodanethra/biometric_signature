@@ -8,10 +8,14 @@ class AndroidConfig {
   /// Key algorithm to use when creating a signature.
   AndroidSignatureType signatureType;
 
+  /// Whether the current Key should be invalidated by new biometric enrollment.
+  bool setInvalidatedByBiometricEnrollment;
+
   /// Creates a new Android configuration.
   AndroidConfig({
     required this.useDeviceCredentials,
     this.signatureType = AndroidSignatureType.RSA,
+    this.setInvalidatedByBiometricEnrollment = true,
   });
 }
 

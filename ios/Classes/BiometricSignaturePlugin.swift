@@ -9,6 +9,7 @@ private enum Constants {
     static let invalidArguments = "INVALID_ARGUMENTS"
     static let biometricKeyAlias = "biometric_key"
     static let ecKeyAlias = "com.visionflutter.eckey".data(using: .utf8)!
+    static let invalidationSettingKey = "com.visionflutter.biometric_signature.invalidation_setting"
 }
 
 private enum KeyFormat: String {
@@ -106,6 +107,52 @@ private enum DomainState {
     }
 }
 
+// MARK: - Invalidation Setting Storage
+private enum InvalidationSetting {
+    static func save(_ invalidateOnEnrollment: Bool) {
+        let data = invalidateOnEnrollment ? Data([1]) : Data([0])
+        let base: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Constants.invalidationSettingKey,
+            kSecAttrAccount as String: Constants.invalidationSettingKey
+        ]
+        let attrs: [String: Any] = [kSecValueData as String: data]
+        let status = SecItemUpdate(base as CFDictionary, attrs as CFDictionary)
+        if status == errSecItemNotFound {
+            var add = base
+            add[kSecValueData as String] = data
+            _ = SecItemAdd(add as CFDictionary, nil)
+        }
+    }
+
+    static func load() -> Bool? {
+        let q: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Constants.invalidationSettingKey,
+            kSecAttrAccount as String: Constants.invalidationSettingKey,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var out: CFTypeRef?
+        let s = SecItemCopyMatching(q as CFDictionary, &out)
+        if s == errSecSuccess, let d = out as? Data, let first = d.first {
+            return first == 1
+        }
+        return nil
+    }
+
+    @discardableResult
+    static func delete() -> Bool {
+        let q: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Constants.invalidationSettingKey,
+            kSecAttrAccount as String: Constants.invalidationSettingKey
+        ]
+        let s = SecItemDelete(q as CFDictionary)
+        return s == errSecSuccess || s == errSecItemNotFound
+    }
+}
+
 public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: "biometric_signature", binaryMessenger: registrar.messenger())
@@ -120,10 +167,12 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
                 let useDeviceCredentials = arguments["useDeviceCredentials"] as? Bool ?? false
                 let useEc = arguments["useEc"] as? Bool ?? false
                 let keyFormat = KeyFormat.from(arguments["keyFormat"])
+                let biometryCurrentSet = arguments["biometryCurrentSet"] as! Bool
                 createKeys(
                     useDeviceCredentials: useDeviceCredentials,
                     useEc: useEc,
                     keyFormat: keyFormat,
+                    biometryCurrentSet: biometryCurrentSet,
                     result: result
                 )
             } else {
@@ -186,9 +235,12 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         // Delete saved domain-state baseline
         let dsOK = DomainState.deleteSaved()
 
+        // Delete invalidation setting
+        let isOK = InvalidationSetting.delete()
+
         let success = (ecStatus == errSecSuccess || ecStatus == errSecItemNotFound)
                    && (rsaStatus == errSecSuccess || rsaStatus == errSecItemNotFound)
-                   && dsOK
+                   && dsOK && isOK
         dispatchMainAsync {
             if success {
                 result(true)
@@ -217,26 +269,26 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         ]
         SecItemDelete(encryptedKeyQuery as CFDictionary)
 
-        // Also delete the baseline to keep invariant: no baseline without keys
+        // Also delete the baseline and invalidation setting to keep invariant: no baseline/setting without keys
         _ = DomainState.deleteSaved()
+        _ = InvalidationSetting.delete()
     }
 
     private func createKeys(
         useDeviceCredentials: Bool,
         useEc: Bool,
         keyFormat: KeyFormat,
+        biometryCurrentSet: Bool,
         result: @escaping FlutterResult
     ) {
         // Delete existing keys (and baseline)
         deleteExistingKeys()
 
         // Generate EC key pair in Secure Enclave
-        // NOTE: If you want passcode fallback, consider using .userPresence
-        // instead of .biometryAny.
         let ecAccessControl = SecAccessControlCreateWithFlags(
             kCFAllocatorDefault,
             kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
-            [.privateKeyUsage, useDeviceCredentials ? .userPresence : .biometryAny],
+            [.privateKeyUsage, useDeviceCredentials ? .userPresence : biometryCurrentSet ? .biometryCurrentSet : .biometryAny],
             nil
         )
 
@@ -277,8 +329,13 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             return
         }
 
-        // Persist domain-state baseline right after successful EC creation
-        DomainState.saveCurrent()
+        // Persist domain-state baseline right after successful EC creation (only if biometry-invalidation is enabled)
+        if biometryCurrentSet {
+            DomainState.saveCurrent()
+        }
+
+        // Store the invalidation setting
+        InvalidationSetting.save(biometryCurrentSet)
 
         if useEc {
             // EC-only: return EC public key
@@ -616,8 +673,9 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             return
         }
 
-        // Save baseline after EC key creation
-        DomainState.saveCurrent()
+        // Save baseline after EC key creation (migration assumes biometry-any, so no baseline needed)
+        // But save the invalidation setting
+        InvalidationSetting.save(false)
 
         let unencryptedKeyTag = getBiometricKeyTag()
         let unencryptedKeyQuery: [String: Any] = [
@@ -835,16 +893,33 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         // For EC-only mode, only EC key needs to exist
         if ecKeyExists && !rsaKeyExists {
             guard checkValidity else { return true }
-            // Non-interactive validity: return false if biometry changed
-            return !DomainState.biometryChangedOrUnknown()
+
+            // Check if invalidation was enabled for this key
+            let shouldInvalidateOnEnrollment = InvalidationSetting.load() ?? false
+
+            // Only check domain state if invalidation is enabled
+            if shouldInvalidateOnEnrollment {
+                return !DomainState.biometryChangedOrUnknown()
+            }
+
+            // If invalidation is disabled (biometryAny), key remains valid
+            return true
         }
 
         // Hybrid: both must exist
         guard ecKeyExists, rsaKeyExists else { return false }
         guard checkValidity else { return true }
 
-        // Non-interactive validity for hybrid: domain-state compare
-        return !DomainState.biometryChangedOrUnknown()
+        // Check if invalidation was enabled for this key
+        let shouldInvalidateOnEnrollment = InvalidationSetting.load() ?? false
+
+        // Only check domain state if invalidation is enabled
+        if shouldInvalidateOnEnrollment {
+            return !DomainState.biometryChangedOrUnknown()
+        }
+
+        // If invalidation is disabled (biometryAny), key remains valid
+        return true
     }
 
     private func getBiometricKeyTag() -> Data {

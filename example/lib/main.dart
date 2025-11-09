@@ -40,14 +40,16 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
   Future<void> _createPublicKey() async {
     final result = await _biometricSignature.createKeys(
       androidConfig: AndroidConfig(
-        useDeviceCredentials: true,
+        useDeviceCredentials: false,
         signatureType: useEc
             ? AndroidSignatureType.ECDSA
             : AndroidSignatureType.RSA,
+        setInvalidatedByBiometricEnrollment: true,
       ),
       iosConfig: IosConfig(
         useDeviceCredentials: false,
         signatureType: useEc ? IOSSignatureType.ECDSA : IOSSignatureType.RSA,
+        biometryCurrentSet: true,
       ),
     );
     setState(() => keyMaterial = result);
@@ -89,6 +91,10 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
       ).showSnackBar(const SnackBar(content: Text('please enter payload')));
       return;
     }
+    final validity = await _biometricSignature.biometricKeyExists(
+      checkValidity: true,
+    );
+    debugPrint("Validity : $validity");
     final result = await _biometricSignature.createSignature(
       SignatureOptions(
         payload: payload!,

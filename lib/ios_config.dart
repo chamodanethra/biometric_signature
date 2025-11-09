@@ -17,9 +17,13 @@ class IosConfig {
   /// Key algorithm to use when creating a signature.
   IOSSignatureType signatureType;
 
+  /// Whether to constraint Key usage for current biometric enrollment.
+  bool biometryCurrentSet;
+
   /// Creates a new iOS configuration.
   IosConfig({
     required this.useDeviceCredentials,
     this.signatureType = IOSSignatureType.RSA,
+    this.biometryCurrentSet = true,
   });
 }

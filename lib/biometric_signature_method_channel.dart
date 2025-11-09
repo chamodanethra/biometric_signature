@@ -27,6 +27,8 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
               'useDeviceCredentials': androidConfig.useDeviceCredentials,
               'useEc': androidConfig.signatureType.isEc,
               'keyFormat': keyFormat.wireValue,
+              'setInvalidatedByBiometricEnrollment':
+                  androidConfig.setInvalidatedByBiometricEnrollment,
             });
         return _normalizeMapResponse(response);
       } else {
@@ -35,6 +37,7 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
               'useDeviceCredentials': iosConfig.useDeviceCredentials,
               'useEc': iosConfig.signatureType.isEc,
               'keyFormat': keyFormat.wireValue,
+              'biometryCurrentSet': iosConfig.biometryCurrentSet,
             });
         return _normalizeMapResponse(response);
       }
