@@ -42,7 +42,9 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Signing failed: $e'), backgroundColor: Colors.red),
+            content: Text('Signing failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -148,7 +150,9 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         _buildInfoRow('Signed At', sig.formattedTimestamp),
         _buildInfoRow('Method', sig.biometricType),
         _buildInfoRow(
-            'Document Hash', sig.documentHash.substring(0, 32) + '...'),
+          'Document Hash',
+          sig.documentHash.substring(0, 32) + '...',
+        ),
       ],
     );
   }
@@ -161,10 +165,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         children: [
           SizedBox(
             width: 120,
-            child: Text(
-              '$label:',
-              style: TextStyle(color: Colors.grey[700]),
-            ),
+            child: Text('$label:', style: TextStyle(color: Colors.grey[700])),
           ),
           Expanded(
             child: Text(

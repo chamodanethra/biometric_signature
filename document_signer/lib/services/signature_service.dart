@@ -108,9 +108,7 @@ class SignatureService {
             cancelButtonText: 'Cancel',
             allowDeviceCredentials: false,
           ),
-          iosOptions: const IosSignatureOptions(
-            shouldMigrate: false,
-          ),
+          iosOptions: const IosSignatureOptions(shouldMigrate: false),
         ),
       );
 

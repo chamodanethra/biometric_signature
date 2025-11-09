@@ -45,10 +45,6 @@ const val INVALID_PAYLOAD = "INVALID_PAYLOAD"
 const val CANCELLED = "CANCELLED"
 const val BIOMETRIC_KEY_ALIAS = "biometric_key"
 
-// Optional timeouts to keep blocking operations bounded (biometric prompt stays user-driven)
-private const val KEYGEN_TIMEOUT_MS = 30_000L
-private const val SIGN_TIMEOUT_MS = 30_000L
-
 private enum class KeyFormat {
     BASE64,
     PEM,
@@ -152,19 +148,20 @@ class BiometricSignaturePlugin :
                 val useDeviceCredentials = (args["useDeviceCredentials"] as? Boolean) == true
                 val useEc = (args["useEc"] as? Boolean) == true
                 val keyFormat = KeyFormat.from(args["keyFormat"])
+                val setInvalidatedByBiometricEnrollment = args["setInvalidatedByBiometricEnrollment"] as Boolean
 
                 pluginScope.launch {
                     try {
-                        val payload = withTimeout(KEYGEN_TIMEOUT_MS) {
-                            withContext(Dispatchers.IO) {
+                        val payload = withContext(Dispatchers.IO) {
                                 generateKeyMaterial(
                                     ctx = act,
                                     useEc = useEc,
                                     useDeviceCredentials = useDeviceCredentials,
                                     format = keyFormat,
+                                    setInvalidatedByBiometricEnrollment = setInvalidatedByBiometricEnrollment,
                                 )
-                            }
                         }
+
                         withContext(Dispatchers.Main.immediate) { result.success(payload) }
                     } catch (ce: CancellationException) {
                         withContext(Dispatchers.Main.immediate) {
@@ -264,14 +261,12 @@ class BiometricSignaturePlugin :
                         // Show biometric prompt and await result (Main executor inside, suspension via continuation)
                         val authResult = authenticateWithBiometric(act, promptInfo, cryptoObject)
 
-                        // Sign payload (bounded)
-                        val signatureBytes = withTimeout(SIGN_TIMEOUT_MS) {
-                            withContext(Dispatchers.IO) {
+                        // Sign payload
+                        val signatureBytes = withContext(Dispatchers.IO) {
                                 val sig = authResult.cryptoObject?.signature
                                     ?: throw IllegalStateException("No signature object returned")
                                 sig.update(payload.toByteArray(Charsets.UTF_8))
                                 sig.sign()
-                            }
                         }
 
                         val formattedSignature = formatValue(signatureBytes, keyFormat, "SIGNATURE")
@@ -426,11 +421,13 @@ class BiometricSignaturePlugin :
         useEc: Boolean,
         useDeviceCredentials: Boolean,
         format: KeyFormat,
+        setInvalidatedByBiometricEnrollment: Boolean,
     ): Map<String, Any?> {
         val keyPair = generateKeyPair(
             ctx = ctx,
             useEc = useEc,
             useDeviceCredentials = useDeviceCredentials,
+            setInvalidatedByBiometricEnrollment = setInvalidatedByBiometricEnrollment,
         )
         val publicKey = keyPair.public
         val formatted = formatValue(publicKey.encoded, format)
@@ -450,6 +447,7 @@ class BiometricSignaturePlugin :
         ctx: Context,
         useEc: Boolean,
         useDeviceCredentials: Boolean,
+        setInvalidatedByBiometricEnrollment: Boolean,
     ): KeyPair {
         deleteBiometricKey()
 
@@ -478,6 +476,10 @@ class BiometricSignaturePlugin :
             builder.setUserAuthenticationParameters(0, allowed)
         } else {
             builder.setUserAuthenticationValidityDurationSeconds(-1)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            builder.setInvalidatedByBiometricEnrollment(setInvalidatedByBiometricEnrollment)
         }
 
         if (ctx.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE) &&

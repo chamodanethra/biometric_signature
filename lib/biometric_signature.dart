@@ -17,11 +17,16 @@ class BiometricSignature {
     AndroidConfig? androidConfig,
     IosConfig? iosConfig,
     KeyFormat keyFormat = KeyFormat.base64,
-    int keySize = 2048,
+    bool setInvalidatedByBiometricEnrollment = true,
   }) async {
     final response = await BiometricSignaturePlatform.instance.createKeys(
-      androidConfig ?? AndroidConfig(useDeviceCredentials: false),
-      iosConfig ?? IosConfig(useDeviceCredentials: false),
+      androidConfig ??
+          AndroidConfig(
+            useDeviceCredentials: false,
+            setInvalidatedByBiometricEnrollment: true,
+          ),
+      iosConfig ??
+          IosConfig(useDeviceCredentials: false, biometryCurrentSet: true),
       keyFormat: keyFormat,
     );
     return response == null ? null : KeyCreationResult.fromChannel(response);

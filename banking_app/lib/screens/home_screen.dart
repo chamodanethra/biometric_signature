@@ -118,10 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showError(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
@@ -144,10 +141,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       size: 20,
                     ),
                     const SizedBox(width: 4),
-                    Text(
-                      _biometricType!,
-                      style: const TextStyle(fontSize: 14),
-                    ),
+                    Text(_biometricType!, style: const TextStyle(fontSize: 14)),
                   ],
                 ),
               ),
@@ -198,15 +192,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       const Text(
                         'My Accounts',
                         style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
+                            fontSize: 24, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 16),
-                      ..._accounts.map((account) => Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: AccountCard(account: account),
-                          )),
+                      ..._accounts.map(
+                        (account) => Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: AccountCard(account: account),
+                        ),
+                      ),
                       const SizedBox(height: 16),
                       Card(
                         child: Padding(

@@ -36,12 +36,7 @@ class Transaction {
   }
 }
 
-enum TransactionStatus {
-  pending,
-  completed,
-  failed,
-  cancelled,
-}
+enum TransactionStatus { pending, completed, failed, cancelled }
 
 extension TransactionStatusExtension on TransactionStatus {
   String get displayName {

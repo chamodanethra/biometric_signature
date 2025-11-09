@@ -21,10 +21,7 @@ class BiometricService {
           errorMessage: result,
         );
       }
-      return BiometricAvailability(
-        isAvailable: true,
-        biometricType: result,
-      );
+      return BiometricAvailability(isAvailable: true, biometricType: result);
     } catch (e) {
       return BiometricAvailability(
         isAvailable: false,
@@ -88,9 +85,7 @@ class BiometricService {
             cancelButtonText: 'Cancel',
             allowDeviceCredentials: false,
           ),
-          iosOptions: const IosSignatureOptions(
-            shouldMigrate: false,
-          ),
+          iosOptions: const IosSignatureOptions(shouldMigrate: false),
         ),
       );
 

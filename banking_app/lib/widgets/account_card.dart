@@ -6,11 +6,7 @@ class AccountCard extends StatelessWidget {
   final Account account;
   final VoidCallback? onTap;
 
-  const AccountCard({
-    super.key,
-    required this.account,
-    this.onTap,
-  });
+  const AccountCard({super.key, required this.account, this.onTap});
 
   @override
   Widget build(BuildContext context) {

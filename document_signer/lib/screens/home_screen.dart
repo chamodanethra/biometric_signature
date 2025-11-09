@@ -194,8 +194,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ? 'Signed ${doc.signature!.formattedTimestamp}'
                                       : 'Unsigned',
                                 ),
-                                trailing: const Icon(Icons.arrow_forward_ios,
-                                    size: 16),
+                                trailing: const Icon(
+                                  Icons.arrow_forward_ios,
+                                  size: 16,
+                                ),
                                 onTap: () => _openDocument(doc),
                               ),
                             );
@@ -228,9 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _createDocument() async {
     final result = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(
-        builder: (context) => const CreateDocumentScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const CreateDocumentScreen()),
     );
 
     if (result == true) {
