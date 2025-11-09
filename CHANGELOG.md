@@ -1,3 +1,7 @@
+## [8.1.0] - 2025-11-09
+
+* Added an optional parameter to configure whether the key should be invalidated on new biometric enrollment when creating the key.
+
 ## [8.0.0] - 2025-10-15
 
 * **Breaking**: `createKeys` now returns a `KeyCreationResult` instead of a plain base64 string, enabling configurable output formats.

@@ -46,10 +46,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
 
       // Register user (this will trigger biometric enrollment)
-      await _authService.register(
-        username: username,
-        email: email,
-      );
+      await _authService.register(username: username, email: email);
 
       // Auto-login after registration
       final challenge = await _authService.requestChallenge(username);
@@ -81,7 +78,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-                'To complete registration, we need to set up biometric authentication.'),
+              'To complete registration, we need to set up biometric authentication.',
+            ),
             SizedBox(height: 16),
             Text('This will:'),
             SizedBox(height: 8),
@@ -135,9 +133,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create Account'),
-      ),
+      appBar: AppBar(title: const Text('Create Account')),
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -146,18 +142,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
             children: [
               const Text(
                 'Register',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               Text(
                 'Create a passwordless account',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[600],
-                ),
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
               ),
               const SizedBox(height: 32),
               TextFormField(

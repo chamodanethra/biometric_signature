@@ -39,9 +39,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
       return _transactions;
     }
     return _transactions
-        .where((t) =>
-            t.fromAccount == _selectedAccountId ||
-            t.toAccount == _selectedAccountId)
+        .where(
+          (t) =>
+              t.fromAccount == _selectedAccountId ||
+              t.toAccount == _selectedAccountId,
+        )
         .toList();
   }
 
@@ -57,14 +59,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
               setState(() => _selectedAccountId = value);
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: null,
-                child: Text('All Accounts'),
+              const PopupMenuItem(value: null, child: Text('All Accounts')),
+              ...widget.accounts.map(
+                (account) =>
+                    PopupMenuItem(value: account.id, child: Text(account.name)),
               ),
-              ...widget.accounts.map((account) => PopupMenuItem(
-                    value: account.id,
-                    child: Text(account.name),
-                  )),
             ],
           ),
         ],
@@ -76,26 +75,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.history,
-                        size: 64,
-                        color: Colors.grey[400],
-                      ),
+                      Icon(Icons.history, size: 64, color: Colors.grey[400]),
                       const SizedBox(height: 16),
                       Text(
                         'No transactions yet',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.grey[600],
-                        ),
+                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'Make your first transfer to see it here',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[500],
-                        ),
+                        style: TextStyle(fontSize: 14, color: Colors.grey[500]),
                       ),
                     ],
                   ),

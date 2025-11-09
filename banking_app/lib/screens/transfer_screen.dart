@@ -94,7 +94,8 @@ class _TransferScreenState extends State<TransferScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                    'Amount: ${NumberFormat.currency(symbol: '\$').format(amount)}'),
+                  'Amount: ${NumberFormat.currency(symbol: '\$').format(amount)}',
+                ),
                 Text('From: ${_fromAccount!.name}'),
                 Text('To: ${_toAccount!.name}'),
                 const SizedBox(height: 8),
@@ -153,10 +154,7 @@ class _TransferScreenState extends State<TransferScreen> {
             const SizedBox(height: 16),
             Text(
               NumberFormat.currency(symbol: '\$').format(amount),
-              style: const TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             _buildInfoRow('From', _fromAccount!.name),
@@ -209,10 +207,7 @@ class _TransferScreenState extends State<TransferScreen> {
         children: [
           SizedBox(
             width: 60,
-            child: Text(
-              '$label:',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
+            child: Text('$label:', style: TextStyle(color: Colors.grey[600])),
           ),
           Expanded(
             child: Text(
@@ -227,10 +222,7 @@ class _TransferScreenState extends State<TransferScreen> {
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
@@ -240,9 +232,7 @@ class _TransferScreenState extends State<TransferScreen> {
         widget.accounts.where((a) => a.id != _fromAccount?.id).toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Transfer Money'),
-      ),
+      appBar: AppBar(title: const Text('Transfer Money')),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -324,8 +314,9 @@ class _TransferScreenState extends State<TransferScreen> {
                 prefixIcon: Icon(Icons.attach_money),
                 hintText: '0.00',
               ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
               ],

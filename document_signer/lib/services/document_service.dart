@@ -180,7 +180,8 @@ This agreement shall be effective for 12 months from the date of signing.
       export.writeln('Signature: ${sig.signatureValue.substring(0, 64)}...');
       export.writeln('Public Key: ${sig.signerPublicKey.substring(0, 64)}...');
       export.writeln(
-          '\nThis document has been digitally signed and can be verified.');
+        '\nThis document has been digitally signed and can be verified.',
+      );
     } else {
       export.writeln('\n[UNSIGNED DOCUMENT]');
     }

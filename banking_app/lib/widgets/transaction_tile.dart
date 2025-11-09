@@ -43,10 +43,7 @@ class TransactionTile extends StatelessWidget {
             if (transaction.description?.isNotEmpty ?? false)
               Text(
                 transaction.description!,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
               ),
             const SizedBox(height: 4),
             Row(

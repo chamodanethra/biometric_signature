@@ -118,9 +118,7 @@ class AuthService {
           cancelButtonText: 'Cancel',
           allowDeviceCredentials: false,
         ),
-        iosOptions: const IosSignatureOptions(
-          shouldMigrate: false,
-        ),
+        iosOptions: const IosSignatureOptions(shouldMigrate: false),
       ),
     );
 
@@ -132,8 +130,11 @@ class AuthService {
 
     // In production, send signature to server for verification
     // Server would verify using stored public key
-    final isValid =
-        await _verifySignature(username, challenge.nonce, signature);
+    final isValid = await _verifySignature(
+      username,
+      challenge.nonce,
+      signature,
+    );
 
     if (!isValid) {
       throw Exception('Signature verification failed');
@@ -280,9 +281,7 @@ class AuthService {
     if (challengesJson == null) return {};
 
     final Map<String, dynamic> decoded = jsonDecode(challengesJson);
-    return decoded.map(
-      (k, v) => MapEntry(k, AuthChallenge.fromJson(v)),
-    );
+    return decoded.map((k, v) => MapEntry(k, AuthChallenge.fromJson(v)));
   }
 
   Future<void> _saveSession(AuthSession session) async {
