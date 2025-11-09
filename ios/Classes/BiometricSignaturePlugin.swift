@@ -895,7 +895,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
             guard checkValidity else { return true }
 
             // Check if invalidation was enabled for this key
-            let shouldInvalidateOnEnrollment = InvalidationSetting.load() ?? false
+            let shouldInvalidateOnEnrollment = InvalidationSetting.load() ?? true
 
             // Only check domain state if invalidation is enabled
             if shouldInvalidateOnEnrollment {
@@ -911,7 +911,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         guard checkValidity else { return true }
 
         // Check if invalidation was enabled for this key
-        let shouldInvalidateOnEnrollment = InvalidationSetting.load() ?? false
+        let shouldInvalidateOnEnrollment = InvalidationSetting.load() ?? true
 
         // Only check domain state if invalidation is enabled
         if shouldInvalidateOnEnrollment {
