@@ -36,7 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final challenge = await _authService.requestChallenge(username);
 
       // Authenticate with biometric (signs the challenge)
-      final session = await _authService.authenticate(
+      await _authService.authenticate(
         username: username,
         challengeId: challenge.challengeId,
       );

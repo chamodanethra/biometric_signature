@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:document_signer_example/models/document.dart';
-import 'package:document_signer_example/models/signature_info.dart';
 import 'package:document_signer_example/services/signature_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
