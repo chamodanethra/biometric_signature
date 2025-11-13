@@ -72,174 +72,174 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _currentUser == null
-          ? const Center(child: Text('User not found'))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Column(
-                      children: [
-                        CircleAvatar(
-                          radius: 50,
-                          backgroundColor: Theme.of(
-                            context,
-                          ).primaryColor.withOpacity(0.2),
-                          child: Icon(
-                            Icons.person,
-                            size: 60,
-                            color: Theme.of(context).primaryColor,
-                          ),
+              ? const Center(child: Text('User not found'))
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Column(
+                          children: [
+                            CircleAvatar(
+                              radius: 50,
+                              backgroundColor: Theme.of(
+                                context,
+                              ).primaryColor.withOpacity(0.2),
+                              child: Icon(
+                                Icons.person,
+                                size: 60,
+                                color: Theme.of(context).primaryColor,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _currentUser!.username,
+                              style: const TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _currentUser!.email,
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          _currentUser!.username,
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _currentUser!.email,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
+                      ),
+                      const SizedBox(height: 40),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(Icons.check_circle, color: Colors.green),
-                              SizedBox(width: 12),
-                              Text(
-                                'Account Information',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              const Row(
+                                children: [
+                                  Icon(Icons.check_circle, color: Colors.green),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Account Information',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
+                              const Divider(height: 24),
+                              _buildInfoRow('User ID', _currentUser!.id),
+                              _buildInfoRow(
+                                'Account Created',
+                                _formatDateTime(_currentUser!.createdAt),
+                              ),
+                              if (_currentUser!.lastLogin != null)
+                                _buildInfoRow(
+                                  'Last Login',
+                                  _formatDateTime(_currentUser!.lastLogin!),
+                                ),
                             ],
                           ),
-                          const Divider(height: 24),
-                          _buildInfoRow('User ID', _currentUser!.id),
-                          _buildInfoRow(
-                            'Account Created',
-                            _formatDateTime(_currentUser!.createdAt),
-                          ),
-                          if (_currentUser!.lastLogin != null)
-                            _buildInfoRow(
-                              'Last Login',
-                              _formatDateTime(_currentUser!.lastLogin!),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    color: Colors.blue.withOpacity(0.1),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.security, color: Colors.blue),
-                              SizedBox(width: 12),
-                              Text(
-                                'Security Status',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          _buildStatusRow(
-                            'Biometric Authentication',
-                            'Enabled',
-                            Icons.check,
-                            Colors.green,
-                          ),
-                          _buildStatusRow(
-                            'Password Protection',
-                            'Not Required',
-                            Icons.check,
-                            Colors.green,
-                          ),
-                          _buildStatusRow(
-                            'Hardware Security',
-                            'Active',
-                            Icons.check,
-                            Colors.green,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Your account is protected by hardware-backed '
-                            'cryptographic keys and biometric authentication.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[700],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.key),
-                      title: const Text('Public Key'),
-                      subtitle: Text(
-                        '${_currentUser!.publicKey.substring(0, 32)}...',
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 11,
                         ),
                       ),
-                      trailing: const Icon(Icons.info_outline),
-                      onTap: () {
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Public Key'),
-                            content: SingleChildScrollView(
-                              child: SelectableText(
-                                _currentUser!.publicKey,
-                                style: const TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontSize: 11,
-                                ),
+                      const SizedBox(height: 16),
+                      Card(
+                        color: Colors.blue.withOpacity(0.1),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.security, color: Colors.blue),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Security Status',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('Close'),
+                              const SizedBox(height: 16),
+                              _buildStatusRow(
+                                'Biometric Authentication',
+                                'Enabled',
+                                Icons.check,
+                                Colors.green,
+                              ),
+                              _buildStatusRow(
+                                'Password Protection',
+                                'Not Required',
+                                Icons.check,
+                                Colors.green,
+                              ),
+                              _buildStatusRow(
+                                'Hardware Security',
+                                'Active',
+                                Icons.check,
+                                Colors.green,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Your account is protected by hardware-backed '
+                                'cryptographic keys and biometric authentication.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[700],
+                                ),
                               ),
                             ],
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.key),
+                          title: const Text('Public Key'),
+                          subtitle: Text(
+                            '${_currentUser!.publicKey.substring(0, 32)}...',
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 11,
+                            ),
+                          ),
+                          trailing: const Icon(Icons.info_outline),
+                          onTap: () {
+                            showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Public Key'),
+                                content: SingleChildScrollView(
+                                  child: SelectableText(
+                                    _currentUser!.publicKey,
+                                    style: const TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Close'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
+                ),
     );
   }
 

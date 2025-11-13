@@ -71,66 +71,66 @@ class _HistoryScreenState extends State<HistoryScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _filteredTransactions.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.history, size: 64, color: Colors.grey[400]),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No transactions yet',
-                    style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Make your first transfer to see it here',
-                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-                  ),
-                ],
-              ),
-            )
-          : RefreshIndicator(
-              onRefresh: _loadTransactions,
-              child: Column(
-                children: [
-                  if (_selectedAccountId != null)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      color: Colors.blue.withOpacity(0.1),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.filter_list, size: 16),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Filtered by: ${widget.accounts.firstWhere((a) => a.id == _selectedAccountId).name}',
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                          const Spacer(),
-                          TextButton(
-                            onPressed: () {
-                              setState(() => _selectedAccountId = null);
-                            },
-                            child: const Text('Clear'),
-                          ),
-                        ],
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.history, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No transactions yet',
+                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
                       ),
-                    ),
-                  Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemCount: _filteredTransactions.length,
-                      itemBuilder: (context, index) {
-                        final transaction = _filteredTransactions[index];
-                        return TransactionTile(
-                          transaction: transaction,
-                          currentAccountId: _selectedAccountId ?? 'all',
-                        );
-                      },
-                    ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Make your first transfer to see it here',
+                        style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadTransactions,
+                  child: Column(
+                    children: [
+                      if (_selectedAccountId != null)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          color: Colors.blue.withOpacity(0.1),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.filter_list, size: 16),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Filtered by: ${widget.accounts.firstWhere((a) => a.id == _selectedAccountId).name}',
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                              const Spacer(),
+                              TextButton(
+                                onPressed: () {
+                                  setState(() => _selectedAccountId = null);
+                                },
+                                child: const Text('Clear'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          itemCount: _filteredTransactions.length,
+                          itemBuilder: (context, index) {
+                            final transaction = _filteredTransactions[index];
+                            return TransactionTile(
+                              transaction: transaction,
+                              currentAccountId: _selectedAccountId ?? 'all',
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
     );
   }
 }

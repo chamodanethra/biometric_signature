@@ -44,8 +44,7 @@ class DocumentService {
       modifiedAt: DateTime.now(),
       contentHash: _signatureService.calculateDocumentHash(document.content),
       // Clear signature if content changed
-      signature:
-          document.contentHash ==
+      signature: document.contentHash ==
               _signatureService.calculateDocumentHash(document.content)
           ? document.signature
           : null,
@@ -95,8 +94,7 @@ class DocumentService {
 
   /// Get sample documents for demo
   List<Document> _getSampleDocuments() {
-    final sampleContent1 =
-        '''
+    final sampleContent1 = '''
 Non-Disclosure Agreement
 
 This Non-Disclosure Agreement (the "Agreement") is entered into as of ${DateTime.now().toString().split(' ')[0]} by and between:
@@ -117,8 +115,7 @@ Accepted and Agreed:
 [Signature Required]
 ''';
 
-    final sampleContent2 =
-        '''
+    final sampleContent2 = '''
 Service Agreement
 
 Agreement for Professional Services
