@@ -51,8 +51,9 @@ class User {
       email: json['email'],
       publicKey: json['publicKey'],
       createdAt: DateTime.parse(json['createdAt']),
-      lastLogin:
-          json['lastLogin'] != null ? DateTime.parse(json['lastLogin']) : null,
+      lastLogin: json['lastLogin'] != null
+          ? DateTime.parse(json['lastLogin'])
+          : null,
     );
   }
 }

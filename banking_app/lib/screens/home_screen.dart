@@ -182,61 +182,59 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : !_isInitialized
-              ? const Center(
-                  child: Text('Biometric authentication not available'))
-              : RefreshIndicator(
-                  onRefresh: _loadAccounts,
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      const Text(
-                        'My Accounts',
-                        style: TextStyle(
-                            fontSize: 24, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 16),
-                      ..._accounts.map(
-                        (account) => Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: AccountCard(account: account),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+          ? const Center(child: Text('Biometric authentication not available'))
+          : RefreshIndicator(
+              onRefresh: _loadAccounts,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  const Text(
+                    'My Accounts',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  ..._accounts.map(
+                    (account) => Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: AccountCard(account: account),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
                             children: [
-                              const Row(
-                                children: [
-                                  Icon(Icons.security, color: Colors.green),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Secured by Biometrics',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
+                              Icon(Icons.security, color: Colors.green),
+                              SizedBox(width: 8),
                               Text(
-                                'All transactions are cryptographically signed using your device\'s secure hardware. '
-                                'Your private key never leaves your device.',
+                                'Secured by Biometrics',
                                 style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey[600],
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ],
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'All transactions are cryptographically signed using your device\'s secure hardware. '
+                            'Your private key never leaves your device.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
+              ),
+            ),
       floatingActionButton: _isInitialized
           ? FloatingActionButton.extended(
               onPressed: _navigateToTransfer,

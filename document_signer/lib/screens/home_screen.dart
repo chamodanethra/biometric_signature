@@ -161,49 +161,46 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : !_isInitialized
-              ? const Center(
-                  child: Text('Biometric authentication not available'))
-              : RefreshIndicator(
-                  onRefresh: _loadDocuments,
-                  child: _documents.isEmpty
-                      ? const Center(child: Text('No documents yet'))
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _documents.length,
-                          itemBuilder: (context, index) {
-                            final doc = _documents[index];
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: doc.isSigned
-                                      ? Colors.green.withOpacity(0.2)
-                                      : Colors.orange.withOpacity(0.2),
-                                  child: Icon(
-                                    doc.isSigned
-                                        ? Icons.verified
-                                        : Icons.pending,
-                                    color: doc.isSigned
-                                        ? Colors.green
-                                        : Colors.orange,
-                                  ),
-                                ),
-                                title: Text(doc.title),
-                                subtitle: Text(
-                                  doc.isSigned
-                                      ? 'Signed ${doc.signature!.formattedTimestamp}'
-                                      : 'Unsigned',
-                                ),
-                                trailing: const Icon(
-                                  Icons.arrow_forward_ios,
-                                  size: 16,
-                                ),
-                                onTap: () => _openDocument(doc),
+          ? const Center(child: Text('Biometric authentication not available'))
+          : RefreshIndicator(
+              onRefresh: _loadDocuments,
+              child: _documents.isEmpty
+                  ? const Center(child: Text('No documents yet'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _documents.length,
+                      itemBuilder: (context, index) {
+                        final doc = _documents[index];
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: doc.isSigned
+                                  ? Colors.green.withOpacity(0.2)
+                                  : Colors.orange.withOpacity(0.2),
+                              child: Icon(
+                                doc.isSigned ? Icons.verified : Icons.pending,
+                                color: doc.isSigned
+                                    ? Colors.green
+                                    : Colors.orange,
                               ),
-                            );
-                          },
-                        ),
-                ),
+                            ),
+                            title: Text(doc.title),
+                            subtitle: Text(
+                              doc.isSigned
+                                  ? 'Signed ${doc.signature!.formattedTimestamp}'
+                                  : 'Unsigned',
+                            ),
+                            trailing: const Icon(
+                              Icons.arrow_forward_ios,
+                              size: 16,
+                            ),
+                            onTap: () => _openDocument(doc),
+                          ),
+                        );
+                      },
+                    ),
+            ),
       floatingActionButton: _isInitialized
           ? FloatingActionButton.extended(
               onPressed: _createDocument,

@@ -228,8 +228,9 @@ class _TransferScreenState extends State<TransferScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final availableToAccounts =
-        widget.accounts.where((a) => a.id != _fromAccount?.id).toList();
+    final availableToAccounts = widget.accounts
+        .where((a) => a.id != _fromAccount?.id)
+        .toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Transfer Money')),

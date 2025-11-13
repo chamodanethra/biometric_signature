@@ -1,5 +1,5 @@
 PODS:
-  - biometric_signature (8.1.1):
+  - biometric_signature (8.2.0):
     - Flutter
   - Flutter (1.0.0)
   - shared_preferences_foundation (0.0.1):
@@ -20,10 +20,10 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
 
 SPEC CHECKSUMS:
-  biometric_signature: b29ce0d28e8b39c2cc4e02df9b3c673b5cad60ff
-  Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
+  biometric_signature: c04e265bbe30868768626be9e51911c021b0156f
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   shared_preferences_foundation: 9e1978ff2562383bd5676f64ec4e9aa8fa06a6f7
 
-PODFILE CHECKSUM: bdef5d00116f69768caea86e1055fed63620bc2c
+PODFILE CHECKSUM: 945703bf1a4050fb8e8f15e616b94692e130196f
 
 COCOAPODS: 1.16.2
