@@ -1,3 +1,14 @@
+## [8.2.0] - 2025-11-13
+
+* Upgraded Flutter from 3.32.8 to 3.35.7
+* Upgraded Dart SDK from ^3.8.1 to ^3.9.2
+* iOS minimum deployment target upgraded from 12.0 to 13.0
+* Android minimum SDK upgraded from 23 to 24
+* Upgraded Android Gradle Plugin from 8.7.3 to 8.9.1
+* Upgraded Android compileSdk from 35 to 36
+* Refactored Android native code to use internal objects for error constants and key aliases
+* Code quality improvements: formatting and style consistency updates across example projects
+
 ## [8.1.1] - 2025-11-09
 
 * A small [bug](https://github.com/chamodanethra/biometric_signature/pull/46#discussion_r2507781143) was fixed.

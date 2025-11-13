@@ -40,10 +40,15 @@ import java.util.TimeZone
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-const val AUTH_FAILED = "AUTH_FAILED"
-const val INVALID_PAYLOAD = "INVALID_PAYLOAD"
-const val CANCELLED = "CANCELLED"
-const val BIOMETRIC_KEY_ALIAS = "biometric_key"
+internal object Errors {
+    const val AUTH_FAILED = "AUTH_FAILED"
+    const val INVALID_PAYLOAD = "INVALID_PAYLOAD"
+    const val CANCELLED = "CANCELLED"
+}
+
+internal object Aliases {
+    const val BIOMETRIC_KEY_ALIAS = "biometric_key"
+}
 
 private enum class KeyFormat {
     BASE64,
@@ -165,12 +170,12 @@ class BiometricSignaturePlugin :
                         withContext(Dispatchers.Main.immediate) { result.success(payload) }
                     } catch (ce: CancellationException) {
                         withContext(Dispatchers.Main.immediate) {
-                            result.error(CANCELLED, ce.message ?: "Operation cancelled", null)
+                            result.error(Errors.CANCELLED, ce.message ?: "Operation cancelled", null)
                         }
                     } catch (t: Throwable) {
                         withContext(Dispatchers.Main.immediate) {
                             result.error(
-                                AUTH_FAILED,
+                                Errors.AUTH_FAILED,
                                 "Error generating keys: ${t.javaClass.simpleName}: ${t.message}",
                                 t.stackTraceToString()
                             )
@@ -196,7 +201,7 @@ class BiometricSignaturePlugin :
                     try {
                         if (payload == null || !isValidUTF8(payload)) {
                             withContext(Dispatchers.Main.immediate) {
-                                result.error(INVALID_PAYLOAD, "Payload is required and must be valid UTF-8", null)
+                                result.error(Errors.INVALID_PAYLOAD, "Payload is required and must be valid UTF-8", null)
                             }
                             return@launch
                         }
@@ -204,11 +209,11 @@ class BiometricSignaturePlugin :
                         // Load private/public key & create Signature/CryptoObject off main thread
                         val signingSetup = withContext(Dispatchers.IO) {
                             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-                            val entry = keyStore.getEntry(BIOMETRIC_KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry
+                            val entry = keyStore.getEntry(Aliases.BIOMETRIC_KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry
                                 ?: throw IllegalStateException("Private key not found. Call createKeys() first.")
                             val privateKey = entry.privateKey
                             val publicKey = entry.certificate?.publicKey
-                                ?: throw IllegalStateException("Public key not found for alias $BIOMETRIC_KEY_ALIAS")
+                                ?: throw IllegalStateException("Public key not found for alias $Aliases.BIOMETRIC_KEY_ALIAS")
                             val sigAlgo = when (privateKey.algorithm.uppercase(Locale.US)) {
                                 "EC" -> "SHA256withECDSA"
                                 "RSA" -> "SHA256withRSA"
@@ -236,7 +241,7 @@ class BiometricSignaturePlugin :
                         if (can != BiometricManager.BIOMETRIC_SUCCESS) {
                             withContext(Dispatchers.Main.immediate) {
                                 result.error(
-                                    AUTH_FAILED,
+                                    Errors.AUTH_FAILED,
                                     "Biometrics/Device Credentials not available (code: $can)",
                                     null
                                 )
@@ -287,11 +292,11 @@ class BiometricSignaturePlugin :
                         withContext(Dispatchers.Main.immediate) { result.success(response) }
                     } catch (ce: CancellationException) {
                         withContext(Dispatchers.Main.immediate) {
-                            result.error(CANCELLED, ce.message ?: "Operation cancelled", null)
+                            result.error(Errors.CANCELLED, ce.message ?: "Operation cancelled", null)
                         }
                     } catch (t: Throwable) {
                         withContext(Dispatchers.Main.immediate) {
-                            result.error(AUTH_FAILED, "Error generating signature: ${t.message}", null)
+                            result.error(Errors.AUTH_FAILED, "Error generating signature: ${t.message}", null)
                         }
                     }
                 }
@@ -303,11 +308,11 @@ class BiometricSignaturePlugin :
                         val deleted = withContext(Dispatchers.IO) { deleteBiometricKey() }
                         withContext(Dispatchers.Main.immediate) {
                             if (deleted) result.success(true)
-                            else result.error(AUTH_FAILED, "Error deleting the biometric key", null)
+                            else result.error(Errors.AUTH_FAILED, "Error deleting the biometric key", null)
                         }
                     } catch (t: Throwable) {
                         withContext(Dispatchers.Main.immediate) {
-                            result.error(AUTH_FAILED, "Error deleting the biometric key: ${t.message}", null)
+                            result.error(Errors.AUTH_FAILED, "Error deleting the biometric key: ${t.message}", null)
                         }
                     }
                 }
@@ -455,7 +460,7 @@ class BiometricSignaturePlugin :
         val kpg = KeyPairGenerator.getInstance(algorithm, "AndroidKeyStore")
 
         val builder = KeyGenParameterSpec.Builder(
-            BIOMETRIC_KEY_ALIAS,
+            Aliases.BIOMETRIC_KEY_ALIAS,
             KeyProperties.PURPOSE_SIGN
         ).setDigests(KeyProperties.DIGEST_SHA256)
 
@@ -554,9 +559,9 @@ class BiometricSignaturePlugin :
     private fun doesBiometricKeyExist(checkValidity: Boolean = false): Boolean {
         return try {
             val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            if (!ks.containsAlias(BIOMETRIC_KEY_ALIAS)) return false
+            if (!ks.containsAlias(Aliases.BIOMETRIC_KEY_ALIAS)) return false
             if (!checkValidity) return true
-            val privateKey = ks.getKey(BIOMETRIC_KEY_ALIAS, null) as PrivateKey
+            val privateKey = ks.getKey(Aliases.BIOMETRIC_KEY_ALIAS, null) as PrivateKey
             try {
                 Signature.getInstance("SHA256withECDSA").apply { initSign(privateKey) }; true
             } catch (_: Exception) {
@@ -569,7 +574,7 @@ class BiometricSignaturePlugin :
 
     private fun deleteBiometricKey(): Boolean = try {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        ks.deleteEntry(BIOMETRIC_KEY_ALIAS)
+        ks.deleteEntry(Aliases.BIOMETRIC_KEY_ALIAS)
         true
     } catch (_: Exception) {
         false

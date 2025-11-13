@@ -4,11 +4,11 @@ topics: [biometrics, secure-enclave, strongbox, rsa, ecdsa]
 screenshots:
   - description: "Domain Logo"
     path: assets/logo.png
-version: 8.1.1
+version: 8.2.0
 homepage: https://github.com/chamodanethra/biometric_signature
 
 environment:
-  sdk: ^3.8.1
+  sdk: ^3.9.2
   flutter: '>=3.3.0'
 
 dependencies:
