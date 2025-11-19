@@ -118,7 +118,6 @@ final derBytes = keyResult?.publicKey.toBytes();
 
 - **Error Codes**:
   - `AUTH_FAILED`: Error generating keys.
-  - `CANCELLED`: Timed out waiting for 30_000 ms.
 
 ### `createSignature(SignatureOptions options)`
 
@@ -155,7 +154,6 @@ final String base64Signature = signatureResult.signature.toBase64();
 - **Error Codes**:
   - `INVALID_PAYLOAD`: Payload is required and must be valid UTF-8.
   - `AUTH_FAILED`: Error generating the signature.
-  - `CANCELLED`: Timed out waiting for 30_000 ms.
 
 #### Supported output formats
 

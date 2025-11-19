@@ -43,7 +43,6 @@ import kotlin.coroutines.resumeWithException
 internal object Errors {
     const val AUTH_FAILED = "AUTH_FAILED"
     const val INVALID_PAYLOAD = "INVALID_PAYLOAD"
-    const val CANCELLED = "CANCELLED"
 }
 
 internal object Aliases {
@@ -168,10 +167,6 @@ class BiometricSignaturePlugin :
                         }
 
                         withContext(Dispatchers.Main.immediate) { result.success(payload) }
-                    } catch (ce: CancellationException) {
-                        withContext(Dispatchers.Main.immediate) {
-                            result.error(Errors.CANCELLED, ce.message ?: "Operation cancelled", null)
-                        }
                     } catch (t: Throwable) {
                         withContext(Dispatchers.Main.immediate) {
                             result.error(
@@ -290,11 +285,8 @@ class BiometricSignaturePlugin :
                         formattedSignature.pemLabel?.let { response["signaturePemLabel"] = it }
 
                         withContext(Dispatchers.Main.immediate) { result.success(response) }
-                    } catch (ce: CancellationException) {
-                        withContext(Dispatchers.Main.immediate) {
-                            result.error(Errors.CANCELLED, ce.message ?: "Operation cancelled", null)
-                        }
                     } catch (t: Throwable) {
+                        if (t is CancellationException) throw t
                         withContext(Dispatchers.Main.immediate) {
                             result.error(Errors.AUTH_FAILED, "Error generating signature: ${t.message}", null)
                         }
