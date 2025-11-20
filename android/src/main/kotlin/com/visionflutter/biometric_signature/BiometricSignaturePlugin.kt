@@ -43,7 +43,6 @@ import kotlin.coroutines.resumeWithException
 internal object Errors {
     const val AUTH_FAILED = "AUTH_FAILED"
     const val INVALID_PAYLOAD = "INVALID_PAYLOAD"
-    const val CANCELLED = "CANCELLED"
 }
 
 internal object Aliases {
@@ -154,9 +153,49 @@ class BiometricSignaturePlugin :
                 val useEc = (args["useEc"] as? Boolean) == true
                 val keyFormat = KeyFormat.from(args["keyFormat"])
                 val setInvalidatedByBiometricEnrollment = args["setInvalidatedByBiometricEnrollment"] as Boolean
+                val enforceBiometric = (args["enforceBiometric"] as? Boolean) == true
 
                 pluginScope.launch {
                     try {
+                        // If enforceBiometric is true, perform biometric authentication before key generation
+                        if (enforceBiometric) {
+                            val authenticators =
+                                if (useDeviceCredentials && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                    BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                                            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                                } else {
+                                    BiometricManager.Authenticators.BIOMETRIC_STRONG
+                                }
+
+                            val biometricManager = BiometricManager.from(act)
+                            val can = biometricManager.canAuthenticate(authenticators)
+                            if (can != BiometricManager.BIOMETRIC_SUCCESS) {
+                                withContext(Dispatchers.Main.immediate) {
+                                    result.error(
+                                        Errors.AUTH_FAILED,
+                                        "Biometrics/Device Credentials not available (code: $can)",
+                                        null
+                                    )
+                                }
+                                return@launch
+                            }
+
+                            activity!!.setTheme(androidx.appcompat.R.style.Theme_AppCompat_Light_DarkActionBar)
+
+                            val promptInfoBuilder = BiometricPrompt.PromptInfo.Builder()
+                                .setTitle("Authenticate to create keys")
+                                .setAllowedAuthenticators(authenticators)
+
+                            if (!(useDeviceCredentials && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)) {
+                                promptInfoBuilder.setNegativeButtonText("Cancel")
+                            }
+
+                            val promptInfo = promptInfoBuilder.build()
+
+                            // Perform biometric authentication (without crypto object for key creation)
+                            authenticateWithBiometric(act, promptInfo, null)
+                        }
+
                         val payload = withContext(Dispatchers.IO) {
                                 generateKeyMaterial(
                                     ctx = act,
@@ -168,10 +207,6 @@ class BiometricSignaturePlugin :
                         }
 
                         withContext(Dispatchers.Main.immediate) { result.success(payload) }
-                    } catch (ce: CancellationException) {
-                        withContext(Dispatchers.Main.immediate) {
-                            result.error(Errors.CANCELLED, ce.message ?: "Operation cancelled", null)
-                        }
                     } catch (t: Throwable) {
                         withContext(Dispatchers.Main.immediate) {
                             result.error(
@@ -189,6 +224,7 @@ class BiometricSignaturePlugin :
                 val options = call.arguments<Map<String, Any?>>() ?: emptyMap()
                 val cancelButtonText = (options["cancelButtonText"] as? String) ?: "Cancel"
                 val promptMessage = (options["promptMessage"] as? String) ?: "Authenticate"
+                val subtitle = options["subtitle"] as? String
                 val payload = (options["payload"] as? String)
                 val allowDeviceCredentials = when (val raw = options["allowDeviceCredentials"]) {
                     is Boolean -> raw
@@ -255,6 +291,10 @@ class BiometricSignaturePlugin :
                             .setTitle(promptMessage)
                             .setAllowedAuthenticators(authenticators)
 
+                        if (!subtitle.isNullOrBlank()) {
+                            promptInfoBuilder.setSubtitle(subtitle)
+                        }
+
                         if (!(allowDeviceCredentials && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)) {
                             // If device credential isn't allowed (or < API 30), we must show a negative button
                             promptInfoBuilder.setNegativeButtonText(cancelButtonText)
@@ -290,11 +330,8 @@ class BiometricSignaturePlugin :
                         formattedSignature.pemLabel?.let { response["signaturePemLabel"] = it }
 
                         withContext(Dispatchers.Main.immediate) { result.success(response) }
-                    } catch (ce: CancellationException) {
-                        withContext(Dispatchers.Main.immediate) {
-                            result.error(Errors.CANCELLED, ce.message ?: "Operation cancelled", null)
-                        }
                     } catch (t: Throwable) {
+                        if (t is CancellationException) throw t
                         withContext(Dispatchers.Main.immediate) {
                             result.error(Errors.AUTH_FAILED, "Error generating signature: ${t.message}", null)
                         }

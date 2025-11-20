@@ -168,11 +168,13 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
                 let useEc = arguments["useEc"] as? Bool ?? false
                 let keyFormat = KeyFormat.from(arguments["keyFormat"])
                 let biometryCurrentSet = arguments["biometryCurrentSet"] as! Bool
+                let enforceBiometric = arguments["enforceBiometric"] as? Bool ?? false
                 createKeys(
                     useDeviceCredentials: useDeviceCredentials,
                     useEc: useEc,
                     keyFormat: keyFormat,
                     biometryCurrentSet: biometryCurrentSet,
+                    enforceBiometric: enforceBiometric,
                     result: result
                 )
             } else {
@@ -279,10 +281,50 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin {
         useEc: Bool,
         keyFormat: KeyFormat,
         biometryCurrentSet: Bool,
+        enforceBiometric: Bool,
         result: @escaping FlutterResult
     ) {
         // Delete existing keys (and baseline)
         deleteExistingKeys()
+
+        // If enforceBiometric is true, perform biometric authentication before key generation
+        if enforceBiometric {
+            let context = LAContext()
+            context.localizedFallbackTitle = ""
+            context.localizedReason = "Authenticate to create keys"
+            
+            var error: NSError?
+            let canEvaluate = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+            
+            guard canEvaluate else {
+                let errorMessage = error?.localizedDescription ?? "Biometric authentication not available"
+                dispatchMainAsync {
+                    result(FlutterError(code: Constants.authFailed, message: errorMessage, details: nil))
+                }
+                return
+            }
+            
+            // Perform biometric authentication synchronously using a semaphore
+            let semaphore = DispatchSemaphore(value: 0)
+            var authError: Error?
+            
+            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: "Authenticate to create keys") { success, error in
+                if !success {
+                    authError = error
+                }
+                semaphore.signal()
+            }
+            
+            semaphore.wait()
+            
+            if let authError = authError {
+                let errorMessage = (authError as NSError).localizedDescription
+                dispatchMainAsync {
+                    result(FlutterError(code: Constants.authFailed, message: errorMessage, details: nil))
+                }
+                return
+            }
+        }
 
         // Generate EC key pair in Secure Enclave
         let ecAccessControl = SecAccessControlCreateWithFlags(

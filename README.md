@@ -23,7 +23,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^8.2.0
+  biometric_signature: ^8.3.0
 ```
 
 |             | Android | iOS   |
@@ -93,7 +93,7 @@ When a user enrolls in biometrics, a key pair is generated. The private key is s
 
 This class provides methods to manage and utilize biometric authentication for secure server interactions. It supports both Android and iOS platforms.
 
-### `createKeys({ androidConfig, iosConfig, keyFormat })`
+### `createKeys({ androidConfig, iosConfig, keyFormat, enforceBiometric })`
 
 Generates a new key pair (RSA 2048 or EC) for biometric authentication. The private key is securely stored on the device, while the `KeyCreationResult` returned from this call contains a `FormattedValue` with the public key in the requested representation. StrongBox support is available for compatible Android devices and Secure Enclave support is available for iOS.
 
@@ -107,6 +107,7 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
         - `signatureType`: An enum value of `IOSSignatureType`.
         - `biometryCurrentSet` *(optional)*: A `bool` to constrain key usage to the current biometric enrollment. Defaults to `true`. When set to `true`, the key is bound to the current set of enrolled biometrics. If biometrics are changed (e.g., a new fingerprint is added or removed), the key becomes invalid, requiring re-enrollment.
     - `keyFormat` *(optional)*: A `KeyFormat` value describing how the public key should be returned. Defaults to `KeyFormat.base64` for backward compatibility.
+    - `enforceBiometric` *(optional)*: A `bool` to require biometric authentication before generating the key-pair. Defaults to `false`. When set to `true`, the user will be prompted for biometric authentication (fingerprint, face, or iris) before the key-pair is generated. This ensures that the person holding the device is verified before keys are created, adding an extra layer of security for sensitive use cases.
 
 - **Returns**: `Future<KeyCreationResult?>`. Access the formatted public key through `result.publicKey`, e.g.:
 
@@ -118,7 +119,6 @@ final derBytes = keyResult?.publicKey.toBytes();
 
 - **Error Codes**:
   - `AUTH_FAILED`: Error generating keys.
-  - `CANCELLED`: Timed out waiting for 30_000 ms.
 
 ### `createSignature(SignatureOptions options)`
 
@@ -131,6 +131,7 @@ Prompts the user for biometric authentication and generates a cryptographic sign
     - `androidOptions` (optional): An `AndroidSignatureOptions` object offering:
         - `cancelButtonText`: Overrides the cancel button label. Defaults to `Cancel`.
         - `allowDeviceCredentials`: Enables device-credential fallback on compatible Android devices.
+        - `subtitle`: Optional secondary text displayed under the prompt title on Android.
     - `iosOptions` (optional): An `IosSignatureOptions` object offering:
         - `shouldMigrate`: Triggers migration from pre-5.x Keychain storage to Secure Enclave.
     - `keyFormat` *(optional)*: Preferred output format (`KeyFormat.base64` by default). This is a new parameter.
@@ -155,7 +156,6 @@ final String base64Signature = signatureResult.signature.toBase64();
 - **Error Codes**:
   - `INVALID_PAYLOAD`: Payload is required and must be valid UTF-8.
   - `AUTH_FAILED`: Error generating the signature.
-  - `CANCELLED`: Timed out waiting for 30_000 ms.
 
 #### Supported output formats
 
@@ -172,7 +172,7 @@ Each `FormattedValue` exposes helpers such as `toBase64()`, `toBytes()`, `toHex(
 
 Deletes the existing key pair used for biometric authentication.
 
-- **Returns**: `Bool` - `true` if the key was successfully deleted.
+- **Returns**: `bool` - `true` if the key was successfully deleted.
 
 - **Error Codes**:
 
@@ -202,11 +202,11 @@ Checks if biometric authentication is available on the device. On Android, it sp
 
 ### `biometricKeyExists(checkValidity: bool)`
 
-Checks if the biometric key pair exists on the device. Optionally, it can also verify the validity of the key by attempting to initialize a signature with it. The key will become irreversibly invalidated once the secure lock screen is disabled (reconfigured to None, Swipe or other mode which does not authenticate the user) or when the secure lock screen is forcibly reset (e.g., by a Device Administrator). Since the key requires that user authentication takes place for every use of the key, it is also irreversibly invalidated once a new biometric is enrolled or once no more biometrics are enrolled (when `setInvalidatedByBiometricEnrollment` is `true` on Android or `biometryCurrentSet` is `true` on iOS).
+Checks if the biometric key pair exists on the device. Optionally, it can also verify the validity of the key by attempting to initialize a signature with it. Since the key requires that user authentication takes place for every use of the key, it is also irreversibly invalidated once a new biometric is enrolled or once no more biometrics are enrolled (when `setInvalidatedByBiometricEnrollment` is `true` on Android or `biometryCurrentSet` is `true` on iOS).
 
 -   **Parameters**:
     -   `checkValidity`: A bool indicating whether to check the validity of the key by initializing a signature. Default is `false`.
--   **Returns**: `Bool` - `true` if the key pair exists (and is valid if `checkValidity` is `true`), `false` otherwise.
+-   **Returns**: `bool` - `true` if the key pair exists (and is valid if `checkValidity` is `true`), `false` otherwise.
 -   **Error Codes**:
     -   `AUTH_FAILED`: Error checking if the biometric key exists.
 
@@ -246,7 +246,7 @@ class _BiometricDemoState extends State<BiometricDemo> {
     keyResult = await _biometricSignature.createKeys(
       keyFormat: KeyFormat.pem,
       androidConfig: AndroidConfig(
-        useDeviceCredentials: true,
+        useDeviceCredentials: false,
         signatureType: AndroidSignatureType.RSA,
         setInvalidatedByBiometricEnrollment: true, // Key invalidated when new biometric is enrolled
       ),
@@ -255,6 +255,7 @@ class _BiometricDemoState extends State<BiometricDemo> {
         signatureType: IOSSignatureType.RSA,
         biometryCurrentSet: true, // Key constrained to current biometric enrollment
       ),
+      enforceBiometric: true, // Require biometric authentication before generating keys
     );
     debugPrint('Public key (${keyResult.publicKey.format.wireValue}):\n${keyResult?.publicKey.asString()}');
     setState(() {});
@@ -266,7 +267,10 @@ class _BiometricDemoState extends State<BiometricDemo> {
         payload: 'Payload to sign',
         keyFormat: KeyFormat.base64,
         promptMessage: 'Authenticate to Sign',
-        androidOptions: const AndroidSignatureOptions(allowDeviceCredentials: true),
+        androidOptions: const AndroidSignatureOptions(
+          subtitle: 'Approve the login to continue',
+          allowDeviceCredentials: false,
+        ),
         iosOptions: const IosSignatureOptions(shouldMigrate: false),
       ),
     );

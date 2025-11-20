@@ -52,6 +52,7 @@ class AndroidSignatureOptions {
   const AndroidSignatureOptions({
     this.cancelButtonText,
     this.allowDeviceCredentials,
+    this.subtitle,
   });
 
   /// Text displayed on the cancel button in the biometric prompt.
@@ -60,9 +61,14 @@ class AndroidSignatureOptions {
   /// Whether device credentials can satisfy the prompt.
   final bool? allowDeviceCredentials;
 
+  /// Optional subtitle shown underneath the title on Android's biometric prompt.
+  final String? subtitle;
+
   /// Whether any Android-specific values have been provided.
   bool get hasValues =>
-      cancelButtonText != null || allowDeviceCredentials != null;
+      cancelButtonText != null ||
+      allowDeviceCredentials != null ||
+      subtitle != null;
 
   /// Converts Android-specific options to a method-channel friendly map.
   Map<String, dynamic> toMethodChannelMap() {
@@ -70,6 +76,7 @@ class AndroidSignatureOptions {
       if (cancelButtonText != null) 'cancelButtonText': cancelButtonText,
       if (allowDeviceCredentials != null)
         'allowDeviceCredentials': allowDeviceCredentials,
+      if (subtitle != null) 'subtitle': subtitle,
     };
   }
 }

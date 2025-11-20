@@ -1,3 +1,9 @@
+## [8.3.0] - 2025-11-20
+
+* Added `enforceBiometric` parameter to `createKeys()` method to require biometric authentication before generating the key-pair.
+* Added an optional subtitle parameter to Android biometric prompts via `AndroidSignatureOptions`.
+* ReadMe.md and example updates.
+
 ## [8.2.0] - 2025-11-13
 
 * Upgraded Flutter from 3.32.8 to 3.35.7

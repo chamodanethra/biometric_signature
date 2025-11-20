@@ -18,6 +18,7 @@ class BiometricSignature {
     IosConfig? iosConfig,
     KeyFormat keyFormat = KeyFormat.base64,
     bool setInvalidatedByBiometricEnrollment = true,
+    bool enforceBiometric = false,
   }) async {
     final response = await BiometricSignaturePlatform.instance.createKeys(
       androidConfig ??
@@ -28,6 +29,7 @@ class BiometricSignature {
       iosConfig ??
           IosConfig(useDeviceCredentials: false, biometryCurrentSet: true),
       keyFormat: keyFormat,
+      enforceBiometric: enforceBiometric,
     );
     return response == null ? null : KeyCreationResult.fromChannel(response);
   }
