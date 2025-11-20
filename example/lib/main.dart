@@ -101,7 +101,8 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
         payload: payload!,
         promptMessage: 'Sign Payload',
         androidOptions: const AndroidSignatureOptions(
-          allowDeviceCredentials: true,
+          allowDeviceCredentials: false,
+          subtitle: 'Approve the login to continue',
         ),
         iosOptions: const IosSignatureOptions(shouldMigrate: false),
       ),

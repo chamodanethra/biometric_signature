@@ -224,6 +224,7 @@ class BiometricSignaturePlugin :
                 val options = call.arguments<Map<String, Any?>>() ?: emptyMap()
                 val cancelButtonText = (options["cancelButtonText"] as? String) ?: "Cancel"
                 val promptMessage = (options["promptMessage"] as? String) ?: "Authenticate"
+                val subtitle = options["subtitle"] as? String
                 val payload = (options["payload"] as? String)
                 val allowDeviceCredentials = when (val raw = options["allowDeviceCredentials"]) {
                     is Boolean -> raw
@@ -289,6 +290,10 @@ class BiometricSignaturePlugin :
                         val promptInfoBuilder = BiometricPrompt.PromptInfo.Builder()
                             .setTitle(promptMessage)
                             .setAllowedAuthenticators(authenticators)
+
+                        if (!subtitle.isNullOrBlank()) {
+                            promptInfoBuilder.setSubtitle(subtitle)
+                        }
 
                         if (!(allowDeviceCredentials && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)) {
                             // If device credential isn't allowed (or < API 30), we must show a negative button

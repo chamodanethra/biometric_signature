@@ -131,6 +131,7 @@ Prompts the user for biometric authentication and generates a cryptographic sign
     - `androidOptions` (optional): An `AndroidSignatureOptions` object offering:
         - `cancelButtonText`: Overrides the cancel button label. Defaults to `Cancel`.
         - `allowDeviceCredentials`: Enables device-credential fallback on compatible Android devices.
+        - `subtitle`: Optional secondary text displayed under the prompt title on Android.
     - `iosOptions` (optional): An `IosSignatureOptions` object offering:
         - `shouldMigrate`: Triggers migration from pre-5.x Keychain storage to Secure Enclave.
     - `keyFormat` *(optional)*: Preferred output format (`KeyFormat.base64` by default). This is a new parameter.
@@ -245,7 +246,7 @@ class _BiometricDemoState extends State<BiometricDemo> {
     keyResult = await _biometricSignature.createKeys(
       keyFormat: KeyFormat.pem,
       androidConfig: AndroidConfig(
-        useDeviceCredentials: true,
+        useDeviceCredentials: false,
         signatureType: AndroidSignatureType.RSA,
         setInvalidatedByBiometricEnrollment: true, // Key invalidated when new biometric is enrolled
       ),
@@ -266,7 +267,10 @@ class _BiometricDemoState extends State<BiometricDemo> {
         payload: 'Payload to sign',
         keyFormat: KeyFormat.base64,
         promptMessage: 'Authenticate to Sign',
-        androidOptions: const AndroidSignatureOptions(allowDeviceCredentials: true),
+        androidOptions: const AndroidSignatureOptions(
+          subtitle: 'Approve the login to continue',
+          allowDeviceCredentials: false,
+        ),
         iosOptions: const IosSignatureOptions(shouldMigrate: false),
       ),
     );

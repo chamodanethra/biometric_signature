@@ -1,7 +1,8 @@
 ## [8.3.0] - 2025-11-20
 
-* Added `enforceBiometric` parameter to `createKeys()` method to require biometric authentication before generating the key-pair
-* ReadMe.md updates.
+* Added `enforceBiometric` parameter to `createKeys()` method to require biometric authentication before generating the key-pair.
+* Added an optional subtitle parameter to Android biometric prompts via `AndroidSignatureOptions`.
+* ReadMe.md and example updates.
 
 ## [8.2.0] - 2025-11-13
 
