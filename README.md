@@ -1,19 +1,89 @@
 # biometric_signature
 
-Biometric Signature is a Flutter plugin that simplifies the process of integrating biometric
-authentication (fingerprint, facial, and iris recognition) into your Dart and Flutter applications.
-It is designed to provide a consistent user experience across both Android and iOS platforms, with
-customizable UI components and high-level abstractions for biometric signature management.
+**Stop just unlocking the UI. Start proving the identity.**
+
+While standard plugins like `local_auth` return a simple `true` if the user passes biometrics, `biometric_signature` generates a **cryptographic signature** using a private key stored in hardware (Secure Enclave / StrongBox).
+
+This means even if a device is rooted or the app binary is hooked to return "true", your server will reject the request because the attacker cannot forge the cryptographic signature without the private key.
 
 ## Features
 
-- StrongBox support in compatible Android devices and Secure Enclave integration in iOS
-- Fingerprint, facial, and iris recognition (based on device capabilities)
-- Device Credentials' fallback support for compatible devices can be configured
-- Configurable key invalidation on new biometric enrollment for enhanced security
-- Simple integration with Dart and Flutter applications
-- Customizable UI components for signature prompts
-- High-level abstractions for managing biometric signatures
+- **Cryptographic Proof:** Returns a signature (RSA/ECDSA) verifyable on your backend.
+- **Hardware Security:** Uses Secure Enclave (iOS) and Keystore/StrongBox (Android).
+- **Legacy Support:** Unique **Hybrid RSA** on iOS allows storing RSA keys in the Secure Enclave (wrapping them with EC), perfect for banking backends that don't support ECDSA yet.
+- **Key Invalidation:** Keys are automatically destroyed if a new fingerprint/face is enrolled, preventing attackers from adding their own biometrics to bypass security.
+- **Device Credentials:** Optional fallback to PIN/Pattern for broader device support.
+
+## Security Architecture
+
+1.  **Enrollment:** App requests keys. User authenticates. Private Key is generated inside the Hardware Security Module (HSM) and never leaves. Public Key is sent to your server.
+2.  **Signing:** App requests a signature. User authenticates (FaceID/Fingerprint). The HSM signs the payload using the Private Key.
+3.  **Verification:** App sends the `signature` and `payload` to your server. Server verifies them using the stored Public Key.
+
+## Backend Verification
+
+To ensure security, you must verify the signature on your server. Do not verify it inside the Flutter app.
+
+### Node.js
+```javascript
+const crypto = require('crypto');
+
+function verifySignature(publicKeyPem, payload, signatureBase64) {
+    const verify = crypto.createVerify('SHA256');
+    verify.update(payload); // The original string you sent to the plugin
+    verify.end();
+
+    // Returns true if valid
+    return verify.verify(publicKeyPem, Buffer.from(signatureBase64, 'base64'));
+}
+```
+### Python
+```python
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import serialization
+import base64
+
+def verify_signature(public_key_pem_str, payload_str, signature_base64_str):
+    public_key = serialization.load_pem_public_key(public_key_pem_str.encode())
+    signature = base64.b64decode(signature_base64_str)
+    
+    try:
+        # Assuming RSA (For EC, use ec.ECDSA(hashes.SHA256()))
+        public_key.verify(
+            signature,
+            payload_str.encode(),
+            padding.PKCS1v15(),
+            hashes.SHA256()
+        )
+        return True
+    except Exception:
+        return False
+```
+
+### Go
+```go
+import (
+	"crypto"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/pem"
+	"fmt"
+)
+
+func verify(pubPemStr, payload, sigBase64 string) error {
+	block, _ := pem.Decode([]byte(pubPemStr))
+	pub, _ := x509.ParsePKIXPublicKey(block.Bytes)
+	rsaPub := pub.(*rsa.PublicKey)
+
+	hashed := sha256.Sum256([]byte(payload))
+	sig, _ := base64.StdEncoding.DecodeString(sigBase64)
+
+	return rsa.VerifyPKCS1v15(rsaPub, crypto.SHA256, hashed[:], sig)
+}
+```
 
 ## Getting Started
 
@@ -23,7 +93,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^8.3.0
+  biometric_signature: ^8.3.1
 ```
 
 |             | Android | iOS   |

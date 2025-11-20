@@ -1,3 +1,8 @@
+## [8.3.1] - 2025-11-20
+
+* Optimize iOS createKeys implementation.
+* ReadMe.md was updated.
+
 ## [8.3.0] - 2025-11-20
 
 * Added `enforceBiometric` parameter to `createKeys()` method to require biometric authentication before generating the key-pair.
