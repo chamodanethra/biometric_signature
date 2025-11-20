@@ -51,6 +51,7 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
         signatureType: useEc ? IOSSignatureType.ECDSA : IOSSignatureType.RSA,
         biometryCurrentSet: true,
       ),
+      enforceBiometric: true,
     );
     setState(() => keyMaterial = result);
     if (result != null) {

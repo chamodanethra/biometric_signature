@@ -153,9 +153,49 @@ class BiometricSignaturePlugin :
                 val useEc = (args["useEc"] as? Boolean) == true
                 val keyFormat = KeyFormat.from(args["keyFormat"])
                 val setInvalidatedByBiometricEnrollment = args["setInvalidatedByBiometricEnrollment"] as Boolean
+                val enforceBiometric = (args["enforceBiometric"] as? Boolean) == true
 
                 pluginScope.launch {
                     try {
+                        // If enforceBiometric is true, perform biometric authentication before key generation
+                        if (enforceBiometric) {
+                            val authenticators =
+                                if (useDeviceCredentials && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                    BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                                            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                                } else {
+                                    BiometricManager.Authenticators.BIOMETRIC_STRONG
+                                }
+
+                            val biometricManager = BiometricManager.from(act)
+                            val can = biometricManager.canAuthenticate(authenticators)
+                            if (can != BiometricManager.BIOMETRIC_SUCCESS) {
+                                withContext(Dispatchers.Main.immediate) {
+                                    result.error(
+                                        Errors.AUTH_FAILED,
+                                        "Biometrics/Device Credentials not available (code: $can)",
+                                        null
+                                    )
+                                }
+                                return@launch
+                            }
+
+                            activity!!.setTheme(androidx.appcompat.R.style.Theme_AppCompat_Light_DarkActionBar)
+
+                            val promptInfoBuilder = BiometricPrompt.PromptInfo.Builder()
+                                .setTitle("Authenticate to create keys")
+                                .setAllowedAuthenticators(authenticators)
+
+                            if (!(useDeviceCredentials && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)) {
+                                promptInfoBuilder.setNegativeButtonText("Cancel")
+                            }
+
+                            val promptInfo = promptInfoBuilder.build()
+
+                            // Perform biometric authentication (without crypto object for key creation)
+                            authenticateWithBiometric(act, promptInfo, null)
+                        }
+
                         val payload = withContext(Dispatchers.IO) {
                                 generateKeyMaterial(
                                     ctx = act,

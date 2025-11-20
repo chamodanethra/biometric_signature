@@ -19,6 +19,7 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
     AndroidConfig androidConfig,
     IosConfig iosConfig, {
     required KeyFormat keyFormat,
+    bool enforceBiometric = false,
   }) async {
     try {
       if (Platform.isAndroid) {
@@ -29,6 +30,7 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
               'keyFormat': keyFormat.wireValue,
               'setInvalidatedByBiometricEnrollment':
                   androidConfig.setInvalidatedByBiometricEnrollment,
+              'enforceBiometric': enforceBiometric,
             });
         return _normalizeMapResponse(response);
       } else {
@@ -38,6 +40,7 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
               'useEc': iosConfig.signatureType.isEc,
               'keyFormat': keyFormat.wireValue,
               'biometryCurrentSet': iosConfig.biometryCurrentSet,
+              'enforceBiometric': enforceBiometric,
             });
         return _normalizeMapResponse(response);
       }

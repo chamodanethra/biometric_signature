@@ -1,5 +1,5 @@
 PODS:
-  - biometric_signature (8.1.1):
+  - biometric_signature (8.3.0):
     - Flutter
   - Flutter (1.0.0)
   - integration_test (0.0.1):
@@ -19,10 +19,10 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/integration_test/ios"
 
 SPEC CHECKSUMS:
-  biometric_signature: b29ce0d28e8b39c2cc4e02df9b3c673b5cad60ff
-  Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
+  biometric_signature: d6f59b4b4031419f5db4fa8ee755f190aeddd8d1
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
 
-PODFILE CHECKSUM: e57b1a645380f557cd3ff1a90595fc35faed09b8
+PODFILE CHECKSUM: 5c8eb167e48255b7544ab290f70b4d6a1076ca06
 
 COCOAPODS: 1.16.2
