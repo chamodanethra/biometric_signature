@@ -11,11 +11,15 @@ class AndroidConfig {
   /// Whether the current Key should be invalidated by new biometric enrollment.
   bool setInvalidatedByBiometricEnrollment;
 
+  /// Whether to enable encryption support for the generated key (RSA only).
+  bool enableDecryption;
+
   /// Creates a new Android configuration.
   AndroidConfig({
     required this.useDeviceCredentials,
     this.signatureType = AndroidSignatureType.RSA,
     this.setInvalidatedByBiometricEnrollment = true,
+    this.enableDecryption = false,
   });
 }
 

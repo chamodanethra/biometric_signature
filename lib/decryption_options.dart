@@ -1,37 +1,30 @@
-import 'key_material.dart';
-
-/// Options that control how a signature request behaves on each platform.
-class SignatureOptions {
-  /// Creates a new [SignatureOptions] instance.
-  const SignatureOptions({
+/// Options that control how a decryption request behaves on each platform.
+class DecryptionOptions {
+  /// Creates a new [DecryptionOptions] instance.
+  const DecryptionOptions({
     required this.payload,
     this.promptMessage,
     this.androidOptions,
     this.iosOptions,
-    this.keyFormat = KeyFormat.base64,
   });
 
-  /// Payload string that will be signed and returned in the response.
+  /// The encrypted payload string (Base64 encoded) to be decrypted.
   final String payload;
 
   /// Custom prompt message shown in the biometric authentication dialog.
   final String? promptMessage;
 
   /// Platform-specific overrides for Android.
-  final AndroidSignatureOptions? androidOptions;
+  final AndroidDecryptionOptions? androidOptions;
 
   /// Platform-specific overrides for iOS.
-  final IosSignatureOptions? iosOptions;
-
-  /// Preferred output format for both public key and signature.
-  final KeyFormat keyFormat;
+  final IosDecryptionOptions? iosOptions;
 
   /// Converts the options into a flat map that the method channel expects.
   Map<String, dynamic> toMethodChannelMap() {
     final Map<String, dynamic> map = {
       'payload': payload,
       if (promptMessage != null) 'promptMessage': promptMessage,
-      'keyFormat': keyFormat.wireValue,
     };
 
     if (androidOptions != null) {
@@ -46,10 +39,10 @@ class SignatureOptions {
   }
 }
 
-/// Android-specific overrides for a signature request.
-class AndroidSignatureOptions {
-  /// Creates a new [AndroidSignatureOptions] instance.
-  const AndroidSignatureOptions({
+/// Android-specific overrides for a decryption request.
+class AndroidDecryptionOptions {
+  /// Creates a new [AndroidDecryptionOptions] instance.
+  const AndroidDecryptionOptions({
     this.cancelButtonText,
     this.allowDeviceCredentials,
     this.subtitle,
@@ -64,12 +57,6 @@ class AndroidSignatureOptions {
   /// Optional subtitle shown underneath the title on Android's biometric prompt.
   final String? subtitle;
 
-  /// Whether any Android-specific values have been provided.
-  bool get hasValues =>
-      cancelButtonText != null ||
-      allowDeviceCredentials != null ||
-      subtitle != null;
-
   /// Converts Android-specific options to a method-channel friendly map.
   Map<String, dynamic> toMethodChannelMap() {
     return {
@@ -81,16 +68,13 @@ class AndroidSignatureOptions {
   }
 }
 
-/// iOS-specific overrides for a signature request.
-class IosSignatureOptions {
-  /// Creates a new [IosSignatureOptions] instance.
-  const IosSignatureOptions({this.shouldMigrate});
+/// iOS-specific overrides for a decryption request.
+class IosDecryptionOptions {
+  /// Creates a new [IosDecryptionOptions] instance.
+  const IosDecryptionOptions({this.shouldMigrate});
 
   /// Whether the legacy keychain key should be migrated if available.
   final bool? shouldMigrate;
-
-  /// Whether any iOS-specific values have been provided.
-  bool get hasValues => shouldMigrate != null;
 
   /// Converts iOS-specific options to a method-channel friendly map.
   Map<String, dynamic> toMethodChannelMap() {

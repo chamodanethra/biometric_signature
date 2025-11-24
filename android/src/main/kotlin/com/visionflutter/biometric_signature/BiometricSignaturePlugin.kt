@@ -11,6 +11,7 @@ import android.util.Base64
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
+import javax.crypto.Cipher
 import androidx.fragment.app.FragmentActivity
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -153,6 +154,7 @@ class BiometricSignaturePlugin :
                 val useEc = (args["useEc"] as? Boolean) == true
                 val keyFormat = KeyFormat.from(args["keyFormat"])
                 val setInvalidatedByBiometricEnrollment = args["setInvalidatedByBiometricEnrollment"] as Boolean
+                val enableDecryption = (args["enableDecryption"] as? Boolean) == true
                 val enforceBiometric = (args["enforceBiometric"] as? Boolean) == true
 
                 pluginScope.launch {
@@ -203,6 +205,7 @@ class BiometricSignaturePlugin :
                                     useDeviceCredentials = useDeviceCredentials,
                                     format = keyFormat,
                                     setInvalidatedByBiometricEnrollment = setInvalidatedByBiometricEnrollment,
+                                    enableDecryption = enableDecryption,
                                 )
                         }
 
@@ -339,6 +342,107 @@ class BiometricSignaturePlugin :
                 }
             }
 
+            "decrypt" -> {
+                @Suppress("UNCHECKED_CAST")
+                val options = call.arguments<Map<String, Any?>>() ?: emptyMap()
+                val cancelButtonText = (options["cancelButtonText"] as? String) ?: "Cancel"
+                val promptMessage = (options["promptMessage"] as? String) ?: "Authenticate"
+                val subtitle = options["subtitle"] as? String
+                val payload = (options["payload"] as? String)
+                val allowDeviceCredentials = when (val raw = options["allowDeviceCredentials"]) {
+                    is Boolean -> raw
+                    is String -> raw.equals("true", ignoreCase = true)
+                    else -> false
+                }
+
+                pluginScope.launch {
+                    try {
+                        if (payload.isNullOrBlank()) {
+                            withContext(Dispatchers.Main.immediate) {
+                                result.error(Errors.INVALID_PAYLOAD, "Payload is required", null)
+                            }
+                            return@launch
+                        }
+
+                        // Prepare decryption
+                        val decryptSetup = withContext(Dispatchers.IO) {
+                            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+                            val entry = keyStore.getEntry(Aliases.BIOMETRIC_KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry
+                                ?: throw IllegalStateException("Private key not found. Call createKeys() first.")
+                            val privateKey = entry.privateKey
+
+                            // We only support RSA decryption for now
+                            if (privateKey.algorithm.uppercase(Locale.US) != "RSA") {
+                                throw IllegalStateException("Decryption is only supported for RSA keys. Current key: ${privateKey.algorithm}")
+                            }
+
+                            val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
+                            cipher.init(Cipher.DECRYPT_MODE, privateKey)
+                            
+                            BiometricPrompt.CryptoObject(cipher)
+                        }
+
+                        val authenticators =
+                            if (allowDeviceCredentials && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                                        BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                            } else {
+                                BiometricManager.Authenticators.BIOMETRIC_STRONG
+                            }
+
+                        val biometricManager = BiometricManager.from(act)
+                        val can = biometricManager.canAuthenticate(authenticators)
+                        if (can != BiometricManager.BIOMETRIC_SUCCESS) {
+                            withContext(Dispatchers.Main.immediate) {
+                                result.error(
+                                    Errors.AUTH_FAILED,
+                                    "Biometrics/Device Credentials not available (code: $can)",
+                                    null
+                                )
+                            }
+                            return@launch
+                        }
+
+                        activity!!.setTheme(androidx.appcompat.R.style.Theme_AppCompat_Light_DarkActionBar)
+
+                        val promptInfoBuilder = BiometricPrompt.PromptInfo.Builder()
+                            .setTitle(promptMessage)
+                            .setAllowedAuthenticators(authenticators)
+
+                        if (!subtitle.isNullOrBlank()) {
+                            promptInfoBuilder.setSubtitle(subtitle)
+                        }
+
+                        if (!(allowDeviceCredentials && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)) {
+                            promptInfoBuilder.setNegativeButtonText(cancelButtonText)
+                        }
+
+                        val promptInfo = promptInfoBuilder.build()
+
+                        // Authenticate
+                        val authResult = authenticateWithBiometric(act, promptInfo, decryptSetup)
+
+                        // Decrypt
+                        val decryptedBytes = withContext(Dispatchers.IO) {
+                            val cipher = authResult.cryptoObject?.cipher
+                                ?: throw IllegalStateException("No cipher object returned")
+                            val encryptedBytes = Base64.decode(payload, Base64.NO_WRAP)
+                            cipher.doFinal(encryptedBytes)
+                        }
+                        
+                        val decryptedString = String(decryptedBytes, Charsets.UTF_8)
+                        val response = mapOf("decryptedData" to decryptedString)
+                        withContext(Dispatchers.Main.immediate) { result.success(response) }
+
+                    } catch (t: Throwable) {
+                        if (t is CancellationException) throw t
+                        withContext(Dispatchers.Main.immediate) {
+                            result.error(Errors.AUTH_FAILED, "Error decrypting: ${t.message}", null)
+                        }
+                    }
+                }
+            }
+
             "deleteKeys" -> {
                 pluginScope.launch {
                     try {
@@ -464,12 +568,14 @@ class BiometricSignaturePlugin :
         useDeviceCredentials: Boolean,
         format: KeyFormat,
         setInvalidatedByBiometricEnrollment: Boolean,
+        enableDecryption: Boolean,
     ): Map<String, Any?> {
         val keyPair = generateKeyPair(
             ctx = ctx,
             useEc = useEc,
             useDeviceCredentials = useDeviceCredentials,
             setInvalidatedByBiometricEnrollment = setInvalidatedByBiometricEnrollment,
+            enableDecryption = enableDecryption,
         )
         val publicKey = keyPair.public
         val formatted = formatValue(publicKey.encoded, format)
@@ -490,21 +596,35 @@ class BiometricSignaturePlugin :
         useEc: Boolean,
         useDeviceCredentials: Boolean,
         setInvalidatedByBiometricEnrollment: Boolean,
+        enableDecryption: Boolean,
     ): KeyPair {
         deleteBiometricKey()
 
         val algorithm = if (useEc) KeyProperties.KEY_ALGORITHM_EC else KeyProperties.KEY_ALGORITHM_RSA
         val kpg = KeyPairGenerator.getInstance(algorithm, "AndroidKeyStore")
 
+        val purposes = if (useEc) {
+            KeyProperties.PURPOSE_SIGN
+        } else {
+            if (enableDecryption) {
+                KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_DECRYPT
+            } else {
+                KeyProperties.PURPOSE_SIGN
+            }
+        }
+
         val builder = KeyGenParameterSpec.Builder(
             Aliases.BIOMETRIC_KEY_ALIAS,
-            KeyProperties.PURPOSE_SIGN
+            purposes
         ).setDigests(KeyProperties.DIGEST_SHA256)
 
         if (useEc) {
             builder.setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
         } else {
             builder.setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
+            if (enableDecryption) {
+                builder.setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1)
+            }
             builder.setAlgorithmParameterSpec(RSAKeyGenParameterSpec(2048, RSAKeyGenParameterSpec.F4))
         }
 

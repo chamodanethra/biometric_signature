@@ -1,11 +1,15 @@
-import 'package:biometric_signature/android_config.dart';
-import 'package:biometric_signature/ios_config.dart';
-
+import 'android_config.dart';
 import 'biometric_signature_platform_interface.dart';
+import 'decryption_options.dart';
+import 'ios_config.dart';
 import 'key_material.dart';
 import 'signature_options.dart';
 
+export 'android_config.dart';
+export 'decryption_options.dart';
+export 'ios_config.dart';
 export 'key_material.dart';
+export 'signature_options.dart';
 
 /// High-level API for interacting with the Biometric Signature plugin.
 class BiometricSignature {
@@ -43,6 +47,15 @@ class BiometricSignature {
       options,
     );
     return response == null ? null : SignatureResult.fromChannel(response);
+  }
+
+  /// Decrypts the given payload using the private key and biometrics.
+  Future<DecryptResult?> decrypt(DecryptionOptions options) async {
+    final result = await BiometricSignaturePlatform.instance.decrypt(options);
+    if (result == null) {
+      return null;
+    }
+    return DecryptResult.fromChannel(result);
   }
 
   /// Deletes the biometric key if it exists.

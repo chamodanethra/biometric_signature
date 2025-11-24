@@ -1,10 +1,12 @@
 import 'dart:io';
+
 import 'package:biometric_signature/android_config.dart';
 import 'package:biometric_signature/ios_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'biometric_signature_platform_interface.dart';
+import 'decryption_options.dart';
 import 'key_material.dart';
 import 'signature_options.dart';
 
@@ -30,6 +32,7 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
               'keyFormat': keyFormat.wireValue,
               'setInvalidatedByBiometricEnrollment':
                   androidConfig.setInvalidatedByBiometricEnrollment,
+              'enableDecryption': androidConfig.enableDecryption,
               'enforceBiometric': enforceBiometric,
             });
         return _normalizeMapResponse(response);
@@ -66,6 +69,19 @@ class MethodChannelBiometricSignature extends BiometricSignaturePlatform {
     try {
       final response = await methodChannel.invokeMethod<dynamic>(
         'createSignature',
+        options.toMethodChannelMap(),
+      );
+      return _normalizeMapResponse(response);
+    } on PlatformException {
+      rethrow;
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>?> decrypt(DecryptionOptions options) async {
+    try {
+      final response = await methodChannel.invokeMethod<dynamic>(
+        'decrypt',
         options.toMethodChannelMap(),
       );
       return _normalizeMapResponse(response);

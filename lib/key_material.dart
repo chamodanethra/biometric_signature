@@ -215,3 +215,14 @@ class SignatureResult {
     );
   }
 }
+
+/// Capture structured response for `decrypt`.
+class DecryptResult {
+  DecryptResult({required this.decryptedData});
+
+  final String decryptedData;
+
+  factory DecryptResult.fromChannel(Map<String, dynamic> raw) {
+    return DecryptResult(decryptedData: raw['decryptedData'] as String);
+  }
+}

@@ -1,3 +1,9 @@
+## [8.4.0] - 2025-11-24
+* **Feature**: Added RSA decryption support (`decrypt` method) for Android and iOS.
+* **Feature**: Added `enableDecryption` parameter to `AndroidConfig` in `createKeys` to generate keys with decryption purpose.
+* Improved unit tests to cover more scenarios.
+* Updated `README.md` with new features and examples.
+
 ## [8.3.1] - 2025-11-20
 
 * Optimize iOS createKeys implementation.
