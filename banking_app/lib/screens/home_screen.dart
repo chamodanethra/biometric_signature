@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
 import 'package:banking_app_example/models/account.dart';
+import 'package:banking_app_example/screens/history_screen.dart';
+import 'package:banking_app_example/screens/transfer_screen.dart';
 import 'package:banking_app_example/services/biometric_service.dart';
 import 'package:banking_app_example/services/transaction_service.dart';
 import 'package:banking_app_example/widgets/account_card.dart';
-import 'package:banking_app_example/screens/transfer_screen.dart';
-import 'package:banking_app_example/screens/history_screen.dart';
+import 'package:flutter/material.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

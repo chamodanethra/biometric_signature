@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
 import 'package:banking_app_example/models/account.dart';
 import 'package:banking_app_example/models/transaction.dart';
 import 'package:banking_app_example/services/transaction_service.dart';
 import 'package:banking_app_example/widgets/transaction_tile.dart';
+import 'package:flutter/material.dart';
 
 class HistoryScreen extends StatefulWidget {
   final List<Account> accounts;

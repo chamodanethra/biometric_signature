@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
 import 'package:document_signer_example/models/document.dart';
+import 'package:document_signer_example/screens/create_document_screen.dart';
+import 'package:document_signer_example/screens/document_detail_screen.dart';
 import 'package:document_signer_example/services/document_service.dart';
 import 'package:document_signer_example/services/signature_service.dart';
-import 'package:document_signer_example/screens/document_detail_screen.dart';
-import 'package:document_signer_example/screens/create_document_screen.dart';
+import 'package:flutter/material.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

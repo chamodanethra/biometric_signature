@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:document_signer_example/models/document.dart';
 import 'package:document_signer_example/services/document_service.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class DocumentDetailScreen extends StatefulWidget {
   final Document document;

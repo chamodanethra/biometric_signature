@@ -1,11 +1,9 @@
 import 'dart:convert';
+
+import 'package:biometric_signature/biometric_signature.dart';
 import 'package:crypto/crypto.dart';
 import 'package:document_signer_example/models/document.dart';
 import 'package:document_signer_example/models/signature_info.dart';
-import 'package:biometric_signature/biometric_signature.dart';
-import 'package:biometric_signature/signature_options.dart';
-import 'package:biometric_signature/android_config.dart';
-import 'package:biometric_signature/ios_config.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
