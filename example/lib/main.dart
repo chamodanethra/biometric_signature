@@ -425,9 +425,7 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
 
   @override
   Widget build(BuildContext context) {
-    final canDecrypt =
-        enableDecryption ||
-        !useEc; // RSA always can decrypt if enableDecryption
+    final canDecrypt = enableDecryption || Platform.isIOS;
 
     return SafeArea(
       child: Stack(
