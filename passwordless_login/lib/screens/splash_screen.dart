@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:passwordless_login_example/services/auth_service.dart';
-import 'package:passwordless_login_example/screens/login_screen.dart';
 import 'package:passwordless_login_example/screens/home_screen.dart';
+import 'package:passwordless_login_example/screens/login_screen.dart';
+import 'package:passwordless_login_example/services/auth_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});

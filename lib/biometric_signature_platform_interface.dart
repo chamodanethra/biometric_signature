@@ -3,6 +3,7 @@ import 'package:biometric_signature/ios_config.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'biometric_signature_method_channel.dart';
+import 'decryption_options.dart';
 import 'key_material.dart';
 import 'signature_options.dart';
 
@@ -58,6 +59,13 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
   Future<Map<String, dynamic>?> createSignature(SignatureOptions options) {
     throw UnimplementedError(
       'createSignature(SignatureOptions options) has not been implemented.',
+    );
+  }
+
+  /// Decrypts the given payload using the private key and biometrics.
+  Future<Map<String, dynamic>?> decrypt(DecryptionOptions options) {
+    throw UnimplementedError(
+      'decrypt(DecryptionOptions options) has not been implemented.',
     );
   }
 

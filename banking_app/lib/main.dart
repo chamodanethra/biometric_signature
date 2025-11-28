@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:banking_app_example/screens/home_screen.dart';
+import 'package:flutter/material.dart';
 
 void main() {
   runApp(const BankingApp());

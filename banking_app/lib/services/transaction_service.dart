@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:banking_app_example/models/account.dart';
 import 'package:banking_app_example/models/transaction.dart';
 import 'package:banking_app_example/services/biometric_service.dart';

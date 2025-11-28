@@ -14,19 +14,19 @@ class SignatureOptions {
   /// Payload string that will be signed and returned in the response.
   final String payload;
 
-  /// Custom prompt message shown in the biometric authentication dialog.
+  /// Optional message shown in the biometric authentication prompt.
   final String? promptMessage;
 
-  /// Platform-specific overrides for Android.
+  /// Android-specific biometric prompt and configuration overrides.
   final AndroidSignatureOptions? androidOptions;
 
-  /// Platform-specific overrides for iOS.
+  /// iOS-specific decryption options.
   final IosSignatureOptions? iosOptions;
 
   /// Preferred output format for both public key and signature.
   final KeyFormat keyFormat;
 
-  /// Converts the options into a flat map that the method channel expects.
+  /// Converts this object to a method-channel map.
   Map<String, dynamic> toMethodChannelMap() {
     final Map<String, dynamic> map = {
       'payload': payload,
@@ -58,10 +58,10 @@ class AndroidSignatureOptions {
   /// Text displayed on the cancel button in the biometric prompt.
   final String? cancelButtonText;
 
-  /// Whether device credentials can satisfy the prompt.
+  /// Whether device credentials (PIN/Pattern/Password) may satisfy the biometric prompt.
   final bool? allowDeviceCredentials;
 
-  /// Optional subtitle shown underneath the title on Android's biometric prompt.
+  /// Optional subtitle displayed beneath the prompt title.
   final String? subtitle;
 
   /// Whether any Android-specific values have been provided.
@@ -86,7 +86,7 @@ class IosSignatureOptions {
   /// Creates a new [IosSignatureOptions] instance.
   const IosSignatureOptions({this.shouldMigrate});
 
-  /// Whether the legacy secure enclave key should be migrated if available.
+  /// Whether legacy Keychain keys (pre-5.x) should be migrated into Secure Enclave.
   final bool? shouldMigrate;
 
   /// Whether any iOS-specific values have been provided.

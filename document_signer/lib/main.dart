@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:document_signer_example/screens/home_screen.dart';
+import 'package:flutter/material.dart';
 
 void main() {
   runApp(const DocumentSignerApp());

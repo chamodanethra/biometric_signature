@@ -153,13 +153,52 @@ class KeyCreationResult {
     required this.publicKey,
     required this.algorithm,
     required this.keySize,
+    this.signingPublicKey,
+    this.signingAlgorithm,
+    this.signingKeySize,
+    this.isHybridMode = false,
   });
 
+  /// The primary public key (for encryption in hybrid mode, or general use otherwise)
   final FormattedValue publicKey;
+
+  /// The algorithm of the primary key ("RSA" or "EC")
   final String algorithm;
+
+  /// The size of the primary key in bits
   final int keySize;
 
+  // ========== Hybrid Mode Fields (Android EC + Decryption) ==========
+
+  /// The signing public key (only present in hybrid mode)
+  final FormattedValue? signingPublicKey;
+
+  /// The signing algorithm (only present in hybrid mode, typically "EC")
+  final String? signingAlgorithm;
+
+  /// The signing key size in bits (only present in hybrid mode, typically 256)
+  final int? signingKeySize;
+
+  /// Whether this result is from hybrid mode
+  /// In hybrid mode:
+  /// - `publicKey` is the encryption key (for ECIES)
+  /// - `signingPublicKey` is the signing key (for ECDSA)
+  final bool isHybridMode;
+
   factory KeyCreationResult.fromChannel(Map<String, dynamic> raw) {
+    final isHybrid = raw['hybridMode'] == true;
+
+    FormattedValue? signingPubKey;
+    if (isHybrid && raw['signingPublicKey'] != null) {
+      signingPubKey = FormattedValue(
+        format:
+            KeyFormatWire.fromWire(raw['signingPublicKeyFormat'] as String?) ??
+            KeyFormat.base64,
+        value: raw['signingPublicKey']!,
+        pemLabel: raw['signingPublicKeyPemLabel'] as String?,
+      );
+    }
+
     return KeyCreationResult(
       publicKey: FormattedValue(
         format:
@@ -170,7 +209,19 @@ class KeyCreationResult {
       ),
       algorithm: (raw['algorithm'] as String?) ?? 'RSA',
       keySize: (raw['keySize'] as num?)?.toInt() ?? 2048,
+      signingPublicKey: signingPubKey,
+      signingAlgorithm: raw['signingAlgorithm'] as String?,
+      signingKeySize: (raw['signingKeySize'] as num?)?.toInt(),
+      isHybridMode: isHybrid,
     );
+  }
+
+  @override
+  String toString() {
+    if (isHybridMode) {
+      return 'KeyCreationResult(hybrid: encryption=$algorithm/$keySize, signing=$signingAlgorithm/$signingKeySize)';
+    }
+    return 'KeyCreationResult($algorithm/$keySize)';
   }
 }
 
@@ -213,5 +264,21 @@ class SignatureResult {
           ? DateTime.parse(timestampString)
           : null,
     );
+  }
+}
+
+/// Capture structured response for `decrypt`.
+///
+/// Contains the decrypted data as a UTF-8 string. Works with both RSA and EC
+/// (ECIES) encrypted payloads. The decryption algorithm is automatically
+/// selected based on the key type stored on the device.
+class DecryptResult {
+  DecryptResult({required this.decryptedData});
+
+  /// The decrypted plaintext string (UTF-8 encoded).
+  final String decryptedData;
+
+  factory DecryptResult.fromChannel(Map<String, dynamic> raw) {
+    return DecryptResult(decryptedData: raw['decryptedData'] as String);
   }
 }

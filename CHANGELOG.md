@@ -1,3 +1,32 @@
+## [8.4.0] - 2025-11-28
+### Added
+* **ECIES decryption** on Android and iOS.
+* X9.63-SHA256 KDF and AES-128-GCM support for elliptic-curve decryption.
+* RSA decryption support via `decrypt()` on Android and iOS.
+* `enableDecryption` option in `AndroidConfig` to generate RSA keys with decryption capability.
+* Cross-platform ECIES support for P-256 (secp256r1) keys.
+
+### Android
+* Manual ECIES implementation using ECDH, X9.63 KDF, and AES-GCM.
+* Software EC private key for decryption is encrypted using a biometric-protected AES-256 master key (Keystore/StrongBox).
+* Wrapped EC private key blob is stored in app-private files with MODE_PRIVATE permissions.
+* All sensitive key material is zeroized after use.
+
+### iOS
+* Native ECIES support through SecKeyAlgorithm.eciesEncryptionStandardX963SHA256AESGCM.
+* Hybrid RSA mode: software RSA key for decryption encrypted via ECIES with Secure Enclave EC public key.
+
+### Architecture
+
+* Updated hybrid EC design:
+    * Android: hardware EC signing key + AES-wrapped software EC decryption key
+    * iOS: hardware EC signing key + ECIES-wrapped software RSA key
+
+### Misc
+
+* Expanded documentation and updated examples.
+* Improved test coverage across decryption and hybrid modes.
+
 ## [8.3.1] - 2025-11-20
 
 * Optimize iOS createKeys implementation.

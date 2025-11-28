@@ -4,7 +4,7 @@ topics: [biometrics, secure-enclave, strongbox, rsa, ecdsa]
 screenshots:
   - description: "Domain Logo"
     path: assets/logo.png
-version: 8.3.1
+version: 8.4.0
 homepage: https://github.com/chamodanethra/biometric_signature
 
 environment:

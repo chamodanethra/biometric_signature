@@ -1,11 +1,9 @@
 import 'dart:convert';
 import 'dart:math';
-import 'package:passwordless_login_example/models/user.dart';
-import 'package:passwordless_login_example/models/auth_challenge.dart';
+
 import 'package:biometric_signature/biometric_signature.dart';
-import 'package:biometric_signature/signature_options.dart';
-import 'package:biometric_signature/android_config.dart';
-import 'package:biometric_signature/ios_config.dart';
+import 'package:passwordless_login_example/models/auth_challenge.dart';
+import 'package:passwordless_login_example/models/user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Simulates a backend authentication service

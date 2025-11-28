@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:passwordless_login_example/services/auth_service.dart';
-import 'package:passwordless_login_example/screens/register_screen.dart';
 import 'package:passwordless_login_example/screens/home_screen.dart';
+import 'package:passwordless_login_example/screens/register_screen.dart';
+import 'package:passwordless_login_example/services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
