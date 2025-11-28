@@ -12,11 +12,51 @@ export 'key_material.dart';
 export 'signature_options.dart';
 
 /// High-level API for interacting with the Biometric Signature plugin.
+///
+/// This class provides a uniform Flutter interface over platform-specific
+/// hardware-backed signing and secure decryption workflows. When supported,
+/// keys are always created inside secure hardware:
+///
+/// - **Android**: Android Keystore / StrongBox
+/// - **iOS**: Secure Enclave
+///
+/// Hybrid modes are used automatically when hardware keys cannot perform the
+/// required decryption operation (for example, ECIES on Android or RSA PKCS#1
+/// decryption on iOS).
 class BiometricSignature {
-  /// Creates a key pair on the device and stores the private key in the
-  /// StrongBox or KeyStore/Secure Enclave.
+  /// Creates a new biometric-protected key pair used for signing
+  /// (and optionally decryption, depending on the platform and configuration).
   ///
-  /// Returns the public key using the requested [keyFormat].
+  /// ## Key Modes
+  ///
+  /// The plugin automatically selects the appropriate mode:
+  ///
+  /// - **RSA Mode**
+  ///   Hardware RSA-2048 key pair supporting SHA256withRSA signatures.
+  ///   Optional RSA/PKCS#1 decryption when enabled. Private key never leaves
+  ///   secure hardware.
+  ///
+  /// - **EC Signing-Only**
+  ///   Hardware-backed P-256 EC key pair supporting ECDSA signatures only.
+  ///   Decryption is not supported in this mode.
+  ///
+  /// - **Hybrid EC Mode**
+  ///   Used when EC signing is required but the platform cannot perform ECIES
+  ///   decryption inside hardware.
+  ///
+  ///   - **Android**
+  ///     Hardware EC signing key + software EC key for ECIES decryption.
+  ///     The software EC private key is encrypted using a biometric-protected
+  ///     AES-256 master key (stored in Keystore/StrongBox). The wrapped key
+  ///     itself is stored in app-private files with MODE_PRIVATE permissions.
+  ///
+  ///   - **iOS**
+  ///     Hardware EC signing key + software RSA private key for PKCS#1
+  ///     decryption. The software RSA key is encrypted using ECIES with
+  ///     Secure Enclave EC public key material and stored in Keychain.
+  ///
+  /// The returned [KeyCreationResult] includes the public key in the requested
+  /// output format.
   Future<KeyCreationResult?> createKeys({
     AndroidConfig? androidConfig,
     IosConfig? iosConfig,
@@ -35,13 +75,23 @@ class BiometricSignature {
       keyFormat: keyFormat,
       enforceBiometric: enforceBiometric,
     );
+
     return response == null ? null : KeyCreationResult.fromChannel(response);
   }
 
   /// Creates a digital signature using biometric authentication.
   ///
-  /// The output respects the [SignatureOptions.keyFormat] that defaults to
-  /// [KeyFormat.base64] for backward compatibility.
+  /// ## Algorithms
+  ///
+  /// - **RSA**: SHA256withRSA (PKCS#1 v1.5)
+  /// - **EC**:
+  ///   - Android: SHA256withECDSA
+  ///   - iOS: ecdsaSignatureMessageX962SHA256 (ANSI X9.62 format)
+  ///
+  /// Hybrid EC mode always uses the hardware EC signing key.
+  ///
+  /// The returned [SignatureResult] contains both the signature and the
+  /// corresponding public key in the requested format.
   Future<SignatureResult?> createSignature(SignatureOptions options) async {
     final response = await BiometricSignaturePlatform.instance.createSignature(
       options,
@@ -49,40 +99,57 @@ class BiometricSignature {
     return response == null ? null : SignatureResult.fromChannel(response);
   }
 
-  /// Decrypts the given payload using the private key and biometrics.
+  /// Decrypts a Base64-encoded payload using biometric authentication.
+  ///
+  /// ## Supported Algorithms
+  ///
+  /// - **RSA**
+  ///   RSA/ECB/PKCS1Padding (Android and iOS hybrid mode).
+  ///
+  ///   - **ECIES**
+  ///   P-256 ECIES using ECDH → X9.63 KDF (SHA-256) → AES-128-GCM.
+  ///
+  ///   - **Android**
+  ///     Manual ECIES implementation (ECDH → X9.63 KDF → AES-GCM).
+  ///     The wrapped software EC private key is read from app-private file storage
+  ///     and unwrapped using a biometric-protected AES-256 master key from Keystore/StrongBox.
+  ///     All sensitive key material is zeroized immediately after use.
+  ///
+  ///   - **iOS**
+  ///     Native ECIES using `SecKeyAlgorithm.eciesEncryptionStandardX963SHA256AESGCM`.
+  ///     EC-only mode uses direct ECIES decryption; hybrid mode unwraps the RSA key
+  ///     from Keychain before performing RSA decryption.
   Future<DecryptResult?> decrypt(DecryptionOptions options) async {
-    final result = await BiometricSignaturePlatform.instance.decrypt(options);
-    if (result == null) {
-      return null;
-    }
-    return DecryptResult.fromChannel(result);
+    final response = await BiometricSignaturePlatform.instance.decrypt(options);
+    return response == null ? null : DecryptResult.fromChannel(response);
   }
 
-  /// Deletes the biometric key if it exists.
+  /// Deletes all active biometric key material.
   ///
-  /// Returns: A [bool] indicating whether the deletion was successful or an error.
+  /// - Hardware keys (RSA or EC): removed from Keystore / Secure Enclave.
+  /// - Hybrid mode keys: wrapped software keys are also cleared.
   Future<bool?> deleteKeys() async {
-    final bool? response = await BiometricSignaturePlatform.instance
-        .deleteKeys();
+    final response = await BiometricSignaturePlatform.instance.deleteKeys();
     return response;
   }
 
   /// Determines whether biometric authentication is available on the device.
   ///
-  /// Returns: A [String] indicating biometric type if available, otherwise returns none, and the reason.
+  /// Returns:
+  /// - `"fingerprint"`, `"face"`, `"iris"`, `"TouchID"`, `"FaceID"`, etc.
+  /// - On Android, `"none, <reason>"` when unavailable.
   Future<String?> biometricAuthAvailable() async {
-    final String? response = await BiometricSignaturePlatform.instance
-        .biometricAuthAvailable();
-    return response;
+    return BiometricSignaturePlatform.instance.biometricAuthAvailable();
   }
 
-  /// Checks whether the biometric key exists in the StrongBox or KeyStore/Secure Enclave.
+  /// Checks whether a hardware-backed signing key currently exists.
   ///
-  /// params: An optional bool named [checkValidity], to check if the key is valid.
-  /// Returns: A [bool] indicating whether the biometric key exists.
+  /// If [checkValidity] is `true`, the plugin attempts to initialize a
+  /// signature operation. This may fail if the biometric enrollment has
+  /// changed and the key has been invalidated.
   Future<bool?> biometricKeyExists({bool checkValidity = false}) async {
-    final bool? response = await BiometricSignaturePlatform.instance
-        .biometricKeyExists(checkValidity);
-    return response;
+    return BiometricSignaturePlatform.instance.biometricKeyExists(
+      checkValidity,
+    );
   }
 }
