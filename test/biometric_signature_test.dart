@@ -205,6 +205,12 @@ class MockBiometricSignaturePlatform
       code: BiometricError.success,
     );
   }
+
+  @override
+  Future<bool> isDeviceLockSet() {
+    // TODO: implement isDeviceLockSet
+    throw UnimplementedError();
+  }
 }
 
 void main() {

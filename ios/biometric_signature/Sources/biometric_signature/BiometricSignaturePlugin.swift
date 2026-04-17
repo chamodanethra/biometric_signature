@@ -559,11 +559,11 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
     func deleteAllKeys(completion: @escaping (Result<Bool, Error>) -> Void) {
         // Delete only plugin-owned EC and wrapped RSA records.
         deleteEcKeys(withTagPrefix: Constants.ecKeyPrefix)
-        deleteGenericPasswords(withServicePrefix: Constants.biometricKeyPrefix)
+        deleteGenericPasswords(withServicePrefix: Constants.biometricKeyPrefix, requireMatchingAccount: false)
 
         // Delete all plugin-owned domain state and invalidation settings.
         DomainState.deleteAll()
-        deleteGenericPasswords(withServicePrefix: Constants.invalidationSettingPrefix)
+        deleteGenericPasswords(withServicePrefix: Constants.invalidationSettingPrefix, requireMatchingAccount: false)
 
         completion(.success(true))
     }
