@@ -17,6 +17,23 @@ import 'package:pigeon/pigeon.dart';
     cppOptions: CppOptions(namespace: 'biometric_signature'),
   ),
 )
+/// The type of authentication that was used to complete an operation.
+///
+/// On Android, this is determined by the platform's `AuthenticationResult.getAuthenticationType()`.
+/// On iOS/macOS, this is inferred: [biometric] if device credentials are not allowed,
+/// [credential] if no biometric hardware is available, [unknown] otherwise.
+/// On Windows, this is always [unknown] as Windows Hello handles auth internally.
+enum AuthenticationType {
+  /// The user authenticated using device credentials (PIN, pattern, or password).
+  credential,
+
+  /// The user authenticated using a biometric (fingerprint, face, iris).
+  biometric,
+
+  /// The authentication type could not be determined.
+  unknown,
+}
+
 /// Types of biometric authentication supported by the device.
 enum BiometricType {
   /// Face recognition (Face ID on iOS, face unlock on Android).
@@ -101,6 +118,33 @@ enum BiometricError {
   /// [Android 15+ only] Check `selectedFallbackIndex` and `selectedFallbackText`
   /// on the result object to determine which option was selected.
   fallbackSelected,
+
+  /// The device does not have a screen lock (PIN, pattern, password, or
+  /// passcode) configured.
+  ///
+  /// A screen lock is a prerequisite for biometric enrollment and for
+  /// hardware-backed key storage on all platforms:
+  /// - **iOS/macOS**: Maps from `kLAErrorPasscodeNotSet`. Can surface during
+  ///   any operation that requires Secure Enclave access (key creation,
+  ///   signing, decryption, and simple prompt).
+  /// - **Android**: Maps from `ERROR_NO_DEVICE_CREDENTIAL` (cause code 14).
+  ///   Only surfaces when `allowDeviceCredentials: true` is set; for
+  ///   biometric-only flows Android reports [notAvailable] or [notEnrolled]
+  ///   instead.
+  /// - **Windows**: Not applicable — Windows Hello manages its own credential
+  ///   requirements.
+  ///
+  /// Use [BiometricSignatureApi.isDeviceLockSet] as a proactive precondition
+  /// check before attempting operations. This error is the reactive
+  /// counterpart when the check is skipped or the user removes their screen
+  /// lock between the check and the operation.
+  ///
+  /// **Migration from 11.0.x → 11.1.0**: On Android, `ERROR_NO_DEVICE_CREDENTIAL`
+  /// (cause code 14) was previously mapped to [notAvailable]. Consumers that
+  /// were pattern-matching on [notAvailable] to drive a "no screen lock" UX
+  /// should migrate to [passcodeNotSet]. iOS/macOS mapping of
+  /// `kLAErrorPasscodeNotSet` changed in the same release.
+  passcodeNotSet,
 }
 
 /// A custom fallback option shown on the biometric prompt.
@@ -140,6 +184,13 @@ class KeyCreationResult {
   String? decryptingAlgorithm;
   int? decryptingKeySize;
   bool? isHybridMode;
+
+  /// The type of authentication used to complete this operation.
+  ///
+  /// Inferred on Apple platforms (iOS/macOS), authoritative on Android.
+  /// See [AuthenticationType] for how inference is performed when the
+  /// platform does not report the method directly.
+  AuthenticationType? authenticationType;
 }
 
 class SignatureResult {
@@ -158,6 +209,13 @@ class SignatureResult {
   /// [Android 15+] Text of the selected fallback option.
   /// Only populated when `code == BiometricError.fallbackSelected`.
   String? selectedFallbackText;
+
+  /// The type of authentication used to complete this operation.
+  ///
+  /// Inferred on Apple platforms (iOS/macOS), authoritative on Android.
+  /// See [AuthenticationType] for how inference is performed when the
+  /// platform does not report the method directly.
+  AuthenticationType? authenticationType;
 }
 
 class DecryptResult {
@@ -172,6 +230,13 @@ class DecryptResult {
   /// [Android 15+] Text of the selected fallback option.
   /// Only populated when `code == BiometricError.fallbackSelected`.
   String? selectedFallbackText;
+
+  /// The type of authentication used to complete this operation.
+  ///
+  /// Inferred on Apple platforms (iOS/macOS), authoritative on Android.
+  /// See [AuthenticationType] for how inference is performed when the
+  /// platform does not report the method directly.
+  AuthenticationType? authenticationType;
 }
 
 /// Detailed information about existing biometric keys.
@@ -475,6 +540,34 @@ abstract class BiometricSignatureApi {
     String promptMessage,
     SimplePromptConfig? config,
   );
+
+  /// Checks whether the device has a screen lock (PIN, pattern, password, or
+  /// passcode) configured.
+  ///
+  /// This is a precondition for biometric enrollment on most platforms, but
+  /// the precise meaning of `true` varies per platform:
+  ///
+  /// - **Android**: Authoritative. Uses `KeyguardManager.isDeviceSecure()`
+  ///   and reports exactly whether a lock credential is enrolled.
+  /// - **iOS/macOS**: Evaluates `LAPolicy.deviceOwnerAuthentication` and
+  ///   maps `kLAErrorPasscodeNotSet` to `false`. Any other failure to
+  ///   evaluate the policy (e.g. on unusual or very old devices) is treated
+  ///   as `true` to avoid false negatives. Therefore `true` means
+  ///   "lock is set **or** indeterminate". If you need a stronger guarantee,
+  ///   rely on the reactive [BiometricError.passcodeNotSet] surfaced during
+  ///   the next operation.
+  /// - **Windows**: Reports **Windows Hello availability**, not generic
+  ///   screen-lock state. Uses
+  ///   `KeyCredentialManager.IsSupportedAsync()`, which requires a Windows
+  ///   Hello PIN to be provisioned. Password-only local accounts will get
+  ///   `false` here even though a screen lock is set. Treat the Windows
+  ///   return value as "can this device use Windows Hello for biometric
+  ///   operations?" rather than a direct equivalent of the Android check.
+  ///
+  /// Returns `true` if the device has a screen lock configured (or the
+  /// platform-specific equivalent described above).
+  @async
+  bool isDeviceLockSet();
 }
 
 /// Configuration for simple biometric prompt (authentication without crypto ops).
@@ -544,4 +637,11 @@ class SimplePromptResult {
   /// [Android 15+] Text of the selected fallback option.
   /// Only populated when `code == BiometricError.fallbackSelected`.
   String? selectedFallbackText;
+
+  /// The type of authentication used to complete this operation.
+  ///
+  /// Inferred on Apple platforms (iOS/macOS), authoritative on Android.
+  /// See [AuthenticationType] for how inference is performed when the
+  /// platform does not report the method directly.
+  AuthenticationType? authenticationType;
 }

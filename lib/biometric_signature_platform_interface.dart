@@ -91,6 +91,11 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
   ) {
     throw UnimplementedError('simplePrompt() has not been implemented.');
   }
+
+  /// Checks whether the device has a screen lock configured.
+  Future<bool> isDeviceLockSet() {
+    throw UnimplementedError('isDeviceLockSet() has not been implemented.');
+  }
 }
 
 class _PigeonBiometricSignature extends BiometricSignaturePlatform {
@@ -172,5 +177,10 @@ class _PigeonBiometricSignature extends BiometricSignaturePlatform {
     SimplePromptConfig? config,
   ) {
     return _api.simplePrompt(promptMessage, config);
+  }
+
+  @override
+  Future<bool> isDeviceLockSet() {
+    return _api.isDeviceLockSet();
   }
 }

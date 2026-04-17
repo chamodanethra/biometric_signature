@@ -1,3 +1,18 @@
+## [11.1.0] - 2026-04-17
+
+### Added
+* **`isDeviceLockSet()` API:** New method on `BiometricSignature` to check whether a device-lock credential is configured. Android uses `KeyguardManager.isDeviceSecure()` (authoritative). iOS/macOS evaluate `LAPolicy.deviceOwnerAuthentication`; `true` means "set or indeterminate" — a stronger guarantee surfaces via the reactive `BiometricError.passcodeNotSet` during the next operation. Windows reports Windows Hello availability via `KeyCredentialManager.IsSupportedAsync()`, not a generic screen-lock state — see the dartdoc for details.
+* **`AuthenticationType` reporting:** New `AuthenticationType` enum (`credential`, `biometric`, `unknown`) plus an `authenticationType` field on `KeyCreationResult`, `SignatureResult`, `DecryptResult`, and `SimplePromptResult`. Authoritative on Android (from `BiometricPrompt.AuthenticationResult`). Inferred on Apple platforms from the key's stored `useDeviceCredentials` flag and biometric hardware availability; returns `.unknown` when the stored flag is unavailable rather than falsely reporting `.biometric`. Always `.unknown` on Windows.
+* **`BiometricError.passcodeNotSet`:** Dedicated error code for "device has no screen lock / passcode configured", distinct from `notAvailable`.
+
+### Fixed
+* **iOS/macOS `authenticationType` inference:** The `useDeviceCredentials` flag is now persisted in the keychain at key-creation time and read during sign/decrypt, replacing the previous signing-time heuristic that could not produce an accurate result.
+* **iOS/macOS keychain accessibility:** The `DeviceCredentialsSetting` keychain item is now created with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, matching the lifetime of the Secure Enclave key it accompanies and keeping the flag device-local.
+
+### Changed
+* **Breaking (behavioural) — Android error mapping:** `ERROR_NO_DEVICE_CREDENTIAL` (cause code 14) now maps to `BiometricError.passcodeNotSet` instead of `BiometricError.notAvailable`. Consumers that were pattern-matching on `BiometricError.notAvailable` to drive a "no screen lock" UX must update their switch statements to handle `BiometricError.passcodeNotSet`. This is a minor-version bump because the Dart API surface is unchanged; only the runtime error value differs.
+* **Breaking (behavioural) — iOS/macOS error mapping:** `kLAErrorPasscodeNotSet` now maps to `BiometricError.passcodeNotSet` instead of `BiometricError.notAvailable`. Same migration guidance as above.
+
 ## [11.0.2] - 2026-04-02
 
 * Documentation updates.

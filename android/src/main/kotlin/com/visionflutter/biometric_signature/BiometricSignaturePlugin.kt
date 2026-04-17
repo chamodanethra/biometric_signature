@@ -182,6 +182,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         promptMessage: String,
         fallbackOptions: List<BiometricFallbackOption?>? = null
     ) {
+        var authType: AuthenticationType? = null
         if (enforceBiometric) {
             biometricPromptHelper.checkBiometricAvailability(activity, useDeviceCredentials)
             val outcome = authenticateWithOptionalFallback(
@@ -195,6 +196,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 )))
                 return
             }
+            authType = (outcome as AuthenticationOutcome.Success).authenticationType
         }
 
         val keyPair = withContext(Dispatchers.IO) {
@@ -202,7 +204,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             keyManager.generateRsaKeyInKeyStore(keyAlias, useDeviceCredentials, invalidateOnEnrollment, enableDecryption)
         }
 
-        val response = buildKeyResponse(keyPair.public, keyFormat)
+        val response = buildKeyResponse(keyPair.public, keyFormat, authenticationType = authType)
         callback(Result.success(response))
     }
 
@@ -217,6 +219,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         promptMessage: String,
         fallbackOptions: List<BiometricFallbackOption?>? = null
     ) {
+        var authType: AuthenticationType? = null
         if (enforceBiometric) {
             biometricPromptHelper.checkBiometricAvailability(activity, useDeviceCredentials)
             val outcome = authenticateWithOptionalFallback(
@@ -230,6 +233,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 )))
                 return
             }
+            authType = (outcome as AuthenticationOutcome.Success).authenticationType
         }
 
         val keyPair = withContext(Dispatchers.IO) {
@@ -237,7 +241,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             keyManager.generateEcKeyInKeyStore(keyAlias, useDeviceCredentials, invalidateOnEnrollment)
         }
 
-        val response = buildKeyResponse(keyPair.public, keyFormat)
+        val response = buildKeyResponse(keyPair.public, keyFormat, authenticationType = authType)
         callback(Result.success(response))
     }
 
@@ -291,7 +295,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 return
             }
 
-            val authenticatedCipher = (wrapOutcome as AuthenticationOutcome.Success).cryptoObject?.cipher
+            val wrapSuccess = wrapOutcome as AuthenticationOutcome.Success
+            val authenticatedCipher = wrapSuccess.cryptoObject?.cipher
                 ?: throw SecurityException("Authentication failed - no cipher returned")
 
             val (wrappedBlob, publicKeyBytes) = withContext(Dispatchers.IO) {
@@ -306,7 +311,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             val response = buildKeyResponse(
                 publicKey = signingKeyPair.public,
                 format = keyFormat,
-                decryptingKey = decryptingPublicKey
+                decryptingKey = decryptingPublicKey,
+                authenticationType = wrapSuccess.authenticationType
             )
 
             callback(Result.success(response))
@@ -366,7 +372,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                     return@launch
                 }
 
-                val authenticatedCrypto = (outcome as AuthenticationOutcome.Success).cryptoObject
+                val successOutcome = outcome as AuthenticationOutcome.Success
+                val authenticatedCrypto = successOutcome.cryptoObject
 
                 val signatureBytes = withContext(Dispatchers.IO) {
                     val sig = authenticatedCrypto?.signature ?: throw SecurityException("Biometric authentication did not return an authenticated signature")
@@ -379,7 +386,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 }
 
                 val publicKey = cryptoOperations.getSigningPublicKey(keyAlias)
-                val response = buildSignatureResponse(signatureBytes, publicKey, signatureFormat, keyFormat)
+                val response = buildSignatureResponse(signatureBytes, publicKey, signatureFormat, keyFormat, successOutcome.authenticationType)
                 callback(Result.success(response))
 
             } catch (e: CancellationException) {
@@ -436,9 +443,11 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                         selectedFallbackText = decryptResult.text
                     )))
                 } else {
+                    val success = decryptResult as DecryptOutcome.Success
                     callback(Result.success(DecryptResult(
-                        decryptedData = (decryptResult as DecryptOutcome.Success).data,
-                        code = BiometricError.SUCCESS
+                        decryptedData = success.data,
+                        code = BiometricError.SUCCESS,
+                        authenticationType = success.authenticationType
                     )))
                 }
 
@@ -451,7 +460,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
     }
 
     private sealed interface DecryptOutcome {
-        data class Success(val data: String) : DecryptOutcome
+        data class Success(val data: String, val authenticationType: AuthenticationType) : DecryptOutcome
         data class FallbackSelected(val index: Long?, val text: String) : DecryptOutcome
     }
 
@@ -493,8 +502,9 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             return DecryptOutcome.FallbackSelected(outcome.index, outcome.text)
         }
 
+        val successOutcome = outcome as AuthenticationOutcome.Success
         val decrypted = withContext(Dispatchers.IO) {
-            val authenticatedCipher = (outcome as AuthenticationOutcome.Success).cryptoObject?.cipher
+            val authenticatedCipher = successOutcome.cryptoObject?.cipher
                 ?: throw SecurityException("Authentication failed - no cipher returned")
             try {
                 val encryptedBytes = FormatUtils.parsePayload(payload, payloadFormat)
@@ -504,7 +514,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             }
         }
 
-        return DecryptOutcome.Success(String(decrypted, Charsets.UTF_8))
+        return DecryptOutcome.Success(String(decrypted, Charsets.UTF_8), successOutcome.authenticationType)
     }
 
     private suspend fun decryptHybridEc(
@@ -532,13 +542,14 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             return DecryptOutcome.FallbackSelected(outcome.index, outcome.text)
         }
 
+        val successOutcome = outcome as AuthenticationOutcome.Success
         val data = withContext(Dispatchers.IO) {
-            val authenticatedCipher = (outcome as AuthenticationOutcome.Success).cryptoObject?.cipher
+            val authenticatedCipher = successOutcome.cryptoObject?.cipher
                 ?: throw SecurityException("Authentication failed - no cipher returned")
             cryptoOperations.performEciesDecryption(keyAlias, authenticatedCipher, payload, payloadFormat)
         }
 
-        return DecryptOutcome.Success(data)
+        return DecryptOutcome.Success(data, successOutcome.authenticationType)
     }
 
     override fun deleteKeys(keyAlias: String?, callback: (Result<Boolean>) -> Unit) {
@@ -668,7 +679,12 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                         selectedFallbackText = outcome.text
                     )))
                 } else {
-                    callback(Result.success(SimplePromptResult(success = true, code = BiometricError.SUCCESS)))
+                    val successOutcome = outcome as AuthenticationOutcome.Success
+                    callback(Result.success(SimplePromptResult(
+                        success = true,
+                        code = BiometricError.SUCCESS,
+                        authenticationType = successOutcome.authenticationType
+                    )))
                 }
 
             } catch (e: CancellationException) {
@@ -678,6 +694,11 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 callback(Result.success(SimplePromptResult(success = false, error = ErrorMapper.safeErrorMessage(e), code = errorCode)))
             }
         }
+    }
+
+    override fun isDeviceLockSet(callback: (Result<Boolean>) -> Unit) {
+        val keyguardManager = appContext.getSystemService(android.content.Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
+        callback(Result.success(keyguardManager.isDeviceSecure))
     }
 
     private fun hasFallbackOptions(options: List<BiometricFallbackOption?>?): Boolean {
@@ -700,15 +721,14 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 fallbackOptions ?: emptyList(), cryptoObject
             )
         } else {
-            val result = biometricPromptHelper.authenticate(
+            biometricPromptHelper.authenticate(
                 activity, title, subtitle, description, cancelText,
                 allowDeviceCredentials, cryptoObject
             )
-            AuthenticationOutcome.Success(result.cryptoObject)
         }
     }
 
-    private fun buildKeyResponse(publicKey: PublicKey, format: KeyFormat, decryptingKey: PublicKey? = null): KeyCreationResult {
+    private fun buildKeyResponse(publicKey: PublicKey, format: KeyFormat, decryptingKey: PublicKey? = null, authenticationType: AuthenticationType? = null): KeyCreationResult {
         val formatted = FormatUtils.formatOutput(publicKey.encoded, format)
         val keySize = (publicKey as? java.security.interfaces.RSAKey)?.modulus?.bitLength()
             ?: (publicKey as? java.security.interfaces.ECKey)?.params?.order?.bitLength()
@@ -733,11 +753,12 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             decryptingPublicKey = decryptingFormatted?.value,
             decryptingAlgorithm = decryptingAlgorithm,
             decryptingKeySize = decryptingKeySize,
-            isHybridMode = decryptingKey != null
+            isHybridMode = decryptingKey != null,
+            authenticationType = authenticationType
         )
     }
 
-    private fun buildSignatureResponse(signatureBytes: ByteArray, publicKey: PublicKey, format: SignatureFormat, keyFormat: KeyFormat): SignatureResult {
+    private fun buildSignatureResponse(signatureBytes: ByteArray, publicKey: PublicKey, format: SignatureFormat, keyFormat: KeyFormat, authenticationType: AuthenticationType): SignatureResult {
         val sigString = when (format) {
             SignatureFormat.BASE64, SignatureFormat.RAW -> android.util.Base64.encodeToString(signatureBytes, android.util.Base64.NO_WRAP)
             SignatureFormat.HEX -> FormatUtils.bytesToHex(signatureBytes)
@@ -753,7 +774,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             publicKey = pubFormatted.value,
             code = BiometricError.SUCCESS,
             algorithm = publicKey.algorithm,
-            keySize = keySize?.toLong()
+            keySize = keySize?.toLong(),
+            authenticationType = authenticationType
         )
     }
 }

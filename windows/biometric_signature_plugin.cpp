@@ -312,6 +312,7 @@ void BiometricSignaturePlugin::CreateKeys(
         response.set_key_size(static_cast<int64_t>(2048));
         response.set_code(BiometricError::kSuccess);
         response.set_is_hybrid_mode(false);
+        response.set_authentication_type(AuthenticationType::kUnknown);
         TrackAliasMarker(alias_marker);
       } else {
         std::string error_msg = "Failed to create key";
@@ -422,6 +423,7 @@ void BiometricSignaturePlugin::CreateSignature(
               resp.set_algorithm("RSA");
               resp.set_key_size(static_cast<int64_t>(2048));
               resp.set_code(BiometricError::kSuccess);
+              resp.set_authentication_type(AuthenticationType::kUnknown);
             } else {
               std::string error_msg = "Signing failed";
               BiometricError error_code = BiometricError::kUnknown;
@@ -637,6 +639,7 @@ void BiometricSignaturePlugin::SimplePrompt(
                       Success) {
                 resp.set_success(true);
                 resp.set_code(BiometricError::kSuccess);
+                resp.set_authentication_type(AuthenticationType::kUnknown);
               } else {
                 resp.set_success(false);
                 BiometricError error_code = BiometricError::kUnknown;
@@ -694,6 +697,7 @@ void BiometricSignaturePlugin::SimplePrompt(
 
             resp.set_success(true);
             resp.set_code(BiometricError::kSuccess);
+            resp.set_authentication_type(AuthenticationType::kUnknown);
           } else {
             resp.set_success(false);
             BiometricError error_code = BiometricError::kUnknown;
@@ -731,6 +735,20 @@ void BiometricSignaturePlugin::SimplePrompt(
         result(resp);
       });
     });
+  });
+}
+
+void BiometricSignaturePlugin::IsDeviceLockSet(
+    std::function<void(ErrorOr<bool> reply)> result) {
+  auto async_op = winrt::Windows::Security::Credentials::KeyCredentialManager::
+      IsSupportedAsync();
+
+  async_op.Completed([result](auto const &op, auto status) {
+    if (status == winrt::Windows::Foundation::AsyncStatus::Completed) {
+      result(op.GetResults());
+    } else {
+      result(false);
+    }
   });
 }
 

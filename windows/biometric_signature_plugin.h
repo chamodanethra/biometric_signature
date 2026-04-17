@@ -67,6 +67,9 @@ class BiometricSignaturePlugin : public flutter::Plugin,
       const std::string& prompt_message,
       const SimplePromptConfig* config,
       std::function<void(ErrorOr<SimplePromptResult> reply)> result) override;
+
+  void IsDeviceLockSet(
+      std::function<void(ErrorOr<bool> reply)> result) override;
 };
 
 }  // namespace biometric_signature

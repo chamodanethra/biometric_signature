@@ -21,6 +21,7 @@ object ErrorMapper {
             BiometricError.PROMPT_ERROR -> "Biometric prompt error"
             BiometricError.KEY_ALREADY_EXISTS -> "Key already exists"
             BiometricError.FALLBACK_SELECTED -> "Fallback option selected"
+            BiometricError.PASSCODE_NOT_SET -> "No screen lock configured. Set up a PIN, pattern, or password to use biometrics"
             else -> "Biometric operation failed"
         }
     }
@@ -42,7 +43,7 @@ object ErrorMapper {
             causeCode == 9 -> BiometricError.LOCKED_OUT_PERMANENT
             causeCode == 10 -> BiometricError.USER_CANCELED
             causeCode == 13 -> BiometricError.USER_CANCELED
-            causeCode == 14 -> BiometricError.NOT_AVAILABLE
+            causeCode == 14 -> BiometricError.PASSCODE_NOT_SET
 
             e is KeyPermanentlyInvalidatedException -> BiometricError.KEY_INVALIDATED
 

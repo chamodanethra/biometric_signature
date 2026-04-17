@@ -19,7 +19,8 @@ import kotlin.coroutines.resumeWithException
 
 sealed interface AuthenticationOutcome {
     data class Success(
-        val cryptoObject: BiometricPrompt.CryptoObject?
+        val cryptoObject: BiometricPrompt.CryptoObject?,
+        val authenticationType: AuthenticationType
     ) : AuthenticationOutcome
 
     data class FallbackSelected(
@@ -158,11 +159,16 @@ class BiometricPromptHelper(private val appContext: Context) {
         cancelText: String,
         allowDeviceCredentials: Boolean,
         cryptoObject: BiometricPrompt.CryptoObject?
-    ): BiometricPrompt.AuthenticationResult = suspendCancellableCoroutine { cont ->
+    ): AuthenticationOutcome.Success = suspendCancellableCoroutine { cont ->
         val authenticators = getAuthenticators(allowDeviceCredentials)
         val callback = object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                if (cont.isActive) cont.resume(result)
+                if (cont.isActive) cont.resume(
+                    AuthenticationOutcome.Success(
+                        cryptoObject = result.cryptoObject,
+                        authenticationType = mapAuthenticationType(result.authenticationType)
+                    )
+                )
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
@@ -257,7 +263,12 @@ class BiometricPromptHelper(private val appContext: Context) {
         pendingAuthCallback = { result ->
             when (result) {
                 is AuthenticationResult.Success -> {
-                    if (cont.isActive) cont.resume(AuthenticationOutcome.Success(result.crypto))
+                    if (cont.isActive) cont.resume(
+                        AuthenticationOutcome.Success(
+                            cryptoObject = result.crypto,
+                            authenticationType = AuthenticationType.BIOMETRIC
+                        )
+                    )
                 }
                 is AuthenticationResult.Error -> {
                     if (cont.isActive) {
@@ -333,6 +344,14 @@ class BiometricPromptHelper(private val appContext: Context) {
             "account" -> AuthenticationRequest.Biometric.Fallback.ICON_TYPE_ACCOUNT
             "generic" -> AuthenticationRequest.Biometric.Fallback.ICON_TYPE_GENERIC
             else -> AuthenticationRequest.Biometric.Fallback.ICON_TYPE_GENERIC
+        }
+    }
+
+    private fun mapAuthenticationType(type: Int): AuthenticationType {
+        return when (type) {
+            BiometricPrompt.AUTHENTICATION_RESULT_TYPE_BIOMETRIC -> AuthenticationType.BIOMETRIC
+            BiometricPrompt.AUTHENTICATION_RESULT_TYPE_DEVICE_CREDENTIAL -> AuthenticationType.CREDENTIAL
+            else -> AuthenticationType.UNKNOWN
         }
     }
 
