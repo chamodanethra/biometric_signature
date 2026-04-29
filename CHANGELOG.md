@@ -1,3 +1,9 @@
+## Unreleased
+
+### Changed
+* Lowered the package and example SDK constraints to support Flutter 3.24.5 / Dart 3.5.0 while retaining Swift Package Manager support.
+* Lowered the Android min SDK to 23 and updated the example Android compile SDK and NDK settings to match the plugin's native Android dependency requirements.
+
 ## [11.1.0] - 2026-04-17
 
 ### Added

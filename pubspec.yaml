@@ -5,8 +5,8 @@ version: 11.1.0
 homepage: https://github.com/chamodanethra/biometric_signature
 
 environment:
-  sdk: ^3.9.2
-  flutter: '>=3.3.0'
+  sdk: '>=3.5.0 <4.0.0'
+  flutter: '>=3.24.5'
 
 dependencies:
   flutter:
@@ -17,7 +17,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
-  pigeon: ^26.1.4
+  pigeon: 25.3.2
 
 flutter:
   plugin:

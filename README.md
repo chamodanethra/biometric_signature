@@ -176,7 +176,11 @@ dependencies:
 
 |             | Android | iOS   | macOS  | Windows |
 |-------------|---------|-------|--------|--------|
-| **Support** | SDK 24+ | 13.0+ | 10.15+ | 10+    |
+| **Support** | SDK 23+ | 13.0+ | 10.15+ | 10+    |
+
+Minimum Flutter SDK: `3.24.5`.
+
+Android builds must compile with Android SDK 36 or newer.
 
 ### iOS Integration
 
