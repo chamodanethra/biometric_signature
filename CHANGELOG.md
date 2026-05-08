@@ -1,4 +1,4 @@
-## [12.0.0] - 2026-05-08
+## [12.0.0] - 2026-05-09
 
 ### Changed
 * **Lowered minimum Flutter to `3.24.5` / Dart to `3.5.0`.** The plugin resolves on Flutter 3.24.5 with a small Android build-config override in the consuming app — Flutter 3.24.5's defaults (`flutter.compileSdkVersion = 34`, `flutter.ndkVersion = "23.1.7779620"`, `flutter.minSdkVersion = 21`) are below what `androidx.biometric:1.4.0-alpha05` and modern AndroidX plugins require. Set `compileSdk = 35`, `ndkVersion = "27.0.12077973"`, and `minSdk = 23` in your app's `android/app/build.gradle.kts`. See README → "Required Android build configuration" for the exact snippet.

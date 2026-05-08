@@ -795,6 +795,16 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
     /// migration intent via `CreateSignatureConfig.shouldMigrate` /
     /// `DecryptConfig.shouldMigrate`, but that flag misfired when set against a
     /// v10+ EC-only key (issue #65). Auto-detecting here removes the foot-gun.
+    ///
+    /// **Existence-only probe** — the legacy v2.x key was stored with
+    /// biometric ACL, and `SecItemCopyMatching` defaults to
+    /// `kSecUseAuthenticationUIAllow` which would put up a FaceID prompt just
+    /// to evaluate the match. We override that to
+    /// `kSecUseAuthenticationUIFail` so the system returns
+    /// `errSecInteractionNotAllowed` (item exists, would need auth) without
+    /// any UI. The actual authentication is performed exactly once inside
+    /// `migrateToSecureEnclave`, matching the v11.x `shouldMigrate: true`
+    /// prompt count.
     private func hasLegacyUnwrappedRsaKeyForMigration() -> Bool {
         let unencryptedKeyTag = Constants.biometricKeyAlias(nil)
         let unencryptedKeyTagData = unencryptedKeyTag.data(using: .utf8)!
@@ -803,11 +813,18 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: unencryptedKeyTagData,
             kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
-            kSecReturnRef as String: false
+            kSecReturnRef as String: false,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
         ]
 
         var item: CFTypeRef?
-        return SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        // `errSecInteractionNotAllowed` means a matching biometric-protected
+        // item is present but we declined to show UI for it — exactly the
+        // outcome we want for an existence probe of an auth-protected legacy
+        // key. `errSecSuccess` would only occur if the legacy key isn't ACL'd
+        // (rare/unexpected for v2.x), but treating it as "exists" is harmless.
+        return status == errSecSuccess || status == errSecInteractionNotAllowed
     }
 #endif
 
