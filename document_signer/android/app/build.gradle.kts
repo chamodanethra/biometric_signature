@@ -7,8 +7,12 @@ plugins {
 
 android {
     namespace = "com.example.document_signer_example"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // The biometric_signature plugin depends on androidx.biometric:1.4.0-alpha05
+    // which requires compileSdk = 35. Flutter 3.24.5's flutter.compileSdkVersion
+    // is 34, so we hardcode 35 here. ndkVersion is hardcoded to satisfy the
+    // version required by transitive plugin dependencies.
+    compileSdk = 35
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -24,7 +28,8 @@ android {
         applicationId = "com.example.document_signer_example"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // The biometric_signature plugin requires minSdk >= 23.
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

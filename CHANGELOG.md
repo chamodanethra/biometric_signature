@@ -1,9 +1,9 @@
 ## [12.0.0] - 2026-05-08
 
 ### Changed
-* **Lowered minimum Flutter to `3.24.5` / Dart to `3.5.0`.** The plugin now resolves and builds on a vanilla Flutter 3.24.5 install with no manual AGP, Gradle, or Android SDK Platform upgrades.
+* **Lowered minimum Flutter to `3.24.5` / Dart to `3.5.0`.** The plugin resolves on Flutter 3.24.5 with a small Android build-config override in the consuming app — Flutter 3.24.5's defaults (`flutter.compileSdkVersion = 34`, `flutter.ndkVersion = "23.1.7779620"`, `flutter.minSdkVersion = 21`) are below what `androidx.biometric:1.4.0-alpha05` and modern AndroidX plugins require. Set `compileSdk = 35`, `ndkVersion = "27.0.12077973"`, and `minSdk = 23` in your app's `android/app/build.gradle.kts`. See README → "Required Android build configuration" for the exact snippet.
 * **Android `minSdk` lowered to 23**, the floor required by `androidx.biometric` for `BiometricPrompt`.
-* **Android `compileSdk` lowered to 35**, restoring `flutter.compileSdkVersion` parity in the example app (no more hardcoded `compileSdk = 36`/`ndkVersion = "27.0.12077973"`).
+* **Android `compileSdk` lowered to 35** (from 36). The plugin no longer requires Android SDK Platform 36 or AGP 8.9.1 — `compileSdk = 35` and AGP `8.6.0` are sufficient.
 * **`androidx.biometric:biometric` downgraded from `1.4.0-alpha06` → `1.4.0-alpha05`**, which only requires `compileSdk 35` and AGP `8.6.0`. Plugin's buildscript classpath also dropped to AGP `8.6.0` to match.
 * **Pigeon dev dependency loosened** from `25.3.2` → `^25.3.2`.
 

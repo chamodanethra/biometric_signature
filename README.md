@@ -179,7 +179,41 @@ dependencies:
 
 Minimum Flutter SDK: `3.24.5` (Dart `3.5.0`).
 
-The plugin compiles against `compileSdk = 35` and ships a buildscript pinned to AGP `8.6.0`. AGP `8.6.0` is one minor above Flutter 3.24.5's `maxKnownAndSupportedAgpVersion` (`8.4.0`), which produces a verbose-only trace log — the build succeeds normally on default Flutter 3.24.5 tooling.
+#### Required Android build configuration
+
+The plugin transitively depends on `androidx.biometric:1.4.0-alpha05`, whose AAR
+metadata enforces `minCompileSdk = 35`. Flutter 3.24.5 ships with
+`flutter.compileSdkVersion = 34` and `flutter.ndkVersion = "23.1.7779620"` by
+default, which are below what this plugin (and other modern AndroidX libraries)
+need. Your app's `android/app/build.gradle.kts` therefore needs to override
+those values explicitly:
+
+```kts
+android {
+    // androidx.biometric:1.4.0-alpha05 requires compileSdk >= 35.
+    compileSdk = 35
+
+    // Many recent plugins (shared_preferences_android, etc.) require NDK 27.
+    ndkVersion = "27.0.12077973"
+
+    defaultConfig {
+        // Floor for androidx.biometric BiometricPrompt.
+        minSdk = 23
+        // ...
+    }
+}
+```
+
+If you skip those, Gradle fails with:
+
+> `Dependency 'androidx.biometric:biometric:1.4.0-alpha05' requires libraries`
+> `and applications that depend on it to compile against version 35 or later`
+> `of the Android APIs.`
+
+The plugin itself compiles against `compileSdk = 35` and ships a buildscript
+pinned to AGP `8.6.0`. AGP `8.6.0` is one minor above Flutter 3.24.5's
+`maxKnownAndSupportedAgpVersion` (`8.4.0`), which produces a verbose-only trace
+log — the build succeeds normally on default Flutter 3.24.5 tooling.
 
 ### iOS Integration
 
