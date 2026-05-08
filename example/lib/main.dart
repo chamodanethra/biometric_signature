@@ -142,8 +142,7 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
   Future<void> _decrypt() async {
     if (Platform.isWindows) {
       setState(() {
-        errorMessage =
-            'Decryption is not supported on Windows. '
+        errorMessage = 'Decryption is not supported on Windows. '
             'Windows Hello is designed for authentication and signing only.';
       });
       return;

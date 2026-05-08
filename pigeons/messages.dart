@@ -17,6 +17,7 @@ import 'package:pigeon/pigeon.dart';
     cppOptions: CppOptions(namespace: 'biometric_signature'),
   ),
 )
+
 /// The type of authentication that was used to complete an operation.
 ///
 /// On Android, this is determined by the platform's `AuthenticationResult.getAuthenticationType()`.
