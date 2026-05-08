@@ -658,9 +658,7 @@ data class CreateSignatureConfig (
   /** [Android] Text for the cancel button in the biometric prompt. */
   val cancelButtonText: String? = null,
   /** [Android] Whether to allow device credentials (PIN/pattern) as fallback. */
-  val allowDeviceCredentials: Boolean? = null,
-  /** [iOS] Whether to migrate from legacy keychain storage. */
-  val shouldMigrate: Boolean? = null
+  val allowDeviceCredentials: Boolean? = null
 )
  {
   companion object {
@@ -669,8 +667,7 @@ data class CreateSignatureConfig (
       val promptDescription = pigeonVar_list[1] as String?
       val cancelButtonText = pigeonVar_list[2] as String?
       val allowDeviceCredentials = pigeonVar_list[3] as Boolean?
-      val shouldMigrate = pigeonVar_list[4] as Boolean?
-      return CreateSignatureConfig(promptSubtitle, promptDescription, cancelButtonText, allowDeviceCredentials, shouldMigrate)
+      return CreateSignatureConfig(promptSubtitle, promptDescription, cancelButtonText, allowDeviceCredentials)
     }
   }
   fun toList(): List<Any?> {
@@ -679,7 +676,6 @@ data class CreateSignatureConfig (
       promptDescription,
       cancelButtonText,
       allowDeviceCredentials,
-      shouldMigrate,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -710,9 +706,7 @@ data class DecryptConfig (
   /** [Android] Text for the cancel button in the biometric prompt. */
   val cancelButtonText: String? = null,
   /** [Android] Whether to allow device credentials (PIN/pattern) as fallback. */
-  val allowDeviceCredentials: Boolean? = null,
-  /** [iOS] Whether to migrate from legacy keychain storage. */
-  val shouldMigrate: Boolean? = null
+  val allowDeviceCredentials: Boolean? = null
 )
  {
   companion object {
@@ -721,8 +715,7 @@ data class DecryptConfig (
       val promptDescription = pigeonVar_list[1] as String?
       val cancelButtonText = pigeonVar_list[2] as String?
       val allowDeviceCredentials = pigeonVar_list[3] as Boolean?
-      val shouldMigrate = pigeonVar_list[4] as Boolean?
-      return DecryptConfig(promptSubtitle, promptDescription, cancelButtonText, allowDeviceCredentials, shouldMigrate)
+      return DecryptConfig(promptSubtitle, promptDescription, cancelButtonText, allowDeviceCredentials)
     }
   }
   fun toList(): List<Any?> {
@@ -731,7 +724,6 @@ data class DecryptConfig (
       promptDescription,
       cancelButtonText,
       allowDeviceCredentials,
-      shouldMigrate,
     )
   }
   override fun equals(other: Any?): Boolean {

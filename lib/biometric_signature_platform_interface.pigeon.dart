@@ -675,7 +675,6 @@ class CreateSignatureConfig {
     this.promptDescription,
     this.cancelButtonText,
     this.allowDeviceCredentials,
-    this.shouldMigrate,
   });
 
   /// [Android] Subtitle text for the biometric prompt.
@@ -690,16 +689,12 @@ class CreateSignatureConfig {
   /// [Android] Whether to allow device credentials (PIN/pattern) as fallback.
   bool? allowDeviceCredentials;
 
-  /// [iOS] Whether to migrate from legacy keychain storage.
-  bool? shouldMigrate;
-
   List<Object?> _toList() {
     return <Object?>[
       promptSubtitle,
       promptDescription,
       cancelButtonText,
       allowDeviceCredentials,
-      shouldMigrate,
     ];
   }
 
@@ -713,7 +708,6 @@ class CreateSignatureConfig {
       promptDescription: result[1] as String?,
       cancelButtonText: result[2] as String?,
       allowDeviceCredentials: result[3] as bool?,
-      shouldMigrate: result[4] as bool?,
     );
   }
 
@@ -745,7 +739,6 @@ class DecryptConfig {
     this.promptDescription,
     this.cancelButtonText,
     this.allowDeviceCredentials,
-    this.shouldMigrate,
   });
 
   /// [Android] Subtitle text for the biometric prompt.
@@ -760,16 +753,12 @@ class DecryptConfig {
   /// [Android] Whether to allow device credentials (PIN/pattern) as fallback.
   bool? allowDeviceCredentials;
 
-  /// [iOS] Whether to migrate from legacy keychain storage.
-  bool? shouldMigrate;
-
   List<Object?> _toList() {
     return <Object?>[
       promptSubtitle,
       promptDescription,
       cancelButtonText,
       allowDeviceCredentials,
-      shouldMigrate,
     ];
   }
 
@@ -783,7 +772,6 @@ class DecryptConfig {
       promptDescription: result[1] as String?,
       cancelButtonText: result[2] as String?,
       allowDeviceCredentials: result[3] as bool?,
-      shouldMigrate: result[4] as bool?,
     );
   }
 

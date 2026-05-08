@@ -406,7 +406,6 @@ Prompts the user for biometric authentication and generates a cryptographic sign
 | `promptSubtitle` | Android | Subtitle for biometric prompt |
 | `promptDescription` | Android | Description for biometric prompt |
 | `cancelButtonText` | Android | Cancel button text |
-| `shouldMigrate` | iOS | Migrate from legacy keychain storage |
 
 - **Returns**: `Future<SignatureResult>`.
   - `signature`: The signed payload.
@@ -445,9 +444,12 @@ Decrypts the given payload using the private key and biometrics.
 | `promptSubtitle` | Android | Subtitle for biometric prompt |
 | `promptDescription` | Android | Description for biometric prompt |
 | `cancelButtonText` | Android | Cancel button text |
-| `shouldMigrate` | iOS | Migrate from legacy keychain storage |
 
-> **Note**: Decryption is not supported on Windows.
+> **Note**: Decryption is not supported on Windows. On iOS, if a legacy
+> v2.x-era unwrapped RSA private key exists in the keychain (default alias,
+> no modern EC key), it is automatically migrated to the Secure Enclave on
+> the first signing/decryption call. v11.x had a `shouldMigrate` flag for
+> this; v12 auto-detects.
 
 - **Returns**: `Future<DecryptResult>`.
   - `decryptedData`: The plaintext string.
@@ -992,5 +994,17 @@ Symbols removed:
 - `BiometricError.fallbackSelected`
 - `fallbackOptions` field on `CreateKeysConfig`, `CreateSignatureConfig`, `DecryptConfig`, `SimplePromptConfig`
 - `selectedFallbackIndex` / `selectedFallbackText` on `SignatureResult`, `DecryptResult`, `SimplePromptResult`
+- **`shouldMigrate` field** on `CreateSignatureConfig` and `DecryptConfig` — the iOS Secure Enclave migration is now auto-detected (issue [#65](https://github.com/chamodanethra/biometric_signature/issues/65)).
 
 If you were rendering Android 15+ custom fallback buttons via `fallbackOptions`, you can replicate the UX in Flutter: catch the cancel/`userCanceled` outcome and present your own bottom-sheet listing the alternative actions. The standard `cancelButtonText` and `allowDeviceCredentials` flow continues to work everywhere it did before.
+
+#### `shouldMigrate` removal — what changed and why
+
+In v11.x and earlier, callers had to opt into the legacy v2.x → Secure Enclave RSA migration by passing `shouldMigrate: true` on `CreateSignatureConfig` / `DecryptConfig`. Two problems:
+
+1. **It misfired against v10+ EC keys.** When an app already had an EC key (created via `signatureType: SignatureType.ecdsa`) and the caller still passed `shouldMigrate: true`, the iOS code would search for a non-existent legacy RSA key and fail with `RSA private key not found in Keychain`. Reported as issue #65.
+2. **It was a foot-gun.** Apps couldn't reliably tell from Dart whether a legacy key existed, so they either always set `true` (risking #1) or never set it (orphaning legacy keys).
+
+v12 removes the flag. The iOS plugin now checks the keychain itself: a migration is performed only when *(a)* `keyAlias == nil`, *(b)* no modern EC key exists, and *(c)* a legacy unwrapped RSA private key is actually present. If any of those is false, the call routes straight to the EC path (or, if a wrapped RSA already exists, the hybrid RSA path). Apps no longer need to know or care.
+
+If you were already passing `shouldMigrate: false`, deleting the line is a no-op. If you were passing `shouldMigrate: true`, deleting the line is also safe — the auto-detection will run the migration in exactly the same scenarios where it would have succeeded under v11.x, and skip it cleanly in the scenarios where v11.x would have errored.

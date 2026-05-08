@@ -145,7 +145,6 @@ class AuthService {
       config: CreateSignatureConfig(
         cancelButtonText: 'Cancel',
         allowDeviceCredentials: user.allowDeviceCredentials,
-        shouldMigrate: false,
       ),
     );
 

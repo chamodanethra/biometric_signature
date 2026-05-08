@@ -646,8 +646,6 @@ struct CreateSignatureConfig: Hashable {
   var cancelButtonText: String? = nil
   /// [Android] Whether to allow device credentials (PIN/pattern) as fallback.
   var allowDeviceCredentials: Bool? = nil
-  /// [iOS] Whether to migrate from legacy keychain storage.
-  var shouldMigrate: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -656,14 +654,12 @@ struct CreateSignatureConfig: Hashable {
     let promptDescription: String? = nilOrValue(pigeonVar_list[1])
     let cancelButtonText: String? = nilOrValue(pigeonVar_list[2])
     let allowDeviceCredentials: Bool? = nilOrValue(pigeonVar_list[3])
-    let shouldMigrate: Bool? = nilOrValue(pigeonVar_list[4])
 
     return CreateSignatureConfig(
       promptSubtitle: promptSubtitle,
       promptDescription: promptDescription,
       cancelButtonText: cancelButtonText,
-      allowDeviceCredentials: allowDeviceCredentials,
-      shouldMigrate: shouldMigrate
+      allowDeviceCredentials: allowDeviceCredentials
     )
   }
   func toList() -> [Any?] {
@@ -672,7 +668,6 @@ struct CreateSignatureConfig: Hashable {
       promptDescription,
       cancelButtonText,
       allowDeviceCredentials,
-      shouldMigrate,
     ]
   }
   static func == (lhs: CreateSignatureConfig, rhs: CreateSignatureConfig) -> Bool {
@@ -697,8 +692,6 @@ struct DecryptConfig: Hashable {
   var cancelButtonText: String? = nil
   /// [Android] Whether to allow device credentials (PIN/pattern) as fallback.
   var allowDeviceCredentials: Bool? = nil
-  /// [iOS] Whether to migrate from legacy keychain storage.
-  var shouldMigrate: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -707,14 +700,12 @@ struct DecryptConfig: Hashable {
     let promptDescription: String? = nilOrValue(pigeonVar_list[1])
     let cancelButtonText: String? = nilOrValue(pigeonVar_list[2])
     let allowDeviceCredentials: Bool? = nilOrValue(pigeonVar_list[3])
-    let shouldMigrate: Bool? = nilOrValue(pigeonVar_list[4])
 
     return DecryptConfig(
       promptSubtitle: promptSubtitle,
       promptDescription: promptDescription,
       cancelButtonText: cancelButtonText,
-      allowDeviceCredentials: allowDeviceCredentials,
-      shouldMigrate: shouldMigrate
+      allowDeviceCredentials: allowDeviceCredentials
     )
   }
   func toList() -> [Any?] {
@@ -723,7 +714,6 @@ struct DecryptConfig: Hashable {
       promptDescription,
       cancelButtonText,
       allowDeviceCredentials,
-      shouldMigrate,
     ]
   }
   static func == (lhs: DecryptConfig, rhs: DecryptConfig) -> Bool {

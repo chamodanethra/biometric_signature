@@ -309,11 +309,6 @@ class CreateSignatureConfig {
 
   /// [Android] Whether to allow device credentials (PIN/pattern) as fallback.
   bool? allowDeviceCredentials;
-
-  // === iOS options ===
-
-  /// [iOS] Whether to migrate from legacy keychain storage.
-  bool? shouldMigrate;
 }
 
 /// Configuration for decryption (all platforms).
@@ -334,11 +329,6 @@ class DecryptConfig {
 
   /// [Android] Whether to allow device credentials (PIN/pattern) as fallback.
   bool? allowDeviceCredentials;
-
-  // === iOS options ===
-
-  /// [iOS] Whether to migrate from legacy keychain storage.
-  bool? shouldMigrate;
 }
 
 /// Output format for public keys.

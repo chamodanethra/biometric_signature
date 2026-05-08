@@ -1038,13 +1038,11 @@ CreateSignatureConfig::CreateSignatureConfig(
   const std::string* prompt_subtitle,
   const std::string* prompt_description,
   const std::string* cancel_button_text,
-  const bool* allow_device_credentials,
-  const bool* should_migrate)
+  const bool* allow_device_credentials)
  : prompt_subtitle_(prompt_subtitle ? std::optional<std::string>(*prompt_subtitle) : std::nullopt),
     prompt_description_(prompt_description ? std::optional<std::string>(*prompt_description) : std::nullopt),
     cancel_button_text_(cancel_button_text ? std::optional<std::string>(*cancel_button_text) : std::nullopt),
-    allow_device_credentials_(allow_device_credentials ? std::optional<bool>(*allow_device_credentials) : std::nullopt),
-    should_migrate_(should_migrate ? std::optional<bool>(*should_migrate) : std::nullopt) {}
+    allow_device_credentials_(allow_device_credentials ? std::optional<bool>(*allow_device_credentials) : std::nullopt) {}
 
 const std::string* CreateSignatureConfig::prompt_subtitle() const {
   return prompt_subtitle_ ? &(*prompt_subtitle_) : nullptr;
@@ -1098,27 +1096,13 @@ void CreateSignatureConfig::set_allow_device_credentials(bool value_arg) {
 }
 
 
-const bool* CreateSignatureConfig::should_migrate() const {
-  return should_migrate_ ? &(*should_migrate_) : nullptr;
-}
-
-void CreateSignatureConfig::set_should_migrate(const bool* value_arg) {
-  should_migrate_ = value_arg ? std::optional<bool>(*value_arg) : std::nullopt;
-}
-
-void CreateSignatureConfig::set_should_migrate(bool value_arg) {
-  should_migrate_ = value_arg;
-}
-
-
 EncodableList CreateSignatureConfig::ToEncodableList() const {
   EncodableList list;
-  list.reserve(5);
+  list.reserve(4);
   list.push_back(prompt_subtitle_ ? EncodableValue(*prompt_subtitle_) : EncodableValue());
   list.push_back(prompt_description_ ? EncodableValue(*prompt_description_) : EncodableValue());
   list.push_back(cancel_button_text_ ? EncodableValue(*cancel_button_text_) : EncodableValue());
   list.push_back(allow_device_credentials_ ? EncodableValue(*allow_device_credentials_) : EncodableValue());
-  list.push_back(should_migrate_ ? EncodableValue(*should_migrate_) : EncodableValue());
   return list;
 }
 
@@ -1140,10 +1124,6 @@ CreateSignatureConfig CreateSignatureConfig::FromEncodableList(const EncodableLi
   if (!encodable_allow_device_credentials.IsNull()) {
     decoded.set_allow_device_credentials(std::get<bool>(encodable_allow_device_credentials));
   }
-  auto& encodable_should_migrate = list[4];
-  if (!encodable_should_migrate.IsNull()) {
-    decoded.set_should_migrate(std::get<bool>(encodable_should_migrate));
-  }
   return decoded;
 }
 
@@ -1155,13 +1135,11 @@ DecryptConfig::DecryptConfig(
   const std::string* prompt_subtitle,
   const std::string* prompt_description,
   const std::string* cancel_button_text,
-  const bool* allow_device_credentials,
-  const bool* should_migrate)
+  const bool* allow_device_credentials)
  : prompt_subtitle_(prompt_subtitle ? std::optional<std::string>(*prompt_subtitle) : std::nullopt),
     prompt_description_(prompt_description ? std::optional<std::string>(*prompt_description) : std::nullopt),
     cancel_button_text_(cancel_button_text ? std::optional<std::string>(*cancel_button_text) : std::nullopt),
-    allow_device_credentials_(allow_device_credentials ? std::optional<bool>(*allow_device_credentials) : std::nullopt),
-    should_migrate_(should_migrate ? std::optional<bool>(*should_migrate) : std::nullopt) {}
+    allow_device_credentials_(allow_device_credentials ? std::optional<bool>(*allow_device_credentials) : std::nullopt) {}
 
 const std::string* DecryptConfig::prompt_subtitle() const {
   return prompt_subtitle_ ? &(*prompt_subtitle_) : nullptr;
@@ -1215,27 +1193,13 @@ void DecryptConfig::set_allow_device_credentials(bool value_arg) {
 }
 
 
-const bool* DecryptConfig::should_migrate() const {
-  return should_migrate_ ? &(*should_migrate_) : nullptr;
-}
-
-void DecryptConfig::set_should_migrate(const bool* value_arg) {
-  should_migrate_ = value_arg ? std::optional<bool>(*value_arg) : std::nullopt;
-}
-
-void DecryptConfig::set_should_migrate(bool value_arg) {
-  should_migrate_ = value_arg;
-}
-
-
 EncodableList DecryptConfig::ToEncodableList() const {
   EncodableList list;
-  list.reserve(5);
+  list.reserve(4);
   list.push_back(prompt_subtitle_ ? EncodableValue(*prompt_subtitle_) : EncodableValue());
   list.push_back(prompt_description_ ? EncodableValue(*prompt_description_) : EncodableValue());
   list.push_back(cancel_button_text_ ? EncodableValue(*cancel_button_text_) : EncodableValue());
   list.push_back(allow_device_credentials_ ? EncodableValue(*allow_device_credentials_) : EncodableValue());
-  list.push_back(should_migrate_ ? EncodableValue(*should_migrate_) : EncodableValue());
   return list;
 }
 
@@ -1256,10 +1220,6 @@ DecryptConfig DecryptConfig::FromEncodableList(const EncodableList& list) {
   auto& encodable_allow_device_credentials = list[3];
   if (!encodable_allow_device_credentials.IsNull()) {
     decoded.set_allow_device_credentials(std::get<bool>(encodable_allow_device_credentials));
-  }
-  auto& encodable_should_migrate = list[4];
-  if (!encodable_should_migrate.IsNull()) {
-    decoded.set_should_migrate(std::get<bool>(encodable_should_migrate));
   }
   return decoded;
 }

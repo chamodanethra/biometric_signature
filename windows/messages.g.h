@@ -642,8 +642,7 @@ class CreateSignatureConfig {
     const std::string* prompt_subtitle,
     const std::string* prompt_description,
     const std::string* cancel_button_text,
-    const bool* allow_device_credentials,
-    const bool* should_migrate);
+    const bool* allow_device_credentials);
 
   // [Android] Subtitle text for the biometric prompt.
   const std::string* prompt_subtitle() const;
@@ -665,11 +664,6 @@ class CreateSignatureConfig {
   void set_allow_device_credentials(const bool* value_arg);
   void set_allow_device_credentials(bool value_arg);
 
-  // [iOS] Whether to migrate from legacy keychain storage.
-  const bool* should_migrate() const;
-  void set_should_migrate(const bool* value_arg);
-  void set_should_migrate(bool value_arg);
-
  private:
   static CreateSignatureConfig FromEncodableList(const flutter::EncodableList& list);
   flutter::EncodableList ToEncodableList() const;
@@ -679,7 +673,6 @@ class CreateSignatureConfig {
   std::optional<std::string> prompt_description_;
   std::optional<std::string> cancel_button_text_;
   std::optional<bool> allow_device_credentials_;
-  std::optional<bool> should_migrate_;
 };
 
 
@@ -699,8 +692,7 @@ class DecryptConfig {
     const std::string* prompt_subtitle,
     const std::string* prompt_description,
     const std::string* cancel_button_text,
-    const bool* allow_device_credentials,
-    const bool* should_migrate);
+    const bool* allow_device_credentials);
 
   // [Android] Subtitle text for the biometric prompt.
   const std::string* prompt_subtitle() const;
@@ -722,11 +714,6 @@ class DecryptConfig {
   void set_allow_device_credentials(const bool* value_arg);
   void set_allow_device_credentials(bool value_arg);
 
-  // [iOS] Whether to migrate from legacy keychain storage.
-  const bool* should_migrate() const;
-  void set_should_migrate(const bool* value_arg);
-  void set_should_migrate(bool value_arg);
-
  private:
   static DecryptConfig FromEncodableList(const flutter::EncodableList& list);
   flutter::EncodableList ToEncodableList() const;
@@ -736,7 +723,6 @@ class DecryptConfig {
   std::optional<std::string> prompt_description_;
   std::optional<std::string> cancel_button_text_;
   std::optional<bool> allow_device_credentials_;
-  std::optional<bool> should_migrate_;
 };
 
 
