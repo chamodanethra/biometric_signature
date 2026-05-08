@@ -22,7 +22,6 @@ Even if an attacker bypasses or hooks biometric APIs, your backend will still re
   - **iOS/macOS Hybrid RSA:** Software RSA key for **both signing and decryption**, wrapped using ECIES with Secure Enclave EC public key. Hardware EC is only used for wrapping/unwrapping.
 - **Named Key Aliases:** Manage multiple independent key pairs per app (e.g., one for auth, one for payment signing) via optional `keyAlias` parameter.
 - **Key Overwrite Protection:** Prevent accidental key replacement with `failIfExists` option.
-- **Custom Fallback Options (Android 15+):** Show custom buttons (password, QR code, etc.) on the biometric prompt via `fallbackOptions`.
 - **Key Invalidation:** Keys can be bound to biometric enrollment state (fingerprint/Face ID changes).
 - **Device Credentials:** Optional PIN/Pattern/Password fallback on Android.
 - **Simple Prompt (No Crypto):** Verify user presence without key operations. Supports device-credential fallback and Android biometric strength selection.
@@ -171,16 +170,16 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^11.1.0
+  biometric_signature: ^12.0.0
 ```
 
 |             | Android | iOS   | macOS  | Windows |
 |-------------|---------|-------|--------|--------|
 | **Support** | SDK 23+ | 13.0+ | 10.15+ | 10+    |
 
-Minimum Flutter SDK: `3.24.5`.
+Minimum Flutter SDK: `3.24.5` (Dart `3.5.0`).
 
-Android builds must compile with Android SDK 36 or newer.
+The plugin compiles against `compileSdk = 35` and ships a buildscript pinned to AGP `8.6.0`. AGP `8.6.0` is one minor above Flutter 3.24.5's `maxKnownAndSupportedAgpVersion` (`8.4.0`), which produces a verbose-only trace log — the build succeeds normally on default Flutter 3.24.5 tooling.
 
 ### iOS Integration
 
@@ -327,7 +326,6 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
 | `useDeviceCredentials` | Android/iOS/macOS | Allow PIN/passcode fallback |
 | `enableDecryption` | Android | Enable decryption capability |
 | `failIfExists` | All | Fail with `keyAlreadyExists` if key already exists |
-| `fallbackOptions` | Android 15+ | Custom fallback buttons on biometric prompt (see [Custom Fallback Options](#custom-fallback-options-android-15)) |
 | `promptSubtitle` | Android | Subtitle for biometric prompt |
 | `promptDescription` | Android | Description for biometric prompt |
 | `cancelButtonText` | Android | Cancel button text |
@@ -371,7 +369,6 @@ Prompts the user for biometric authentication and generates a cryptographic sign
 | Option | Platforms | Description |
 |--------|-----------|-------------|
 | `allowDeviceCredentials` | Android | Allow PIN/pattern fallback |
-| `fallbackOptions` | Android 15+ | Custom fallback buttons on biometric prompt (see [Custom Fallback Options](#custom-fallback-options-android-15)) |
 | `promptSubtitle` | Android | Subtitle for biometric prompt |
 | `promptDescription` | Android | Description for biometric prompt |
 | `cancelButtonText` | Android | Cancel button text |
@@ -381,7 +378,6 @@ Prompts the user for biometric authentication and generates a cryptographic sign
   - `signature`: The signed payload.
   - `publicKey`: The public key.
   - `code`: `BiometricError` code.
-  - `selectedFallbackIndex` / `selectedFallbackText`: Populated when `code == BiometricError.fallbackSelected`.
 
 ```dart
 final result = await biometricSignature.createSignature(
@@ -412,7 +408,6 @@ Decrypts the given payload using the private key and biometrics.
 | Option | Platforms | Description |
 |--------|-----------|-------------|
 | `allowDeviceCredentials` | Android | Allow PIN/pattern fallback |
-| `fallbackOptions` | Android 15+ | Custom fallback buttons on biometric prompt (see [Custom Fallback Options](#custom-fallback-options-android-15)) |
 | `promptSubtitle` | Android | Subtitle for biometric prompt |
 | `promptDescription` | Android | Description for biometric prompt |
 | `cancelButtonText` | Android | Cancel button text |
@@ -423,7 +418,6 @@ Decrypts the given payload using the private key and biometrics.
 - **Returns**: `Future<DecryptResult>`.
   - `decryptedData`: The plaintext string.
   - `code`: `BiometricError` code.
-  - `selectedFallbackIndex` / `selectedFallbackText`: Populated when `code == BiometricError.fallbackSelected`.
 
 ```dart
 final result = await biometricSignature.decrypt(
@@ -552,7 +546,6 @@ Performs biometric authentication without performing any cryptographic operation
 | `cancelButtonText` | Android | Cancel button text |
 | `allowDeviceCredentials` | Android/iOS/macOS | Allow PIN/pattern/passcode fallback |
 | `biometricStrength` | Android | `BiometricStrength.strong` or `BiometricStrength.weak` |
-| `fallbackOptions` | Android 15+ | Custom fallback buttons on biometric prompt (see [Custom Fallback Options](#custom-fallback-options-android-15)) |
 
 ```dart
 final result = await biometricSignature.simplePrompt(
@@ -566,58 +559,10 @@ final result = await biometricSignature.simplePrompt(
 
 if (result.success == true) {
   // Authenticated
-} else if (result.code == BiometricError.fallbackSelected) {
-  print('User chose: ${result.selectedFallbackText}');
 } else {
   print('Failed: ${result.code} - ${result.error}');
 }
 ```
-
----
-
-## Custom Fallback Options (Android 15+)
-
-On Android 15 and later, you can display custom fallback buttons on the biometric prompt using `BiometricFallbackOption`. These replace the default cancel button and allow users to choose alternative authentication methods.
-
-### `BiometricFallbackOption`
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `text` | `String?` | The label displayed on the fallback button |
-| `iconName` | `String?` | Icon type: `"password"`, `"qr_code"`, `"account"`, or `"generic"` (default) |
-
-### Usage
-
-```dart
-import 'dart:io' show Platform;
-
-// Define fallback options (Android only)
-final fallbackOptions = Platform.isAndroid
-    ? [
-        BiometricFallbackOption(text: 'Use Password', iconName: 'password'),
-        BiometricFallbackOption(text: 'Scan QR Code', iconName: 'qr_code'),
-      ]
-    : null;
-
-// Pass to any config class
-final result = await biometricSignature.createSignature(
-  payload: 'Data to sign',
-  promptMessage: 'Authenticate',
-  config: CreateSignatureConfig(
-    fallbackOptions: fallbackOptions,
-  ),
-);
-
-// Handle the result
-if (result.code == BiometricError.success) {
-  print('Signature: ${result.signature}');
-} else if (result.code == BiometricError.fallbackSelected) {
-  print('Fallback selected: ${result.selectedFallbackText} '
-      '(index: ${result.selectedFallbackIndex})');
-}
-```
-
-> **Note**: On iOS, macOS, and Windows, `fallbackOptions` is ignored. On Android versions below 15, the standard biometric prompt is shown instead.
 
 ---
 
@@ -959,7 +904,7 @@ v10 adds `simplePrompt()` for scenarios where you only need to verify the user's
 
 ### Migrating from v10 to v11
 
-**v11.0.0** adds named key aliases, key overwrite protection, custom fallback options, and internal architecture improvements.
+**v11.0.0** adds named key aliases, key overwrite protection, and internal architecture improvements. (Custom fallback options were also introduced in v11 but removed in v12 — see "Migrating from v11 to v12" below.)
 
 #### New: Named Key Aliases
 
@@ -996,12 +941,22 @@ if (result.code == BiometricError.keyAlreadyExists) {
 await biometricSignature.deleteAllKeys();
 ```
 
-#### New: Custom Fallback Options (Android 15+)
-
-All config classes now support `fallbackOptions`. See [Custom Fallback Options](#custom-fallback-options-android-15) for details.
-
 #### New Breaking: `BiometricError` Values
 
 - `BiometricError.keyAlreadyExists` — returned when `failIfExists: true` and key exists.
-- `BiometricError.fallbackSelected` — returned when user taps a custom fallback button. Check `selectedFallbackIndex` and `selectedFallbackText` on the result object.
-- **Impact**: If you use exhaustive switch statements (e.g., in Dart 3.0+), you must add cases for these new values.
+- **Impact**: If you use exhaustive switch statements (e.g., in Dart 3.0+), you must add a case for this new value.
+
+---
+
+### Migrating from v11 to v12
+
+**v12.0.0** lowers the minimum Flutter to **3.24.5** so the plugin builds out of the box on a much wider range of host projects. To make this possible, the Android-only **custom fallback options** feature added in v11 was removed (it required `compileSdk = 36` / AGP `8.9.1` via `androidx.biometric:1.4.0-alpha06`).
+
+Symbols removed:
+
+- `BiometricFallbackOption` class
+- `BiometricError.fallbackSelected`
+- `fallbackOptions` field on `CreateKeysConfig`, `CreateSignatureConfig`, `DecryptConfig`, `SimplePromptConfig`
+- `selectedFallbackIndex` / `selectedFallbackText` on `SignatureResult`, `DecryptResult`, `SimplePromptResult`
+
+If you were rendering Android 15+ custom fallback buttons via `fallbackOptions`, you can replicate the UX in Flutter: catch the cancel/`userCanceled` outcome and present your own bottom-sheet listing the alternative actions. The standard `cancelButtonText` and `allowDeviceCredentials` flow continues to work everywhere it did before.

@@ -63,9 +63,6 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
   bool _allowDeviceCredentials = false;
   BiometricStrength _biometricStrength = BiometricStrength.strong;
 
-  // Custom fallback options (Android 15+)
-  bool _useFallbackOptions = false;
-
   @override
   void initState() {
     super.initState();
@@ -93,14 +90,8 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
           setInvalidatedByBiometricEnrollment: true,
           enforceBiometric: true,
           enableDecryption: enableDecryption,
-          // fallbackOptions: _fallbackOptions,
         ),
       );
-
-      if (result.code == BiometricError.fallbackSelected) {
-        _showSnack('Fallback selected during key creation');
-        return;
-      }
 
       if (result.code == BiometricError.success) {
         setState(() => keyResult = result);
@@ -133,18 +124,8 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
         promptMessage: 'Sign Data',
         config: CreateSignatureConfig(
           allowDeviceCredentials: false,
-          // fallbackOptions: _fallbackOptions,
         ),
       );
-
-      if (result.code == BiometricError.fallbackSelected) {
-        setState(
-          () => errorMessage =
-              'Fallback selected: "${result.selectedFallbackText}" '
-              '(index: ${result.selectedFallbackIndex})',
-        );
-        return;
-      }
 
       if (result.code == BiometricError.success) {
         setState(() => signatureResult = result);
@@ -192,18 +173,8 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
         promptMessage: 'Decrypt Payload',
         config: DecryptConfig(
           allowDeviceCredentials: false,
-          // fallbackOptions: _fallbackOptions,
         ),
       );
-
-      if (result.code == BiometricError.fallbackSelected) {
-        setState(
-          () => errorMessage =
-              'Fallback selected: "${result.selectedFallbackText}" '
-              '(index: ${result.selectedFallbackIndex})',
-        );
-        return;
-      }
 
       // Only show overlay if we need to do extra processing after auth.
       setState(() {
@@ -463,20 +434,14 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
         config: SimplePromptConfig(
           subtitle: 'Verify your identity',
           description: 'Simple biometric prompt demo',
-          cancelButtonText: _useFallbackOptions ? null : 'Cancel',
+          cancelButtonText: 'Cancel',
           allowDeviceCredentials: _allowDeviceCredentials,
           biometricStrength: _biometricStrength,
-          fallbackOptions: _fallbackOptions,
         ),
       );
 
       setState(() => simplePromptResult = result);
-      if (result.code == BiometricError.fallbackSelected) {
-        _showSnack(
-          'Fallback: "${result.selectedFallbackText}" '
-          '(index: ${result.selectedFallbackIndex})',
-        );
-      } else if (result.success == true) {
+      if (result.success == true) {
         _showSnack('Authentication successful!');
       } else {
         _showSnack('Authentication failed: ${result.code}');
@@ -484,14 +449,6 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
     } catch (e) {
       setState(() => errorMessage = e.toString());
     }
-  }
-
-  List<BiometricFallbackOption>? get _fallbackOptions {
-    if (!_useFallbackOptions || !Platform.isAndroid) return null;
-    return [
-      BiometricFallbackOption(text: 'Use Password', iconName: 'password'),
-      BiometricFallbackOption(text: 'Scan QR Code', iconName: 'qr_code'),
-    ];
   }
 
   void _showSnack(String msg) {
@@ -786,42 +743,6 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
                         ),
                       ],
                     ),
-                    Row(
-                      children: [
-                        const Text('Custom Fallback Options'),
-                        Switch(
-                          value: _useFallbackOptions,
-                          onChanged: (v) =>
-                              setState(() => _useFallbackOptions = v),
-                        ),
-                      ],
-                    ),
-                    if (_useFallbackOptions)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 16, bottom: 4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
-                              'Android 15+ only. Adds custom buttons to the '
-                              'biometric prompt for all operations:',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey,
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              '  1. "Use Password" (password icon)\n'
-                              '  2. "Scan QR Code" (qr_code icon)',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontFamily: 'monospace',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                   ],
                   const SizedBox(height: 8),
                   SizedBox(
@@ -836,23 +757,13 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
                     const SizedBox(height: 12),
                     Builder(
                       builder: (context) {
-                        final isFallback =
-                            simplePromptResult!.code ==
-                            BiometricError.fallbackSelected;
                         final isSuccess = simplePromptResult!.success ?? false;
                         final Color bgColor;
                         final Color iconColor;
                         final IconData icon;
                         final String title;
 
-                        if (isFallback) {
-                          bgColor = Colors.orange.shade100;
-                          iconColor = Colors.orange;
-                          icon = Icons.touch_app;
-                          title =
-                              'Fallback: "${simplePromptResult!.selectedFallbackText}"'
-                              ' (index: ${simplePromptResult!.selectedFallbackIndex})';
-                        } else if (isSuccess) {
+                        if (isSuccess) {
                           bgColor = Colors.green.shade100;
                           iconColor = Colors.green;
                           icon = Icons.check_circle;
@@ -888,8 +799,7 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
                                       'Code: ${simplePromptResult!.code}',
                                       style: const TextStyle(fontSize: 11),
                                     ),
-                                    if (simplePromptResult!.error != null &&
-                                        !isFallback)
+                                    if (simplePromptResult!.error != null)
                                       Text(
                                         simplePromptResult!.error!,
                                         style: const TextStyle(

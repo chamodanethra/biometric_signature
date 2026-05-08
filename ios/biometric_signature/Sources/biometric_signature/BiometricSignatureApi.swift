@@ -203,10 +203,6 @@ enum BiometricError: Int {
   case promptError = 13
   /// A key with the specified alias already exists and failIfExists was set.
   case keyAlreadyExists = 14
-  /// The user selected a custom fallback option instead of authenticating.
-  /// [Android 15+ only] Check `selectedFallbackIndex` and `selectedFallbackText`
-  /// on the result object to determine which option was selected.
-  case fallbackSelected = 15
   /// The device does not have a screen lock (PIN, pattern, password, or
   /// passcode) configured.
   ///
@@ -232,7 +228,7 @@ enum BiometricError: Int {
   /// were pattern-matching on [notAvailable] to drive a "no screen lock" UX
   /// should migrate to [passcodeNotSet]. iOS/macOS mapping of
   /// `kLAErrorPasscodeNotSet` changed in the same release.
-  case passcodeNotSet = 16
+  case passcodeNotSet = 15
 }
 
 /// The cryptographic algorithm to use for key generation.
@@ -273,49 +269,6 @@ enum PayloadFormat: Int {
   case hex = 1
   /// Raw UTF-8 string (not recommended for binary data).
   case raw = 2
-}
-
-/// A custom fallback option shown on the biometric prompt.
-///
-/// [Android 15+ only] When provided in a config's `fallbackOptions` list,
-/// these appear as alternative buttons on the biometric prompt dialog.
-/// If the user taps one, the result will have code [BiometricError.fallbackSelected]
-/// with the selected option's index and text.
-///
-/// On iOS, macOS, and Windows this class is ignored.
-///
-/// Generated class from Pigeon that represents data sent in messages.
-struct BiometricFallbackOption: Hashable {
-  /// The text label displayed on the fallback button.
-  var text: String? = nil
-  /// [Android] Optional icon type name for the fallback button.
-  /// Valid values: `"password"`, `"qr_code"`, `"account"`, `"generic"`.
-  /// Maps to `AuthenticationRequest.Biometric.Fallback.ICON_TYPE_*` constants.
-  /// When null, defaults to `"generic"`.
-  var iconName: String? = nil
-
-
-  // swift-format-ignore: AlwaysUseLowerCamelCase
-  static func fromList(_ pigeonVar_list: [Any?]) -> BiometricFallbackOption? {
-    let text: String? = nilOrValue(pigeonVar_list[0])
-    let iconName: String? = nilOrValue(pigeonVar_list[1])
-
-    return BiometricFallbackOption(
-      text: text,
-      iconName: iconName
-    )
-  }
-  func toList() -> [Any?] {
-    return [
-      text,
-      iconName,
-    ]
-  }
-  static func == (lhs: BiometricFallbackOption, rhs: BiometricFallbackOption) -> Bool {
-    return deepEqualsBiometricSignatureApi(lhs.toList(), rhs.toList())  }
-  func hash(into hasher: inout Hasher) {
-    deepHashBiometricSignatureApi(value: toList(), hasher: &hasher)
-  }
 }
 
 /// Generated class from Pigeon that represents data sent in messages.
@@ -434,12 +387,6 @@ struct SignatureResult: Hashable {
   var code: BiometricError? = nil
   var algorithm: String? = nil
   var keySize: Int64? = nil
-  /// [Android 15+] Index of the selected fallback option in the original list.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  var selectedFallbackIndex: Int64? = nil
-  /// [Android 15+] Text of the selected fallback option.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  var selectedFallbackText: String? = nil
   /// The type of authentication used to complete this operation.
   ///
   /// Inferred on Apple platforms (iOS/macOS), authoritative on Android.
@@ -457,9 +404,7 @@ struct SignatureResult: Hashable {
     let code: BiometricError? = nilOrValue(pigeonVar_list[4])
     let algorithm: String? = nilOrValue(pigeonVar_list[5])
     let keySize: Int64? = nilOrValue(pigeonVar_list[6])
-    let selectedFallbackIndex: Int64? = nilOrValue(pigeonVar_list[7])
-    let selectedFallbackText: String? = nilOrValue(pigeonVar_list[8])
-    let authenticationType: AuthenticationType? = nilOrValue(pigeonVar_list[9])
+    let authenticationType: AuthenticationType? = nilOrValue(pigeonVar_list[7])
 
     return SignatureResult(
       signature: signature,
@@ -469,8 +414,6 @@ struct SignatureResult: Hashable {
       code: code,
       algorithm: algorithm,
       keySize: keySize,
-      selectedFallbackIndex: selectedFallbackIndex,
-      selectedFallbackText: selectedFallbackText,
       authenticationType: authenticationType
     )
   }
@@ -483,8 +426,6 @@ struct SignatureResult: Hashable {
       code,
       algorithm,
       keySize,
-      selectedFallbackIndex,
-      selectedFallbackText,
       authenticationType,
     ]
   }
@@ -500,12 +441,6 @@ struct DecryptResult: Hashable {
   var decryptedData: String? = nil
   var error: String? = nil
   var code: BiometricError? = nil
-  /// [Android 15+] Index of the selected fallback option in the original list.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  var selectedFallbackIndex: Int64? = nil
-  /// [Android 15+] Text of the selected fallback option.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  var selectedFallbackText: String? = nil
   /// The type of authentication used to complete this operation.
   ///
   /// Inferred on Apple platforms (iOS/macOS), authoritative on Android.
@@ -519,16 +454,12 @@ struct DecryptResult: Hashable {
     let decryptedData: String? = nilOrValue(pigeonVar_list[0])
     let error: String? = nilOrValue(pigeonVar_list[1])
     let code: BiometricError? = nilOrValue(pigeonVar_list[2])
-    let selectedFallbackIndex: Int64? = nilOrValue(pigeonVar_list[3])
-    let selectedFallbackText: String? = nilOrValue(pigeonVar_list[4])
-    let authenticationType: AuthenticationType? = nilOrValue(pigeonVar_list[5])
+    let authenticationType: AuthenticationType? = nilOrValue(pigeonVar_list[3])
 
     return DecryptResult(
       decryptedData: decryptedData,
       error: error,
       code: code,
-      selectedFallbackIndex: selectedFallbackIndex,
-      selectedFallbackText: selectedFallbackText,
       authenticationType: authenticationType
     )
   }
@@ -537,8 +468,6 @@ struct DecryptResult: Hashable {
       decryptedData,
       error,
       code,
-      selectedFallbackIndex,
-      selectedFallbackText,
       authenticationType,
     ]
   }
@@ -657,12 +586,6 @@ struct CreateKeysConfig: Hashable {
   ///
   /// When `false` (default), existing keys are silently replaced.
   var failIfExists: Bool? = nil
-  /// [Android 15+] Custom fallback buttons shown on the biometric prompt.
-  /// When provided, these replace the default cancel button.
-  /// If the user taps a fallback option, the result will have
-  /// `code == BiometricError.fallbackSelected` with the selected option's
-  /// index and text. On other platforms, this field is ignored.
-  var fallbackOptions: [BiometricFallbackOption?]? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -676,7 +599,6 @@ struct CreateKeysConfig: Hashable {
     let promptDescription: String? = nilOrValue(pigeonVar_list[6])
     let cancelButtonText: String? = nilOrValue(pigeonVar_list[7])
     let failIfExists: Bool? = nilOrValue(pigeonVar_list[8])
-    let fallbackOptions: [BiometricFallbackOption?]? = nilOrValue(pigeonVar_list[9])
 
     return CreateKeysConfig(
       signatureType: signatureType,
@@ -687,8 +609,7 @@ struct CreateKeysConfig: Hashable {
       promptSubtitle: promptSubtitle,
       promptDescription: promptDescription,
       cancelButtonText: cancelButtonText,
-      failIfExists: failIfExists,
-      fallbackOptions: fallbackOptions
+      failIfExists: failIfExists
     )
   }
   func toList() -> [Any?] {
@@ -702,7 +623,6 @@ struct CreateKeysConfig: Hashable {
       promptDescription,
       cancelButtonText,
       failIfExists,
-      fallbackOptions,
     ]
   }
   static func == (lhs: CreateKeysConfig, rhs: CreateKeysConfig) -> Bool {
@@ -728,12 +648,6 @@ struct CreateSignatureConfig: Hashable {
   var allowDeviceCredentials: Bool? = nil
   /// [iOS] Whether to migrate from legacy keychain storage.
   var shouldMigrate: Bool? = nil
-  /// [Android 15+] Custom fallback buttons shown on the biometric prompt.
-  /// When provided, these replace the default cancel button.
-  /// If the user taps a fallback option, the result will have
-  /// `code == BiometricError.fallbackSelected` with the selected option's
-  /// index and text. On other platforms, this field is ignored.
-  var fallbackOptions: [BiometricFallbackOption?]? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -743,15 +657,13 @@ struct CreateSignatureConfig: Hashable {
     let cancelButtonText: String? = nilOrValue(pigeonVar_list[2])
     let allowDeviceCredentials: Bool? = nilOrValue(pigeonVar_list[3])
     let shouldMigrate: Bool? = nilOrValue(pigeonVar_list[4])
-    let fallbackOptions: [BiometricFallbackOption?]? = nilOrValue(pigeonVar_list[5])
 
     return CreateSignatureConfig(
       promptSubtitle: promptSubtitle,
       promptDescription: promptDescription,
       cancelButtonText: cancelButtonText,
       allowDeviceCredentials: allowDeviceCredentials,
-      shouldMigrate: shouldMigrate,
-      fallbackOptions: fallbackOptions
+      shouldMigrate: shouldMigrate
     )
   }
   func toList() -> [Any?] {
@@ -761,7 +673,6 @@ struct CreateSignatureConfig: Hashable {
       cancelButtonText,
       allowDeviceCredentials,
       shouldMigrate,
-      fallbackOptions,
     ]
   }
   static func == (lhs: CreateSignatureConfig, rhs: CreateSignatureConfig) -> Bool {
@@ -788,12 +699,6 @@ struct DecryptConfig: Hashable {
   var allowDeviceCredentials: Bool? = nil
   /// [iOS] Whether to migrate from legacy keychain storage.
   var shouldMigrate: Bool? = nil
-  /// [Android 15+] Custom fallback buttons shown on the biometric prompt.
-  /// When provided, these replace the default cancel button.
-  /// If the user taps a fallback option, the result will have
-  /// `code == BiometricError.fallbackSelected` with the selected option's
-  /// index and text. On other platforms, this field is ignored.
-  var fallbackOptions: [BiometricFallbackOption?]? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -803,15 +708,13 @@ struct DecryptConfig: Hashable {
     let cancelButtonText: String? = nilOrValue(pigeonVar_list[2])
     let allowDeviceCredentials: Bool? = nilOrValue(pigeonVar_list[3])
     let shouldMigrate: Bool? = nilOrValue(pigeonVar_list[4])
-    let fallbackOptions: [BiometricFallbackOption?]? = nilOrValue(pigeonVar_list[5])
 
     return DecryptConfig(
       promptSubtitle: promptSubtitle,
       promptDescription: promptDescription,
       cancelButtonText: cancelButtonText,
       allowDeviceCredentials: allowDeviceCredentials,
-      shouldMigrate: shouldMigrate,
-      fallbackOptions: fallbackOptions
+      shouldMigrate: shouldMigrate
     )
   }
   func toList() -> [Any?] {
@@ -821,7 +724,6 @@ struct DecryptConfig: Hashable {
       cancelButtonText,
       allowDeviceCredentials,
       shouldMigrate,
-      fallbackOptions,
     ]
   }
   static func == (lhs: DecryptConfig, rhs: DecryptConfig) -> Bool {
@@ -865,12 +767,6 @@ struct SimplePromptConfig: Hashable {
   ///
   /// Default: strong
   var biometricStrength: BiometricStrength? = nil
-  /// [Android 15+] Custom fallback buttons shown on the biometric prompt.
-  /// When provided, these replace the default cancel button.
-  /// If the user taps a fallback option, the result will have
-  /// `code == BiometricError.fallbackSelected` with the selected option's
-  /// index and text. On other platforms, this field is ignored.
-  var fallbackOptions: [BiometricFallbackOption?]? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -880,15 +776,13 @@ struct SimplePromptConfig: Hashable {
     let cancelButtonText: String? = nilOrValue(pigeonVar_list[2])
     let allowDeviceCredentials: Bool? = nilOrValue(pigeonVar_list[3])
     let biometricStrength: BiometricStrength? = nilOrValue(pigeonVar_list[4])
-    let fallbackOptions: [BiometricFallbackOption?]? = nilOrValue(pigeonVar_list[5])
 
     return SimplePromptConfig(
       subtitle: subtitle,
       description: description,
       cancelButtonText: cancelButtonText,
       allowDeviceCredentials: allowDeviceCredentials,
-      biometricStrength: biometricStrength,
-      fallbackOptions: fallbackOptions
+      biometricStrength: biometricStrength
     )
   }
   func toList() -> [Any?] {
@@ -898,7 +792,6 @@ struct SimplePromptConfig: Hashable {
       cancelButtonText,
       allowDeviceCredentials,
       biometricStrength,
-      fallbackOptions,
     ]
   }
   static func == (lhs: SimplePromptConfig, rhs: SimplePromptConfig) -> Bool {
@@ -920,12 +813,6 @@ struct SimplePromptResult: Hashable {
   /// Standardized error code if authentication failed.
   /// Use this for programmatic error handling.
   var code: BiometricError? = nil
-  /// [Android 15+] Index of the selected fallback option in the original list.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  var selectedFallbackIndex: Int64? = nil
-  /// [Android 15+] Text of the selected fallback option.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  var selectedFallbackText: String? = nil
   /// The type of authentication used to complete this operation.
   ///
   /// Inferred on Apple platforms (iOS/macOS), authoritative on Android.
@@ -939,16 +826,12 @@ struct SimplePromptResult: Hashable {
     let success: Bool? = nilOrValue(pigeonVar_list[0])
     let error: String? = nilOrValue(pigeonVar_list[1])
     let code: BiometricError? = nilOrValue(pigeonVar_list[2])
-    let selectedFallbackIndex: Int64? = nilOrValue(pigeonVar_list[3])
-    let selectedFallbackText: String? = nilOrValue(pigeonVar_list[4])
-    let authenticationType: AuthenticationType? = nilOrValue(pigeonVar_list[5])
+    let authenticationType: AuthenticationType? = nilOrValue(pigeonVar_list[3])
 
     return SimplePromptResult(
       success: success,
       error: error,
       code: code,
-      selectedFallbackIndex: selectedFallbackIndex,
-      selectedFallbackText: selectedFallbackText,
       authenticationType: authenticationType
     )
   }
@@ -957,8 +840,6 @@ struct SimplePromptResult: Hashable {
       success,
       error,
       code,
-      selectedFallbackIndex,
-      selectedFallbackText,
       authenticationType,
     ]
   }
@@ -1021,26 +902,24 @@ private class BiometricSignatureApiPigeonCodecReader: FlutterStandardReader {
       }
       return nil
     case 137:
-      return BiometricFallbackOption.fromList(self.readValue() as! [Any?])
-    case 138:
       return BiometricAvailability.fromList(self.readValue() as! [Any?])
-    case 139:
+    case 138:
       return KeyCreationResult.fromList(self.readValue() as! [Any?])
-    case 140:
+    case 139:
       return SignatureResult.fromList(self.readValue() as! [Any?])
-    case 141:
+    case 140:
       return DecryptResult.fromList(self.readValue() as! [Any?])
-    case 142:
+    case 141:
       return KeyInfo.fromList(self.readValue() as! [Any?])
-    case 143:
+    case 142:
       return CreateKeysConfig.fromList(self.readValue() as! [Any?])
-    case 144:
+    case 143:
       return CreateSignatureConfig.fromList(self.readValue() as! [Any?])
-    case 145:
+    case 144:
       return DecryptConfig.fromList(self.readValue() as! [Any?])
-    case 146:
+    case 145:
       return SimplePromptConfig.fromList(self.readValue() as! [Any?])
-    case 147:
+    case 146:
       return SimplePromptResult.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -1074,38 +953,35 @@ private class BiometricSignatureApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? PayloadFormat {
       super.writeByte(136)
       super.writeValue(value.rawValue)
-    } else if let value = value as? BiometricFallbackOption {
+    } else if let value = value as? BiometricAvailability {
       super.writeByte(137)
       super.writeValue(value.toList())
-    } else if let value = value as? BiometricAvailability {
+    } else if let value = value as? KeyCreationResult {
       super.writeByte(138)
       super.writeValue(value.toList())
-    } else if let value = value as? KeyCreationResult {
+    } else if let value = value as? SignatureResult {
       super.writeByte(139)
       super.writeValue(value.toList())
-    } else if let value = value as? SignatureResult {
+    } else if let value = value as? DecryptResult {
       super.writeByte(140)
       super.writeValue(value.toList())
-    } else if let value = value as? DecryptResult {
+    } else if let value = value as? KeyInfo {
       super.writeByte(141)
       super.writeValue(value.toList())
-    } else if let value = value as? KeyInfo {
+    } else if let value = value as? CreateKeysConfig {
       super.writeByte(142)
       super.writeValue(value.toList())
-    } else if let value = value as? CreateKeysConfig {
+    } else if let value = value as? CreateSignatureConfig {
       super.writeByte(143)
       super.writeValue(value.toList())
-    } else if let value = value as? CreateSignatureConfig {
+    } else if let value = value as? DecryptConfig {
       super.writeByte(144)
       super.writeValue(value.toList())
-    } else if let value = value as? DecryptConfig {
+    } else if let value = value as? SimplePromptConfig {
       super.writeByte(145)
       super.writeValue(value.toList())
-    } else if let value = value as? SimplePromptConfig {
-      super.writeByte(146)
-      super.writeValue(value.toList())
     } else if let value = value as? SimplePromptResult {
-      super.writeByte(147)
+      super.writeByte(146)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)

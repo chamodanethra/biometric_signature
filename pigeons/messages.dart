@@ -114,11 +114,6 @@ enum BiometricError {
   /// A key with the specified alias already exists and failIfExists was set.
   keyAlreadyExists,
 
-  /// The user selected a custom fallback option instead of authenticating.
-  /// [Android 15+ only] Check `selectedFallbackIndex` and `selectedFallbackText`
-  /// on the result object to determine which option was selected.
-  fallbackSelected,
-
   /// The device does not have a screen lock (PIN, pattern, password, or
   /// passcode) configured.
   ///
@@ -145,25 +140,6 @@ enum BiometricError {
   /// should migrate to [passcodeNotSet]. iOS/macOS mapping of
   /// `kLAErrorPasscodeNotSet` changed in the same release.
   passcodeNotSet,
-}
-
-/// A custom fallback option shown on the biometric prompt.
-///
-/// [Android 15+ only] When provided in a config's `fallbackOptions` list,
-/// these appear as alternative buttons on the biometric prompt dialog.
-/// If the user taps one, the result will have code [BiometricError.fallbackSelected]
-/// with the selected option's index and text.
-///
-/// On iOS, macOS, and Windows this class is ignored.
-class BiometricFallbackOption {
-  /// The text label displayed on the fallback button.
-  String? text;
-
-  /// [Android] Optional icon type name for the fallback button.
-  /// Valid values: `"password"`, `"qr_code"`, `"account"`, `"generic"`.
-  /// Maps to `AuthenticationRequest.Biometric.Fallback.ICON_TYPE_*` constants.
-  /// When null, defaults to `"generic"`.
-  String? iconName;
 }
 
 class BiometricAvailability {
@@ -202,14 +178,6 @@ class SignatureResult {
   String? algorithm;
   int? keySize;
 
-  /// [Android 15+] Index of the selected fallback option in the original list.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  int? selectedFallbackIndex;
-
-  /// [Android 15+] Text of the selected fallback option.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  String? selectedFallbackText;
-
   /// The type of authentication used to complete this operation.
   ///
   /// Inferred on Apple platforms (iOS/macOS), authoritative on Android.
@@ -222,14 +190,6 @@ class DecryptResult {
   String? decryptedData;
   String? error;
   BiometricError? code;
-
-  /// [Android 15+] Index of the selected fallback option in the original list.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  int? selectedFallbackIndex;
-
-  /// [Android 15+] Text of the selected fallback option.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  String? selectedFallbackText;
 
   /// The type of authentication used to complete this operation.
   ///
@@ -330,15 +290,6 @@ class CreateKeysConfig {
   ///
   /// When `false` (default), existing keys are silently replaced.
   bool? failIfExists;
-
-  // === Custom fallback options ===
-
-  /// [Android 15+] Custom fallback buttons shown on the biometric prompt.
-  /// When provided, these replace the default cancel button.
-  /// If the user taps a fallback option, the result will have
-  /// `code == BiometricError.fallbackSelected` with the selected option's
-  /// index and text. On other platforms, this field is ignored.
-  List<BiometricFallbackOption?>? fallbackOptions;
 }
 
 /// Configuration for signature creation (all platforms).
@@ -363,15 +314,6 @@ class CreateSignatureConfig {
 
   /// [iOS] Whether to migrate from legacy keychain storage.
   bool? shouldMigrate;
-
-  // === Custom fallback options ===
-
-  /// [Android 15+] Custom fallback buttons shown on the biometric prompt.
-  /// When provided, these replace the default cancel button.
-  /// If the user taps a fallback option, the result will have
-  /// `code == BiometricError.fallbackSelected` with the selected option's
-  /// index and text. On other platforms, this field is ignored.
-  List<BiometricFallbackOption?>? fallbackOptions;
 }
 
 /// Configuration for decryption (all platforms).
@@ -397,15 +339,6 @@ class DecryptConfig {
 
   /// [iOS] Whether to migrate from legacy keychain storage.
   bool? shouldMigrate;
-
-  // === Custom fallback options ===
-
-  /// [Android 15+] Custom fallback buttons shown on the biometric prompt.
-  /// When provided, these replace the default cancel button.
-  /// If the user taps a fallback option, the result will have
-  /// `code == BiometricError.fallbackSelected` with the selected option's
-  /// index and text. On other platforms, this field is ignored.
-  List<BiometricFallbackOption?>? fallbackOptions;
 }
 
 /// Output format for public keys.
@@ -606,15 +539,6 @@ class SimplePromptConfig {
   ///
   /// Default: strong
   BiometricStrength? biometricStrength;
-
-  // === Custom fallback options ===
-
-  /// [Android 15+] Custom fallback buttons shown on the biometric prompt.
-  /// When provided, these replace the default cancel button.
-  /// If the user taps a fallback option, the result will have
-  /// `code == BiometricError.fallbackSelected` with the selected option's
-  /// index and text. On other platforms, this field is ignored.
-  List<BiometricFallbackOption?>? fallbackOptions;
 }
 
 /// Result from simple biometric prompt authentication.
@@ -629,14 +553,6 @@ class SimplePromptResult {
   /// Standardized error code if authentication failed.
   /// Use this for programmatic error handling.
   BiometricError? code;
-
-  /// [Android 15+] Index of the selected fallback option in the original list.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  int? selectedFallbackIndex;
-
-  /// [Android 15+] Text of the selected fallback option.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  String? selectedFallbackText;
 
   /// The type of authentication used to complete this operation.
   ///

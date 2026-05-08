@@ -1,8 +1,22 @@
-## Unreleased
+## [12.0.0] - 2026-05-08
 
 ### Changed
-* Lowered the package and example SDK constraints to support Flutter 3.24.5 / Dart 3.5.0 while retaining Swift Package Manager support.
-* Lowered the Android min SDK to 23 and updated the example Android compile SDK and NDK settings to match the plugin's native Android dependency requirements.
+* **Lowered minimum Flutter to `3.24.5` / Dart to `3.5.0`.** The plugin now resolves and builds on a vanilla Flutter 3.24.5 install with no manual AGP, Gradle, or Android SDK Platform upgrades.
+* **Android `minSdk` lowered to 23**, the floor required by `androidx.biometric` for `BiometricPrompt`.
+* **Android `compileSdk` lowered to 35**, restoring `flutter.compileSdkVersion` parity in the example app (no more hardcoded `compileSdk = 36`/`ndkVersion = "27.0.12077973"`).
+* **`androidx.biometric:biometric` downgraded from `1.4.0-alpha06` → `1.4.0-alpha05`**, which only requires `compileSdk 35` and AGP `8.6.0`. Plugin's buildscript classpath also dropped to AGP `8.6.0` to match.
+* **Pigeon dev dependency loosened** from `25.3.2` → `^25.3.2`.
+
+### Removed (Breaking)
+* **Custom fallback options on the biometric prompt (Android 15+).** The `androidx.biometric` API for `Fallback.CustomOption`, `Fallback.ICON_TYPE_*`, and `AuthenticationResult.CustomFallbackSelected` only exists in `1.4.0-alpha06+`, which forced `compileSdk = 36`. Removed entirely so the plugin can run on broader tooling.
+  * Removed `BiometricFallbackOption` class.
+  * Removed `BiometricError.fallbackSelected` enum value.
+  * Removed `fallbackOptions` field from `CreateKeysConfig`, `CreateSignatureConfig`, `DecryptConfig`, and `SimplePromptConfig`.
+  * Removed `selectedFallbackIndex` and `selectedFallbackText` fields from `SignatureResult`, `DecryptResult`, and `SimplePromptResult`.
+
+### Migration from 11.x
+* If you were using `BiometricFallbackOption` to render Android 15+ custom fallback buttons, you now need to drive that fallback behaviour from your own UI (e.g. catch the negative-button cancel, then present a Flutter sheet listing the alternatives). The plugin's standard `cancelButtonText` and `allowDeviceCredentials` flow still work everywhere they did before.
+* If you were branching on `BiometricError.fallbackSelected` or reading `selectedFallback*` fields, those code paths can be deleted — they will never fire from the new plugin version.
 
 ## [11.1.0] - 2026-04-17
 

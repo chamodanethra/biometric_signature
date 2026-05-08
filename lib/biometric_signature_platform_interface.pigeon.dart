@@ -104,10 +104,6 @@ enum BiometricError {
   promptError,
   /// A key with the specified alias already exists and failIfExists was set.
   keyAlreadyExists,
-  /// The user selected a custom fallback option instead of authenticating.
-  /// [Android 15+ only] Check `selectedFallbackIndex` and `selectedFallbackText`
-  /// on the result object to determine which option was selected.
-  fallbackSelected,
   /// The device does not have a screen lock (PIN, pattern, password, or
   /// passcode) configured.
   ///
@@ -174,65 +170,6 @@ enum PayloadFormat {
   hex,
   /// Raw UTF-8 string (not recommended for binary data).
   raw,
-}
-
-/// A custom fallback option shown on the biometric prompt.
-///
-/// [Android 15+ only] When provided in a config's `fallbackOptions` list,
-/// these appear as alternative buttons on the biometric prompt dialog.
-/// If the user taps one, the result will have code [BiometricError.fallbackSelected]
-/// with the selected option's index and text.
-///
-/// On iOS, macOS, and Windows this class is ignored.
-class BiometricFallbackOption {
-  BiometricFallbackOption({
-    this.text,
-    this.iconName,
-  });
-
-  /// The text label displayed on the fallback button.
-  String? text;
-
-  /// [Android] Optional icon type name for the fallback button.
-  /// Valid values: `"password"`, `"qr_code"`, `"account"`, `"generic"`.
-  /// Maps to `AuthenticationRequest.Biometric.Fallback.ICON_TYPE_*` constants.
-  /// When null, defaults to `"generic"`.
-  String? iconName;
-
-  List<Object?> _toList() {
-    return <Object?>[
-      text,
-      iconName,
-    ];
-  }
-
-  Object encode() {
-    return _toList();  }
-
-  static BiometricFallbackOption decode(Object result) {
-    result as List<Object?>;
-    return BiometricFallbackOption(
-      text: result[0] as String?,
-      iconName: result[1] as String?,
-    );
-  }
-
-  @override
-  // ignore: avoid_equals_and_hash_code_on_mutable_classes
-  bool operator ==(Object other) {
-    if (other is! BiometricFallbackOption || other.runtimeType != runtimeType) {
-      return false;
-    }
-    if (identical(this, other)) {
-      return true;
-    }
-    return _deepEquals(encode(), other.encode());
-  }
-
-  @override
-  // ignore: avoid_equals_and_hash_code_on_mutable_classes
-  int get hashCode => Object.hashAll(_toList())
-;
 }
 
 class BiometricAvailability {
@@ -396,8 +333,6 @@ class SignatureResult {
     this.code,
     this.algorithm,
     this.keySize,
-    this.selectedFallbackIndex,
-    this.selectedFallbackText,
     this.authenticationType,
   });
 
@@ -415,14 +350,6 @@ class SignatureResult {
 
   int? keySize;
 
-  /// [Android 15+] Index of the selected fallback option in the original list.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  int? selectedFallbackIndex;
-
-  /// [Android 15+] Text of the selected fallback option.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  String? selectedFallbackText;
-
   /// The type of authentication used to complete this operation.
   ///
   /// Inferred on Apple platforms (iOS/macOS), authoritative on Android.
@@ -439,8 +366,6 @@ class SignatureResult {
       code,
       algorithm,
       keySize,
-      selectedFallbackIndex,
-      selectedFallbackText,
       authenticationType,
     ];
   }
@@ -458,9 +383,7 @@ class SignatureResult {
       code: result[4] as BiometricError?,
       algorithm: result[5] as String?,
       keySize: result[6] as int?,
-      selectedFallbackIndex: result[7] as int?,
-      selectedFallbackText: result[8] as String?,
-      authenticationType: result[9] as AuthenticationType?,
+      authenticationType: result[7] as AuthenticationType?,
     );
   }
 
@@ -487,8 +410,6 @@ class DecryptResult {
     this.decryptedData,
     this.error,
     this.code,
-    this.selectedFallbackIndex,
-    this.selectedFallbackText,
     this.authenticationType,
   });
 
@@ -497,14 +418,6 @@ class DecryptResult {
   String? error;
 
   BiometricError? code;
-
-  /// [Android 15+] Index of the selected fallback option in the original list.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  int? selectedFallbackIndex;
-
-  /// [Android 15+] Text of the selected fallback option.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  String? selectedFallbackText;
 
   /// The type of authentication used to complete this operation.
   ///
@@ -518,8 +431,6 @@ class DecryptResult {
       decryptedData,
       error,
       code,
-      selectedFallbackIndex,
-      selectedFallbackText,
       authenticationType,
     ];
   }
@@ -533,9 +444,7 @@ class DecryptResult {
       decryptedData: result[0] as String?,
       error: result[1] as String?,
       code: result[2] as BiometricError?,
-      selectedFallbackIndex: result[3] as int?,
-      selectedFallbackText: result[4] as String?,
-      authenticationType: result[5] as AuthenticationType?,
+      authenticationType: result[3] as AuthenticationType?,
     );
   }
 
@@ -665,7 +574,6 @@ class CreateKeysConfig {
     this.promptDescription,
     this.cancelButtonText,
     this.failIfExists,
-    this.fallbackOptions,
   });
 
   /// [Android/iOS/macOS] The cryptographic algorithm to use.
@@ -708,13 +616,6 @@ class CreateKeysConfig {
   /// When `false` (default), existing keys are silently replaced.
   bool? failIfExists;
 
-  /// [Android 15+] Custom fallback buttons shown on the biometric prompt.
-  /// When provided, these replace the default cancel button.
-  /// If the user taps a fallback option, the result will have
-  /// `code == BiometricError.fallbackSelected` with the selected option's
-  /// index and text. On other platforms, this field is ignored.
-  List<BiometricFallbackOption?>? fallbackOptions;
-
   List<Object?> _toList() {
     return <Object?>[
       signatureType,
@@ -726,7 +627,6 @@ class CreateKeysConfig {
       promptDescription,
       cancelButtonText,
       failIfExists,
-      fallbackOptions,
     ];
   }
 
@@ -745,7 +645,6 @@ class CreateKeysConfig {
       promptDescription: result[6] as String?,
       cancelButtonText: result[7] as String?,
       failIfExists: result[8] as bool?,
-      fallbackOptions: (result[9] as List<Object?>?)?.cast<BiometricFallbackOption?>(),
     );
   }
 
@@ -777,7 +676,6 @@ class CreateSignatureConfig {
     this.cancelButtonText,
     this.allowDeviceCredentials,
     this.shouldMigrate,
-    this.fallbackOptions,
   });
 
   /// [Android] Subtitle text for the biometric prompt.
@@ -795,13 +693,6 @@ class CreateSignatureConfig {
   /// [iOS] Whether to migrate from legacy keychain storage.
   bool? shouldMigrate;
 
-  /// [Android 15+] Custom fallback buttons shown on the biometric prompt.
-  /// When provided, these replace the default cancel button.
-  /// If the user taps a fallback option, the result will have
-  /// `code == BiometricError.fallbackSelected` with the selected option's
-  /// index and text. On other platforms, this field is ignored.
-  List<BiometricFallbackOption?>? fallbackOptions;
-
   List<Object?> _toList() {
     return <Object?>[
       promptSubtitle,
@@ -809,7 +700,6 @@ class CreateSignatureConfig {
       cancelButtonText,
       allowDeviceCredentials,
       shouldMigrate,
-      fallbackOptions,
     ];
   }
 
@@ -824,7 +714,6 @@ class CreateSignatureConfig {
       cancelButtonText: result[2] as String?,
       allowDeviceCredentials: result[3] as bool?,
       shouldMigrate: result[4] as bool?,
-      fallbackOptions: (result[5] as List<Object?>?)?.cast<BiometricFallbackOption?>(),
     );
   }
 
@@ -857,7 +746,6 @@ class DecryptConfig {
     this.cancelButtonText,
     this.allowDeviceCredentials,
     this.shouldMigrate,
-    this.fallbackOptions,
   });
 
   /// [Android] Subtitle text for the biometric prompt.
@@ -875,13 +763,6 @@ class DecryptConfig {
   /// [iOS] Whether to migrate from legacy keychain storage.
   bool? shouldMigrate;
 
-  /// [Android 15+] Custom fallback buttons shown on the biometric prompt.
-  /// When provided, these replace the default cancel button.
-  /// If the user taps a fallback option, the result will have
-  /// `code == BiometricError.fallbackSelected` with the selected option's
-  /// index and text. On other platforms, this field is ignored.
-  List<BiometricFallbackOption?>? fallbackOptions;
-
   List<Object?> _toList() {
     return <Object?>[
       promptSubtitle,
@@ -889,7 +770,6 @@ class DecryptConfig {
       cancelButtonText,
       allowDeviceCredentials,
       shouldMigrate,
-      fallbackOptions,
     ];
   }
 
@@ -904,7 +784,6 @@ class DecryptConfig {
       cancelButtonText: result[2] as String?,
       allowDeviceCredentials: result[3] as bool?,
       shouldMigrate: result[4] as bool?,
-      fallbackOptions: (result[5] as List<Object?>?)?.cast<BiometricFallbackOption?>(),
     );
   }
 
@@ -936,7 +815,6 @@ class SimplePromptConfig {
     this.cancelButtonText,
     this.allowDeviceCredentials,
     this.biometricStrength,
-    this.fallbackOptions,
   });
 
   /// [Android] Subtitle text displayed below the title in the biometric prompt.
@@ -972,13 +850,6 @@ class SimplePromptConfig {
   /// Default: strong
   BiometricStrength? biometricStrength;
 
-  /// [Android 15+] Custom fallback buttons shown on the biometric prompt.
-  /// When provided, these replace the default cancel button.
-  /// If the user taps a fallback option, the result will have
-  /// `code == BiometricError.fallbackSelected` with the selected option's
-  /// index and text. On other platforms, this field is ignored.
-  List<BiometricFallbackOption?>? fallbackOptions;
-
   List<Object?> _toList() {
     return <Object?>[
       subtitle,
@@ -986,7 +857,6 @@ class SimplePromptConfig {
       cancelButtonText,
       allowDeviceCredentials,
       biometricStrength,
-      fallbackOptions,
     ];
   }
 
@@ -1001,7 +871,6 @@ class SimplePromptConfig {
       cancelButtonText: result[2] as String?,
       allowDeviceCredentials: result[3] as bool?,
       biometricStrength: result[4] as BiometricStrength?,
-      fallbackOptions: (result[5] as List<Object?>?)?.cast<BiometricFallbackOption?>(),
     );
   }
 
@@ -1029,8 +898,6 @@ class SimplePromptResult {
     this.success,
     this.error,
     this.code,
-    this.selectedFallbackIndex,
-    this.selectedFallbackText,
     this.authenticationType,
   });
 
@@ -1045,14 +912,6 @@ class SimplePromptResult {
   /// Use this for programmatic error handling.
   BiometricError? code;
 
-  /// [Android 15+] Index of the selected fallback option in the original list.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  int? selectedFallbackIndex;
-
-  /// [Android 15+] Text of the selected fallback option.
-  /// Only populated when `code == BiometricError.fallbackSelected`.
-  String? selectedFallbackText;
-
   /// The type of authentication used to complete this operation.
   ///
   /// Inferred on Apple platforms (iOS/macOS), authoritative on Android.
@@ -1065,8 +924,6 @@ class SimplePromptResult {
       success,
       error,
       code,
-      selectedFallbackIndex,
-      selectedFallbackText,
       authenticationType,
     ];
   }
@@ -1080,9 +937,7 @@ class SimplePromptResult {
       success: result[0] as bool?,
       error: result[1] as String?,
       code: result[2] as BiometricError?,
-      selectedFallbackIndex: result[3] as int?,
-      selectedFallbackText: result[4] as String?,
-      authenticationType: result[5] as AuthenticationType?,
+      authenticationType: result[3] as AuthenticationType?,
     );
   }
 
@@ -1136,38 +991,35 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is PayloadFormat) {
       buffer.putUint8(136);
       writeValue(buffer, value.index);
-    }    else if (value is BiometricFallbackOption) {
+    }    else if (value is BiometricAvailability) {
       buffer.putUint8(137);
       writeValue(buffer, value.encode());
-    }    else if (value is BiometricAvailability) {
+    }    else if (value is KeyCreationResult) {
       buffer.putUint8(138);
       writeValue(buffer, value.encode());
-    }    else if (value is KeyCreationResult) {
+    }    else if (value is SignatureResult) {
       buffer.putUint8(139);
       writeValue(buffer, value.encode());
-    }    else if (value is SignatureResult) {
+    }    else if (value is DecryptResult) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    }    else if (value is DecryptResult) {
+    }    else if (value is KeyInfo) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    }    else if (value is KeyInfo) {
+    }    else if (value is CreateKeysConfig) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    }    else if (value is CreateKeysConfig) {
+    }    else if (value is CreateSignatureConfig) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    }    else if (value is CreateSignatureConfig) {
+    }    else if (value is DecryptConfig) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
-    }    else if (value is DecryptConfig) {
+    }    else if (value is SimplePromptConfig) {
       buffer.putUint8(145);
       writeValue(buffer, value.encode());
-    }    else if (value is SimplePromptConfig) {
-      buffer.putUint8(146);
-      writeValue(buffer, value.encode());
     }    else if (value is SimplePromptResult) {
-      buffer.putUint8(147);
+      buffer.putUint8(146);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1202,26 +1054,24 @@ class _PigeonCodec extends StandardMessageCodec {
         final int? value = readValue(buffer) as int?;
         return value == null ? null : PayloadFormat.values[value];
       case 137: 
-        return BiometricFallbackOption.decode(readValue(buffer)!);
-      case 138: 
         return BiometricAvailability.decode(readValue(buffer)!);
-      case 139: 
+      case 138: 
         return KeyCreationResult.decode(readValue(buffer)!);
-      case 140: 
+      case 139: 
         return SignatureResult.decode(readValue(buffer)!);
-      case 141: 
+      case 140: 
         return DecryptResult.decode(readValue(buffer)!);
-      case 142: 
+      case 141: 
         return KeyInfo.decode(readValue(buffer)!);
-      case 143: 
+      case 142: 
         return CreateKeysConfig.decode(readValue(buffer)!);
-      case 144: 
+      case 143: 
         return CreateSignatureConfig.decode(readValue(buffer)!);
-      case 145: 
+      case 144: 
         return DecryptConfig.decode(readValue(buffer)!);
-      case 146: 
+      case 145: 
         return SimplePromptConfig.decode(readValue(buffer)!);
-      case 147: 
+      case 146: 
         return SimplePromptResult.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);

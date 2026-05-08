@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.visionflutter.biometric_signature_example"
-    compileSdk = 36
+    compileSdk = 35
     ndkVersion = "27.0.12077973"
 
     compileOptions {

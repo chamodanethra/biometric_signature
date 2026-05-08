@@ -21,20 +21,6 @@ class MockBiometricSignaturePlatform
   final List<String?> deletedAliases = [];
   bool deleteAllKeysCalled = false;
 
-  // Simulate fallback selection: when non-null, the mock returns fallbackSelected
-  int? _simulateFallbackIndex;
-  String? _simulateFallbackText;
-
-  void simulateFallbackSelection(int index, String text) {
-    _simulateFallbackIndex = index;
-    _simulateFallbackText = text;
-  }
-
-  void clearFallbackSimulation() {
-    _simulateFallbackIndex = null;
-    _simulateFallbackText = null;
-  }
-
   void setAuthAvailableResult(BiometricAvailability result) {
     _authAvailableResult = result;
   }
@@ -119,17 +105,6 @@ class MockBiometricSignaturePlatform
   ) async {
     if (_shouldThrowError) throw Exception('Signing failed');
 
-    // Simulate fallback selection if configured and fallbackOptions provided
-    final hasFallbackOptions =
-        config?.fallbackOptions != null && config!.fallbackOptions!.isNotEmpty;
-    if (hasFallbackOptions && _simulateFallbackIndex != null) {
-      return SignatureResult(
-        code: BiometricError.fallbackSelected,
-        selectedFallbackIndex: _simulateFallbackIndex,
-        selectedFallbackText: _simulateFallbackText,
-      );
-    }
-
     final effectiveAlias = keyAlias ?? 'biometric_key';
     return SignatureResult(
       signature: 'test_signature_$effectiveAlias',
@@ -164,16 +139,6 @@ class MockBiometricSignaturePlatform
   ) async {
     if (_shouldThrowError) throw Exception('Decryption failed');
 
-    final hasFallbackOptions =
-        config?.fallbackOptions != null && config!.fallbackOptions!.isNotEmpty;
-    if (hasFallbackOptions && _simulateFallbackIndex != null) {
-      return DecryptResult(
-        code: BiometricError.fallbackSelected,
-        selectedFallbackIndex: _simulateFallbackIndex,
-        selectedFallbackText: _simulateFallbackText,
-      );
-    }
-
     final effectiveAlias = keyAlias ?? 'biometric_key';
     return DecryptResult(
       decryptedData: 'decrypted_${effectiveAlias}_$payload',
@@ -187,17 +152,6 @@ class MockBiometricSignaturePlatform
     SimplePromptConfig? config,
   ) async {
     if (_shouldThrowError) throw Exception('Simple prompt failed');
-
-    final hasFallbackOptions =
-        config?.fallbackOptions != null && config!.fallbackOptions!.isNotEmpty;
-    if (hasFallbackOptions && _simulateFallbackIndex != null) {
-      return SimplePromptResult(
-        success: false,
-        code: BiometricError.fallbackSelected,
-        selectedFallbackIndex: _simulateFallbackIndex,
-        selectedFallbackText: _simulateFallbackText,
-      );
-    }
 
     return SimplePromptResult(
       success: true,
@@ -705,142 +659,4 @@ void main() {
     });
   });
 
-  // ============================================================
-  // Step 4: Custom Fallback Options (Android 15+)
-  // ============================================================
-
-  group('custom fallback options', () {
-    test(
-      'simplePrompt with fallbackOptions returns fallbackSelected',
-      () async {
-        BiometricSignature biometricSignature = BiometricSignature();
-        MockBiometricSignaturePlatform fakePlatform =
-            MockBiometricSignaturePlatform();
-        fakePlatform.simulateFallbackSelection(1, 'Use Passcode');
-        BiometricSignaturePlatform.instance = fakePlatform;
-
-        final result = await biometricSignature.simplePrompt(
-          promptMessage: 'Verify identity',
-          config: SimplePromptConfig(
-            fallbackOptions: [
-              BiometricFallbackOption(text: 'Use PIN'),
-              BiometricFallbackOption(text: 'Use Passcode'),
-            ],
-          ),
-        );
-        expect(result.code, BiometricError.fallbackSelected);
-        expect(result.success, false);
-        expect(result.selectedFallbackIndex, 1);
-        expect(result.selectedFallbackText, 'Use Passcode');
-      },
-    );
-
-    test(
-      'createSignature with fallbackOptions returns fallbackSelected',
-      () async {
-        BiometricSignature biometricSignature = BiometricSignature();
-        MockBiometricSignaturePlatform fakePlatform =
-            MockBiometricSignaturePlatform();
-        fakePlatform.simulateFallbackSelection(0, 'Use Recovery Key');
-        BiometricSignaturePlatform.instance = fakePlatform;
-
-        final result = await biometricSignature.createSignature(
-          payload: 'test_data',
-          config: CreateSignatureConfig(
-            fallbackOptions: [
-              BiometricFallbackOption(text: 'Use Recovery Key'),
-            ],
-          ),
-        );
-        expect(result.code, BiometricError.fallbackSelected);
-        expect(result.signature, isNull);
-        expect(result.selectedFallbackIndex, 0);
-        expect(result.selectedFallbackText, 'Use Recovery Key');
-      },
-    );
-
-    test('decrypt with fallbackOptions returns fallbackSelected', () async {
-      BiometricSignature biometricSignature = BiometricSignature();
-      MockBiometricSignaturePlatform fakePlatform =
-          MockBiometricSignaturePlatform();
-      fakePlatform.simulateFallbackSelection(0, 'Enter Password');
-      BiometricSignaturePlatform.instance = fakePlatform;
-
-      final result = await biometricSignature.decrypt(
-        payload: 'encrypted_data',
-        payloadFormat: PayloadFormat.base64,
-        config: DecryptConfig(
-          fallbackOptions: [BiometricFallbackOption(text: 'Enter Password')],
-        ),
-      );
-      expect(result.code, BiometricError.fallbackSelected);
-      expect(result.decryptedData, isNull);
-      expect(result.selectedFallbackIndex, 0);
-      expect(result.selectedFallbackText, 'Enter Password');
-    });
-
-    test('null fallbackOptions preserves existing behavior', () async {
-      BiometricSignature biometricSignature = BiometricSignature();
-      MockBiometricSignaturePlatform fakePlatform =
-          MockBiometricSignaturePlatform();
-      fakePlatform.simulateFallbackSelection(0, 'Use PIN');
-      BiometricSignaturePlatform.instance = fakePlatform;
-
-      // No fallbackOptions in config — should NOT trigger fallback
-      final result = await biometricSignature.simplePrompt(
-        promptMessage: 'Verify identity',
-      );
-      expect(result.code, BiometricError.success);
-      expect(result.success, true);
-      expect(result.selectedFallbackIndex, isNull);
-    });
-
-    test('empty fallbackOptions preserves existing behavior', () async {
-      BiometricSignature biometricSignature = BiometricSignature();
-      MockBiometricSignaturePlatform fakePlatform =
-          MockBiometricSignaturePlatform();
-      fakePlatform.simulateFallbackSelection(0, 'Use PIN');
-      BiometricSignaturePlatform.instance = fakePlatform;
-
-      final result = await biometricSignature.simplePrompt(
-        promptMessage: 'Verify identity',
-        config: SimplePromptConfig(fallbackOptions: []),
-      );
-      expect(result.code, BiometricError.success);
-      expect(result.success, true);
-    });
-
-    test('BiometricFallbackOption with iconName', () {
-      final option = BiometricFallbackOption(
-        text: 'Use PIN',
-        iconName: 'ic_lock',
-      );
-      expect(option.text, 'Use PIN');
-      expect(option.iconName, 'ic_lock');
-    });
-
-    test('BiometricFallbackOption with null iconName', () {
-      final option = BiometricFallbackOption(text: 'Use PIN');
-      expect(option.text, 'Use PIN');
-      expect(option.iconName, isNull);
-    });
-
-    test('fallbackOptions on all config classes', () {
-      // Verify the field exists on all 4 config classes
-      final options = [BiometricFallbackOption(text: 'Option A')];
-
-      final createKeysConfig = CreateKeysConfig(fallbackOptions: options);
-      expect(createKeysConfig.fallbackOptions, isNotNull);
-      expect(createKeysConfig.fallbackOptions!.length, 1);
-
-      final signatureConfig = CreateSignatureConfig(fallbackOptions: options);
-      expect(signatureConfig.fallbackOptions, isNotNull);
-
-      final decryptConfig = DecryptConfig(fallbackOptions: options);
-      expect(decryptConfig.fallbackOptions, isNotNull);
-
-      final simpleConfig = SimplePromptConfig(fallbackOptions: options);
-      expect(simpleConfig.fallbackOptions, isNotNull);
-    });
-  });
 }
