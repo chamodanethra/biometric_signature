@@ -321,7 +321,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
     ) {
         // Check failIfExists
         let failIfExists = config?.failIfExists ?? false
-        if failIfExists && keyExists(keyAlias) {
+        if failIfExists && hasEcKey(keyAlias) {
             completion(.success(KeyCreationResult(
                 publicKey: nil,
                 error: "A key with alias '\(keyAlias ?? "default")' already exists",
@@ -399,21 +399,27 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
              performEcSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
         }
 #else
-        let shouldMigrate = config?.shouldMigrate ?? false
         if hasRsaKey(keyAlias) {
-             performRsaSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
-        } else if shouldMigrate && keyAlias == nil {
-             migrateToSecureEnclave(prompt: prompt) { result in
+            // Already on the v10+ hybrid path: a wrapped RSA blob exists.
+            performRsaSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
+        } else if keyAlias == nil
+                    && !hasEcKey(nil)
+                    && hasLegacyUnwrappedRsaKeyForMigration() {
+            // v2.x default-alias install: legacy unwrapped RSA exists and no
+            // modern EC key has been created yet. Migrate to Secure Enclave,
+            // then sign with the now-wrapped RSA.
+            migrateToSecureEnclave(prompt: prompt) { result in
                 switch result {
                 case .success:
                     self.performRsaSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
                 case .failure(let error):
-                     let msg = (error as? PigeonError)?.message ?? (error as NSError).localizedDescription
-                     completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: "Migration Error: \(msg)", code: .unknown)))
+                    let msg = (error as? PigeonError)?.message ?? (error as NSError).localizedDescription
+                    completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: "Migration Error: \(msg)", code: .unknown)))
                 }
-             }
+            }
         } else {
-             performEcSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
+            // Default: EC key (created via v10+ createKeys with signatureType=ecdsa).
+            performEcSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
         }
 #endif
     }
@@ -531,22 +537,27 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
              performEcDecryption(keyAlias: keyAlias, payload: payload, payloadFormat: payloadFormat, prompt: prompt, authenticationType: authType, completion: completion)
         }
 #else
-        let shouldMigrate = config?.shouldMigrate ?? false
-
         if hasRsaKey(keyAlias) {
-             performRsaDecryption(keyAlias: keyAlias, payload: payload, payloadFormat: payloadFormat, prompt: prompt, authenticationType: authType, completion: completion)
-        } else if shouldMigrate && keyAlias == nil {
-             migrateToSecureEnclave(prompt: prompt) { result in
+            // Already on the v10+ hybrid path: a wrapped RSA blob exists.
+            performRsaDecryption(keyAlias: keyAlias, payload: payload, payloadFormat: payloadFormat, prompt: prompt, authenticationType: authType, completion: completion)
+        } else if keyAlias == nil
+                    && !hasEcKey(nil)
+                    && hasLegacyUnwrappedRsaKeyForMigration() {
+            // v2.x default-alias install: legacy unwrapped RSA exists and no
+            // modern EC key has been created yet. Migrate to Secure Enclave,
+            // then decrypt with the now-wrapped RSA.
+            migrateToSecureEnclave(prompt: prompt) { result in
                 switch result {
                 case .success:
-                     self.performRsaDecryption(keyAlias: keyAlias, payload: payload, payloadFormat: payloadFormat, prompt: prompt, authenticationType: authType, completion: completion)
+                    self.performRsaDecryption(keyAlias: keyAlias, payload: payload, payloadFormat: payloadFormat, prompt: prompt, authenticationType: authType, completion: completion)
                 case .failure(let error):
-                     let msg = (error as? PigeonError)?.message ?? (error as NSError).localizedDescription
-                     completion(.success(DecryptResult(decryptedData: nil, error: "Migration Error: \(msg)", code: .unknown)))
+                    let msg = (error as? PigeonError)?.message ?? (error as NSError).localizedDescription
+                    completion(.success(DecryptResult(decryptedData: nil, error: "Migration Error: \(msg)", code: .unknown)))
                 }
-             }
+            }
         } else {
-             performEcDecryption(keyAlias: keyAlias, payload: payload, payloadFormat: payloadFormat, prompt: prompt, authenticationType: authType, completion: completion)
+            // Default: EC key (created via v10+ createKeys with signatureType=ecdsa).
+            performEcDecryption(keyAlias: keyAlias, payload: payload, payloadFormat: payloadFormat, prompt: prompt, authenticationType: authType, completion: completion)
         }
 #endif
     }
@@ -763,7 +774,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
 
     // MARK: - Private Implementations
 
-    private func keyExists(_ keyAlias: String?) -> Bool {
+    private func hasEcKey(_ keyAlias: String?) -> Bool {
         let ecTag = Constants.ecKeyAlias(keyAlias)
         let ecQuery: [String: Any] = [
             kSecClass as String: kSecClassKey,
@@ -774,6 +785,48 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         var item: CFTypeRef?
         return SecItemCopyMatching(ecQuery as CFDictionary, &item) == errSecSuccess
     }
+
+#if os(iOS)
+    /// Detects whether a v2.x-era unwrapped RSA private key still lives in the
+    /// keychain under the default `biometric_key` tag.
+    ///
+    /// Such a key is the *source* for `migrateToSecureEnclave`. If it isn't
+    /// there, no migration should be attempted — historically, callers signaled
+    /// migration intent via `CreateSignatureConfig.shouldMigrate` /
+    /// `DecryptConfig.shouldMigrate`, but that flag misfired when set against a
+    /// v10+ EC-only key (issue #65). Auto-detecting here removes the foot-gun.
+    ///
+    /// **Existence-only probe** — the legacy v2.x key was stored with
+    /// biometric ACL, and `SecItemCopyMatching` defaults to
+    /// `kSecUseAuthenticationUIAllow` which would put up a FaceID prompt just
+    /// to evaluate the match. We override that to
+    /// `kSecUseAuthenticationUIFail` so the system returns
+    /// `errSecInteractionNotAllowed` (item exists, would need auth) without
+    /// any UI. The actual authentication is performed exactly once inside
+    /// `migrateToSecureEnclave`, matching the v11.x `shouldMigrate: true`
+    /// prompt count.
+    private func hasLegacyUnwrappedRsaKeyForMigration() -> Bool {
+        let unencryptedKeyTag = Constants.biometricKeyAlias(nil)
+        let unencryptedKeyTagData = unencryptedKeyTag.data(using: .utf8)!
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: unencryptedKeyTagData,
+            kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+            kSecReturnRef as String: false,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
+        ]
+
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        // `errSecInteractionNotAllowed` means a matching biometric-protected
+        // item is present but we declined to show UI for it — exactly the
+        // outcome we want for an existence probe of an auth-protected legacy
+        // key. `errSecSuccess` would only occur if the legacy key isn't ACL'd
+        // (rare/unexpected for v2.x), but treating it as "exists" is harmless.
+        return status == errSecSuccess || status == errSecInteractionNotAllowed
+    }
+#endif
 
     private func performKeyGeneration(
         keyAlias: String?,

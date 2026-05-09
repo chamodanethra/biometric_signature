@@ -1,15 +1,21 @@
 PODS:
+  - biometric_signature (12.0.0):
+    - FlutterMacOS
   - FlutterMacOS (1.0.0)
 
 DEPENDENCIES:
+  - biometric_signature (from `Flutter/ephemeral/.symlinks/plugins/biometric_signature/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
 
 EXTERNAL SOURCES:
+  biometric_signature:
+    :path: Flutter/ephemeral/.symlinks/plugins/biometric_signature/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
 
 SPEC CHECKSUMS:
-  FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  biometric_signature: bb09af2cbcf228a3913882fe0431c3e364ff0aa2
+  FlutterMacOS: 8f6f14fa908a6fb3fba0cd85dbd81ec4b251fb24
 
 PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
 

@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:biometric_signature/biometric_signature.dart';
 import 'package:flutter/material.dart';
 import 'package:passwordless_login_example/screens/home_screen.dart';
@@ -35,17 +33,6 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Build fallback options if user has a backup password (Android 15+ only)
-      List<BiometricFallbackOption>? fallbackOptions;
-      if (Platform.isAndroid) {
-        final hasPassword = await _authService.hasPasswordBackup(username);
-        if (hasPassword) {
-          fallbackOptions = [
-            BiometricFallbackOption(text: 'Use Password', iconName: 'password'),
-          ];
-        }
-      }
-
       // Request challenge from server
       final challenge = await _authService.requestChallenge(username);
 
@@ -53,19 +40,9 @@ class _LoginScreenState extends State<LoginScreen> {
       final result = await _authService.authenticateWithChallenge(
         username: username,
         challengeId: challenge.challengeId,
-        fallbackOptions: fallbackOptions,
       );
 
-      // User tapped the custom "Use Password" fallback button
-      if (result.code == BiometricError.fallbackSelected) {
-        setState(() => _isLoading = false);
-        if (mounted) {
-          await _showPasswordDialog(username);
-        }
-        return;
-      }
-
-      // Handle other error codes
+      // Handle different error codes
       if (result.code != BiometricError.success) {
         await _handleBiometricError(result, username);
         setState(() => _isLoading = false);
@@ -83,95 +60,6 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       _showError(e.toString());
       setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _showPasswordDialog(String username) async {
-    final passwordController = TextEditingController();
-    String? errorText;
-    bool obscure = true;
-
-    final authenticated = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.lock, color: Colors.blue),
-              SizedBox(width: 12),
-              Text('Enter Password'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Enter your backup password to log in.'),
-              const SizedBox(height: 16),
-              TextField(
-                controller: passwordController,
-                obscureText: obscure,
-                autofocus: true,
-                onSubmitted: (_) async {
-                  final isValid = await _authService.verifyPasswordByUsername(
-                    username,
-                    passwordController.text,
-                  );
-                  if (isValid) {
-                    Navigator.pop(dialogContext, true);
-                  } else {
-                    setDialogState(() => errorText = 'Incorrect password');
-                  }
-                },
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  errorText: errorText,
-                  suffixIcon: IconButton(
-                    icon:
-                        Icon(obscure ? Icons.visibility : Icons.visibility_off),
-                    onPressed: () => setDialogState(() => obscure = !obscure),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final isValid = await _authService.verifyPasswordByUsername(
-                  username,
-                  passwordController.text,
-                );
-                if (isValid) {
-                  Navigator.pop(dialogContext, true);
-                } else {
-                  setDialogState(() => errorText = 'Incorrect password');
-                }
-              },
-              child: const Text('Login'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (authenticated != true || !mounted) return;
-
-    try {
-      await _authService.createSession(username);
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-          (route) => false,
-        );
-      }
-    } catch (e) {
-      if (mounted) _showError('Login failed: $e');
     }
   }
 

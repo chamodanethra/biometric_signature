@@ -1,3 +1,28 @@
+## [12.0.0] - 2026-05-09
+
+### Changed
+* **Lowered minimum Flutter to `3.24.5` / Dart to `3.5.0`.** The plugin resolves on Flutter 3.24.5 with a small Android build-config override in the consuming app — Flutter 3.24.5's defaults (`flutter.compileSdkVersion = 34`, `flutter.ndkVersion = "23.1.7779620"`, `flutter.minSdkVersion = 21`) are below what `androidx.biometric:1.4.0-alpha05` and modern AndroidX plugins require. Set `compileSdk = 35`, `ndkVersion = "27.0.12077973"`, and `minSdk = 23` in your app's `android/app/build.gradle.kts`. See README → "Required Android build configuration" for the exact snippet.
+* **Android `minSdk` lowered to 23**, the floor required by `androidx.biometric` for `BiometricPrompt`.
+* **Android `compileSdk` lowered to 35** (from 36). The plugin no longer requires Android SDK Platform 36 or AGP 8.9.1 — `compileSdk = 35` and AGP `8.6.0` are sufficient.
+* **`androidx.biometric:biometric` downgraded from `1.4.0-alpha06` → `1.4.0-alpha05`**, which only requires `compileSdk 35` and AGP `8.6.0`. Plugin's buildscript classpath also dropped to AGP `8.6.0` to match.
+* **Pigeon dev dependency loosened** from `25.3.2` → `^25.3.2`.
+
+### Fixed
+* **iOS `shouldMigrate: true` against an existing EC key no longer errors.** Previously, setting `shouldMigrate: true` on `CreateSignatureConfig` / `DecryptConfig` against a v10+ EC-only key (no legacy v2.x RSA in the keychain) triggered a misfired migration that returned `RSA private key not found in Keychain`. The migration is now auto-detected from keychain state instead of a caller-supplied flag, so the misfire scenario is structurally unreachable. Fixes [#65](https://github.com/chamodanethra/biometric_signature/issues/65).
+
+### Removed (Breaking)
+* **Custom fallback options on the biometric prompt (Android 15+).** The `androidx.biometric` API for `Fallback.CustomOption`, `Fallback.ICON_TYPE_*`, and `AuthenticationResult.CustomFallbackSelected` only exists in `1.4.0-alpha06+`, which forced `compileSdk = 36`. Removed entirely so the plugin can run on broader tooling.
+  * Removed `BiometricFallbackOption` class.
+  * Removed `BiometricError.fallbackSelected` enum value.
+  * Removed `fallbackOptions` field from `CreateKeysConfig`, `CreateSignatureConfig`, `DecryptConfig`, and `SimplePromptConfig`.
+  * Removed `selectedFallbackIndex` and `selectedFallbackText` fields from `SignatureResult`, `DecryptResult`, and `SimplePromptResult`.
+* **`shouldMigrate` flag on `CreateSignatureConfig` and `DecryptConfig`.** The iOS Secure Enclave migration from v2.x unwrapped RSA keys is now auto-detected (see Fixed above). Apps no longer need to opt in — and no longer can opt in incorrectly. Pigeon-bridged removal, so existing call sites that pass `shouldMigrate: true` or `shouldMigrate: false` will fail to compile until the parameter is dropped.
+
+### Migration from 11.x
+* If you were using `BiometricFallbackOption` to render Android 15+ custom fallback buttons, you now need to drive that fallback behaviour from your own UI (e.g. catch the negative-button cancel, then present a Flutter sheet listing the alternatives). The plugin's standard `cancelButtonText` and `allowDeviceCredentials` flow still work everywhere they did before.
+* If you were branching on `BiometricError.fallbackSelected` or reading `selectedFallback*` fields, those code paths can be deleted — they will never fire from the new plugin version.
+* Delete the `shouldMigrate:` line from any `CreateSignatureConfig(...)` / `DecryptConfig(...)` constructor calls. The plugin auto-detects whether a legacy v2.x RSA key exists and migrates it on the first sign/decrypt call when appropriate.
+
 ## [11.1.0] - 2026-04-17
 
 ### Added

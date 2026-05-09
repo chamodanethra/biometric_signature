@@ -20,7 +20,6 @@ object ErrorMapper {
             BiometricError.INVALID_INPUT -> "Invalid input provided"
             BiometricError.PROMPT_ERROR -> "Biometric prompt error"
             BiometricError.KEY_ALREADY_EXISTS -> "Key already exists"
-            BiometricError.FALLBACK_SELECTED -> "Fallback option selected"
             BiometricError.PASSCODE_NOT_SET -> "No screen lock configured. Set up a PIN, pattern, or password to use biometrics"
             else -> "Biometric operation failed"
         }

@@ -44,11 +44,9 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activity = binding.activity as? FlutterFragmentActivity
-        activity?.let { biometricPromptHelper.registerAuthLauncher(it) }
     }
 
     override fun onDetachedFromActivity() {
-        biometricPromptHelper.clearAuthLauncher()
         activity = null
     }
 
@@ -148,12 +146,11 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 }
 
                 val prompt = promptMessage ?: "Authenticate to create keys"
-                val fallbackOptions = config?.fallbackOptions
 
                 when (mode) {
-                    KeyMode.RSA -> createRsaKeys(act, keyAlias, callback, useDeviceCredentials, invalidateOnEnrollment, enableDecryption, enforceBiometric, keyFormat, prompt, fallbackOptions)
-                    KeyMode.EC_SIGN_ONLY -> createEcSigningKeys(act, keyAlias, callback, useDeviceCredentials, invalidateOnEnrollment, enforceBiometric, keyFormat, prompt, fallbackOptions)
-                    KeyMode.HYBRID_EC -> createHybridEcKeys(act, keyAlias, callback, useDeviceCredentials, invalidateOnEnrollment, keyFormat, enforceBiometric, prompt, fallbackOptions)
+                    KeyMode.RSA -> createRsaKeys(act, keyAlias, callback, useDeviceCredentials, invalidateOnEnrollment, enableDecryption, enforceBiometric, keyFormat, prompt)
+                    KeyMode.EC_SIGN_ONLY -> createEcSigningKeys(act, keyAlias, callback, useDeviceCredentials, invalidateOnEnrollment, enforceBiometric, keyFormat, prompt)
+                    KeyMode.HYBRID_EC -> createHybridEcKeys(act, keyAlias, callback, useDeviceCredentials, invalidateOnEnrollment, keyFormat, enforceBiometric, prompt)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -179,24 +176,16 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         enableDecryption: Boolean,
         enforceBiometric: Boolean,
         keyFormat: KeyFormat,
-        promptMessage: String,
-        fallbackOptions: List<BiometricFallbackOption?>? = null
+        promptMessage: String
     ) {
         var authType: AuthenticationType? = null
         if (enforceBiometric) {
             biometricPromptHelper.checkBiometricAvailability(activity, useDeviceCredentials)
-            val outcome = authenticateWithOptionalFallback(
+            val outcome = biometricPromptHelper.authenticate(
                 activity, promptMessage, null, null, "Cancel",
-                useDeviceCredentials, null, fallbackOptions
+                useDeviceCredentials, null
             )
-            if (outcome is AuthenticationOutcome.FallbackSelected) {
-                callback(Result.success(KeyCreationResult(
-                    code = BiometricError.FALLBACK_SELECTED,
-                    error = "Fallback option selected"
-                )))
-                return
-            }
-            authType = (outcome as AuthenticationOutcome.Success).authenticationType
+            authType = outcome.authenticationType
         }
 
         val keyPair = withContext(Dispatchers.IO) {
@@ -216,24 +205,16 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         invalidateOnEnrollment: Boolean,
         enforceBiometric: Boolean,
         keyFormat: KeyFormat,
-        promptMessage: String,
-        fallbackOptions: List<BiometricFallbackOption?>? = null
+        promptMessage: String
     ) {
         var authType: AuthenticationType? = null
         if (enforceBiometric) {
             biometricPromptHelper.checkBiometricAvailability(activity, useDeviceCredentials)
-            val outcome = authenticateWithOptionalFallback(
+            val outcome = biometricPromptHelper.authenticate(
                 activity, promptMessage, null, null, "Cancel",
-                useDeviceCredentials, null, fallbackOptions
+                useDeviceCredentials, null
             )
-            if (outcome is AuthenticationOutcome.FallbackSelected) {
-                callback(Result.success(KeyCreationResult(
-                    code = BiometricError.FALLBACK_SELECTED,
-                    error = "Fallback option selected"
-                )))
-                return
-            }
-            authType = (outcome as AuthenticationOutcome.Success).authenticationType
+            authType = outcome.authenticationType
         }
 
         val keyPair = withContext(Dispatchers.IO) {
@@ -253,22 +234,14 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         invalidateOnEnrollment: Boolean,
         keyFormat: KeyFormat,
         enforceBiometric: Boolean,
-        promptMessage: String,
-        fallbackOptions: List<BiometricFallbackOption?>? = null
+        promptMessage: String
     ) {
         if (enforceBiometric) {
             biometricPromptHelper.checkBiometricAvailability(activity, useDeviceCredentials)
-            val outcome = authenticateWithOptionalFallback(
+            biometricPromptHelper.authenticate(
                 activity, promptMessage, null, null, "Cancel",
-                useDeviceCredentials, null, fallbackOptions
+                useDeviceCredentials, null
             )
-            if (outcome is AuthenticationOutcome.FallbackSelected) {
-                callback(Result.success(KeyCreationResult(
-                    code = BiometricError.FALLBACK_SELECTED,
-                    error = "Fallback option selected"
-                )))
-                return
-            }
         }
 
         val signingKeyPair = withContext(Dispatchers.IO) {
@@ -282,20 +255,11 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             val cipherForWrap = withContext(Dispatchers.IO) { cryptoOperations.getCipherForEncryption(keyAlias) }
 
             biometricPromptHelper.checkBiometricAvailability(activity, useDeviceCredentials)
-            val wrapOutcome = authenticateWithOptionalFallback(
+            val wrapSuccess = biometricPromptHelper.authenticate(
                 activity, promptMessage, null, null, "Cancel",
-                useDeviceCredentials, BiometricPrompt.CryptoObject(cipherForWrap), fallbackOptions
+                useDeviceCredentials, BiometricPrompt.CryptoObject(cipherForWrap)
             )
-            if (wrapOutcome is AuthenticationOutcome.FallbackSelected) {
-                withContext(Dispatchers.IO) { keyManager.deleteKeysForAlias(keyAlias) }
-                callback(Result.success(KeyCreationResult(
-                    code = BiometricError.FALLBACK_SELECTED,
-                    error = "Fallback option selected"
-                )))
-                return
-            }
 
-            val wrapSuccess = wrapOutcome as AuthenticationOutcome.Success
             val authenticatedCipher = wrapSuccess.cryptoObject?.cipher
                 ?: throw SecurityException("Authentication failed - no cipher returned")
 
@@ -348,31 +312,18 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             try {
                 val mode = keyManager.inferKeyModeFromKeystore(keyAlias) ?: throw SecurityException("Signing key not found")
                 val allowDeviceCredentials = config?.allowDeviceCredentials ?: false
-                val fallbackOptions = config?.fallbackOptions
 
-                val (signature, cryptoObject) = withContext(Dispatchers.IO) {
+                val (_, cryptoObject) = withContext(Dispatchers.IO) {
                     cryptoOperations.prepareSignature(keyAlias, mode)
                 }
 
                 biometricPromptHelper.checkBiometricAvailability(act, allowDeviceCredentials)
 
-                val outcome = authenticateWithOptionalFallback(
+                val successOutcome = biometricPromptHelper.authenticate(
                     act, promptMessage ?: "Authenticate", config?.promptSubtitle, null,
-                    config?.cancelButtonText ?: "Cancel", allowDeviceCredentials, cryptoObject,
-                    fallbackOptions
+                    config?.cancelButtonText ?: "Cancel", allowDeviceCredentials, cryptoObject
                 )
 
-                if (outcome is AuthenticationOutcome.FallbackSelected) {
-                    callback(Result.success(SignatureResult(
-                        code = BiometricError.FALLBACK_SELECTED,
-                        error = "Fallback option selected",
-                        selectedFallbackIndex = outcome.index,
-                        selectedFallbackText = outcome.text
-                    )))
-                    return@launch
-                }
-
-                val successOutcome = outcome as AuthenticationOutcome.Success
                 val authenticatedCrypto = successOutcome.cryptoObject
 
                 val signatureBytes = withContext(Dispatchers.IO) {
@@ -427,29 +378,18 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 val prompt = promptMessage ?: "Authenticate"
                 val subtitle = config?.promptSubtitle
                 val cancel = config?.cancelButtonText ?: "Cancel"
-                val fallbackOptions = config?.fallbackOptions
 
-                val decryptResult = when (mode) {
-                    KeyMode.RSA -> decryptRsa(act, keyAlias, payload, payloadFormat, prompt, subtitle, cancel, allowDeviceCredentials, fallbackOptions)
-                    KeyMode.HYBRID_EC -> decryptHybridEc(act, keyAlias, payload, payloadFormat, prompt, subtitle, cancel, allowDeviceCredentials, fallbackOptions)
+                val success = when (mode) {
+                    KeyMode.RSA -> decryptRsa(act, keyAlias, payload, payloadFormat, prompt, subtitle, cancel, allowDeviceCredentials)
+                    KeyMode.HYBRID_EC -> decryptHybridEc(act, keyAlias, payload, payloadFormat, prompt, subtitle, cancel, allowDeviceCredentials)
                     else -> throw SecurityException("Unsupported decryption mode")
                 }
 
-                if (decryptResult is DecryptOutcome.FallbackSelected) {
-                    callback(Result.success(DecryptResult(
-                        code = BiometricError.FALLBACK_SELECTED,
-                        error = "Fallback option selected",
-                        selectedFallbackIndex = decryptResult.index,
-                        selectedFallbackText = decryptResult.text
-                    )))
-                } else {
-                    val success = decryptResult as DecryptOutcome.Success
-                    callback(Result.success(DecryptResult(
-                        decryptedData = success.data,
-                        code = BiometricError.SUCCESS,
-                        authenticationType = success.authenticationType
-                    )))
-                }
+                callback(Result.success(DecryptResult(
+                    decryptedData = success.data,
+                    code = BiometricError.SUCCESS,
+                    authenticationType = success.authenticationType
+                )))
 
             } catch (e: CancellationException) {
                 throw e
@@ -459,10 +399,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         }
     }
 
-    private sealed interface DecryptOutcome {
-        data class Success(val data: String, val authenticationType: AuthenticationType) : DecryptOutcome
-        data class FallbackSelected(val index: Long?, val text: String) : DecryptOutcome
-    }
+    private data class DecryptSuccess(val data: String, val authenticationType: AuthenticationType)
 
     private suspend fun decryptRsa(
         activity: FlutterFragmentActivity,
@@ -472,9 +409,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         prompt: String,
         subtitle: String?,
         cancel: String,
-        allowDeviceCredentials: Boolean,
-        fallbackOptions: List<BiometricFallbackOption?>? = null
-    ): DecryptOutcome {
+        allowDeviceCredentials: Boolean
+    ): DecryptSuccess {
         val cipher = withContext(Dispatchers.IO) {
             val keyStore = KeyStore.getInstance(Constants.KEYSTORE_PROVIDER).apply { load(null) }
             val alias = Constants.biometricKeyAlias(keyAlias)
@@ -493,16 +429,11 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
 
         biometricPromptHelper.checkBiometricAvailability(activity, allowDeviceCredentials)
 
-        val outcome = authenticateWithOptionalFallback(
+        val successOutcome = biometricPromptHelper.authenticate(
             activity, prompt, subtitle, null, cancel, allowDeviceCredentials,
-            BiometricPrompt.CryptoObject(cipher), fallbackOptions
+            BiometricPrompt.CryptoObject(cipher)
         )
 
-        if (outcome is AuthenticationOutcome.FallbackSelected) {
-            return DecryptOutcome.FallbackSelected(outcome.index, outcome.text)
-        }
-
-        val successOutcome = outcome as AuthenticationOutcome.Success
         val decrypted = withContext(Dispatchers.IO) {
             val authenticatedCipher = successOutcome.cryptoObject?.cipher
                 ?: throw SecurityException("Authentication failed - no cipher returned")
@@ -514,7 +445,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             }
         }
 
-        return DecryptOutcome.Success(String(decrypted, Charsets.UTF_8), successOutcome.authenticationType)
+        return DecryptSuccess(String(decrypted, Charsets.UTF_8), successOutcome.authenticationType)
     }
 
     private suspend fun decryptHybridEc(
@@ -525,31 +456,25 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         prompt: String,
         subtitle: String?,
         cancel: String,
-        allowDeviceCredentials: Boolean,
-        fallbackOptions: List<BiometricFallbackOption?>? = null
-    ): DecryptOutcome {
+        allowDeviceCredentials: Boolean
+    ): DecryptSuccess {
         val cipher = withContext(Dispatchers.IO) { cryptoOperations.getCipherForDecryption(keyAlias) }
             ?: throw SecurityException("Decryption keys not found")
 
         biometricPromptHelper.checkBiometricAvailability(activity, allowDeviceCredentials)
 
-        val outcome = authenticateWithOptionalFallback(
+        val successOutcome = biometricPromptHelper.authenticate(
             activity, prompt, subtitle, null, cancel, allowDeviceCredentials,
-            BiometricPrompt.CryptoObject(cipher), fallbackOptions
+            BiometricPrompt.CryptoObject(cipher)
         )
 
-        if (outcome is AuthenticationOutcome.FallbackSelected) {
-            return DecryptOutcome.FallbackSelected(outcome.index, outcome.text)
-        }
-
-        val successOutcome = outcome as AuthenticationOutcome.Success
         val data = withContext(Dispatchers.IO) {
             val authenticatedCipher = successOutcome.cryptoObject?.cipher
                 ?: throw SecurityException("Authentication failed - no cipher returned")
             cryptoOperations.performEciesDecryption(keyAlias, authenticatedCipher, payload, payloadFormat)
         }
 
-        return DecryptOutcome.Success(data, successOutcome.authenticationType)
+        return DecryptSuccess(data, successOutcome.authenticationType)
     }
 
     override fun deleteKeys(keyAlias: String?, callback: (Result<Boolean>) -> Unit) {
@@ -652,7 +577,6 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             try {
                 val allowDeviceCredentials = config?.allowDeviceCredentials ?: false
                 val biometricStrength = config?.biometricStrength ?: BiometricStrength.STRONG
-                val fallbackOptions = config?.fallbackOptions
 
                 val authenticators = biometricPromptHelper.getAuthenticators(allowDeviceCredentials, biometricStrength)
                 val canAuth = androidx.biometric.BiometricManager.from(act).canAuthenticate(authenticators)
@@ -665,27 +589,16 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
 
                 val cancelText = config?.cancelButtonText ?: "Cancel"
 
-                val outcome = authenticateWithOptionalFallback(
+                val successOutcome = biometricPromptHelper.authenticate(
                     act, promptMessage, config?.subtitle, config?.description,
-                    cancelText, allowDeviceCredentials, null, fallbackOptions
+                    cancelText, allowDeviceCredentials, null
                 )
 
-                if (outcome is AuthenticationOutcome.FallbackSelected) {
-                    callback(Result.success(SimplePromptResult(
-                        success = false,
-                        code = BiometricError.FALLBACK_SELECTED,
-                        error = "Fallback option selected",
-                        selectedFallbackIndex = outcome.index,
-                        selectedFallbackText = outcome.text
-                    )))
-                } else {
-                    val successOutcome = outcome as AuthenticationOutcome.Success
-                    callback(Result.success(SimplePromptResult(
-                        success = true,
-                        code = BiometricError.SUCCESS,
-                        authenticationType = successOutcome.authenticationType
-                    )))
-                }
+                callback(Result.success(SimplePromptResult(
+                    success = true,
+                    code = BiometricError.SUCCESS,
+                    authenticationType = successOutcome.authenticationType
+                )))
 
             } catch (e: CancellationException) {
                 throw e
@@ -699,33 +612,6 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
     override fun isDeviceLockSet(callback: (Result<Boolean>) -> Unit) {
         val keyguardManager = appContext.getSystemService(android.content.Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
         callback(Result.success(keyguardManager.isDeviceSecure))
-    }
-
-    private fun hasFallbackOptions(options: List<BiometricFallbackOption?>?): Boolean {
-        return options != null && options.any { it?.text != null }
-    }
-
-    private suspend fun authenticateWithOptionalFallback(
-        activity: FlutterFragmentActivity,
-        title: String,
-        subtitle: String?,
-        description: String?,
-        cancelText: String,
-        allowDeviceCredentials: Boolean,
-        cryptoObject: BiometricPrompt.CryptoObject?,
-        fallbackOptions: List<BiometricFallbackOption?>?
-    ): AuthenticationOutcome {
-        return if (hasFallbackOptions(fallbackOptions)) {
-            biometricPromptHelper.authenticateWithFallback(
-                activity, title, subtitle, description,
-                fallbackOptions ?: emptyList(), cryptoObject
-            )
-        } else {
-            biometricPromptHelper.authenticate(
-                activity, title, subtitle, description, cancelText,
-                allowDeviceCredentials, cryptoObject
-            )
-        }
     }
 
     private fun buildKeyResponse(publicKey: PublicKey, format: KeyFormat, decryptingKey: PublicKey? = null, authenticationType: AuthenticationType? = null): KeyCreationResult {

@@ -90,7 +90,6 @@ class BiometricService {
         config: CreateSignatureConfig(
           cancelButtonText: 'Cancel',
           allowDeviceCredentials: false,
-          shouldMigrate: false,
         ),
       );
 

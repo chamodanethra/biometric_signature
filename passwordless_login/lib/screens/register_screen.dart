@@ -1,6 +1,3 @@
-import 'dart:io';
-
-import 'package:biometric_signature/biometric_signature.dart';
 import 'package:flutter/material.dart';
 import 'package:passwordless_login_example/screens/home_screen.dart';
 import 'package:passwordless_login_example/services/auth_service.dart';
@@ -17,20 +14,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
   bool _allowDeviceCredentials = false;
   bool _keyInvalidatedOnEnrollmentChange = true;
-  bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
 
   @override
   void dispose() {
     _usernameController.dispose();
     _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -75,49 +66,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
 
       // Register user (this will trigger biometric enrollment)
-      final user = await _authService.register(
+      await _authService.register(
         username: username,
         email: email,
         allowDeviceCredentials: _allowDeviceCredentials,
         keyInvalidatedOnEnrollmentChange: _keyInvalidatedOnEnrollmentChange,
       );
 
-      // Store backup password (Android only, optional)
-      final password = _passwordController.text;
-      if (Platform.isAndroid && password.isNotEmpty) {
-        await _authService.setPassword(user.id, password);
-      }
-
       // Auto-login after registration
-      List<BiometricFallbackOption>? fallbackOptions;
-      if (Platform.isAndroid && password.isNotEmpty) {
-        fallbackOptions = [
-          BiometricFallbackOption(text: 'Use Password', iconName: 'password'),
-        ];
-      }
-
       final challenge = await _authService.requestChallenge(username);
-      final result = await _authService.authenticateWithChallenge(
+      await _authService.authenticate(
         username: username,
         challengeId: challenge.challengeId,
-        fallbackOptions: fallbackOptions,
       );
-
-      if (result.code == BiometricError.fallbackSelected) {
-        setState(() => _isLoading = false);
-        if (mounted) {
-          await _showPasswordDialog(username);
-        }
-        return;
-      }
-
-      if (result.code != BiometricError.success) {
-        throw Exception(
-          'Authentication failed: ${result.error ?? result.code}',
-        );
-      }
-
-      await _authService.createSession(username);
 
       if (mounted) {
         // Success - navigate to home
@@ -230,95 +191,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return result ?? false;
   }
 
-  Future<void> _showPasswordDialog(String username) async {
-    final passwordController = TextEditingController();
-    String? errorText;
-    bool obscure = true;
-
-    final authenticated = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.lock, color: Colors.blue),
-              SizedBox(width: 12),
-              Text('Enter Password'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Enter your backup password to complete login.'),
-              const SizedBox(height: 16),
-              TextField(
-                controller: passwordController,
-                obscureText: obscure,
-                autofocus: true,
-                onSubmitted: (_) async {
-                  final isValid = await _authService.verifyPasswordByUsername(
-                    username,
-                    passwordController.text,
-                  );
-                  if (isValid) {
-                    Navigator.pop(dialogContext, true);
-                  } else {
-                    setDialogState(() => errorText = 'Incorrect password');
-                  }
-                },
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  errorText: errorText,
-                  suffixIcon: IconButton(
-                    icon:
-                        Icon(obscure ? Icons.visibility : Icons.visibility_off),
-                    onPressed: () => setDialogState(() => obscure = !obscure),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final isValid = await _authService.verifyPasswordByUsername(
-                  username,
-                  passwordController.text,
-                );
-                if (isValid) {
-                  Navigator.pop(dialogContext, true);
-                } else {
-                  setDialogState(() => errorText = 'Incorrect password');
-                }
-              },
-              child: const Text('Login'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (authenticated != true || !mounted) return;
-
-    try {
-      await _authService.createSession(username);
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-          (route) => false,
-        );
-      }
-    } catch (e) {
-      if (mounted) _showError('Login failed: $e');
-    }
-  }
-
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.red),
@@ -381,90 +253,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   return null;
                 },
               ),
-              if (Platform.isAndroid) ...[
-                const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.lock_outline,
-                              size: 20, color: Colors.orange),
-                          SizedBox(width: 8),
-                          Text(
-                            'Backup Password (optional)',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'On Android 15+, a "Use Password" button will appear on the biometric prompt so you can log in even if biometrics fail.',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _passwordController,
-                        obscureText: _obscurePassword,
-                        enabled: !_isLoading,
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          prefixIcon: const Icon(Icons.key),
-                          suffixIcon: IconButton(
-                            icon: Icon(_obscurePassword
-                                ? Icons.visibility
-                                : Icons.visibility_off),
-                            onPressed: () => setState(
-                              () => _obscurePassword = !_obscurePassword,
-                            ),
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value != null &&
-                              value.isNotEmpty &&
-                              value.length < 8) {
-                            return 'Password must be at least 8 characters';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _confirmPasswordController,
-                        obscureText: _obscureConfirmPassword,
-                        enabled: !_isLoading,
-                        decoration: InputDecoration(
-                          labelText: 'Confirm Password',
-                          prefixIcon: const Icon(Icons.key),
-                          suffixIcon: IconButton(
-                            icon: Icon(_obscureConfirmPassword
-                                ? Icons.visibility
-                                : Icons.visibility_off),
-                            onPressed: () => setState(
-                              () => _obscureConfirmPassword =
-                                  !_obscureConfirmPassword,
-                            ),
-                          ),
-                        ),
-                        validator: (value) {
-                          if (_passwordController.text.isNotEmpty &&
-                              value != _passwordController.text) {
-                            return 'Passwords do not match';
-                          }
-                          return null;
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ],
               const SizedBox(height: 24),
               Card(
                 color: Colors.blue.withOpacity(0.05),

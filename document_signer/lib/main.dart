@@ -20,7 +20,7 @@ class DocumentSignerApp extends StatelessWidget {
         ),
         useMaterial3: true,
         appBarTheme: const AppBarTheme(centerTitle: true, elevation: 0),
-        cardTheme: CardThemeData(
+        cardTheme: CardTheme(
           elevation: 2,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),

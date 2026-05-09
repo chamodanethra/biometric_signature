@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:biometric_signature/biometric_signature.dart';
-import 'package:crypto/crypto.dart';
 import 'package:passwordless_login_example/models/auth_challenge.dart';
 import 'package:passwordless_login_example/models/user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,8 +13,6 @@ class AuthService {
   static const String _usersKey = 'users_db';
   static const String _sessionKey = 'current_session';
   static const String _challengesKey = 'auth_challenges';
-  // Prefix for per-user password hashes stored in SharedPreferences.
-  static const String _passwordPrefix = 'pw_';
 
   /// Register a new user
   Future<User> register({
@@ -100,14 +97,10 @@ class AuthService {
   }
 
   /// Complete authentication with signed challenge
-  /// Returns SignatureResult to allow UI to handle specific error codes.
-  ///
-  /// [fallbackOptions] — optional custom fallback buttons for the biometric
-  /// prompt (Android 15+ only). Pass null to use the default cancel button.
+  /// Returns SignatureResult to allow UI to handle specific error codes
   Future<SignatureResult> authenticateWithChallenge({
     required String username,
     required String challengeId,
-    List<BiometricFallbackOption>? fallbackOptions,
   }) async {
     // Get stored challenge
     final challenge = await _getChallenge(challengeId);
@@ -152,13 +145,10 @@ class AuthService {
       config: CreateSignatureConfig(
         cancelButtonText: 'Cancel',
         allowDeviceCredentials: user.allowDeviceCredentials,
-        shouldMigrate: false,
-        fallbackOptions: fallbackOptions,
       ),
     );
 
-    // Return the result directly - let UI handle errors (including
-    // BiometricError.fallbackSelected when user taps a custom fallback button).
+    // Return the result directly - let UI handle errors
     if (signatureResult.code != BiometricError.success) {
       return signatureResult;
     }
@@ -351,58 +341,6 @@ class AuthService {
   /// Delete biometric keys
   Future<bool> deleteKeys() async {
     return await _biometric.deleteKeys();
-  }
-
-  // ── Password Fallback ───────────────────────────────────────────────────────
-
-  /// Stores a SHA-256 hash of [rawPassword] for [userId].
-  ///
-  /// NOTE: SHA-256 is used here because this is a local-only demo.
-  /// A production app should hash passwords server-side with bcrypt/Argon2.
-  Future<void> setPassword(String userId, String rawPassword) async {
-    final prefs = await SharedPreferences.getInstance();
-    final hash = sha256.convert(utf8.encode(rawPassword)).toString();
-    await prefs.setString('$_passwordPrefix$userId', hash);
-    await _setPasswordBackupFlag(userId, value: true);
-  }
-
-  /// Returns true if [rawPassword] matches the stored hash for [username].
-  Future<bool> verifyPasswordByUsername(
-    String username,
-    String rawPassword,
-  ) async {
-    final users = await _getAllUsers();
-    final user = users.where((u) => u.username == username).firstOrNull;
-    if (user == null) return false;
-
-    final prefs = await SharedPreferences.getInstance();
-    final storedHash = prefs.getString('$_passwordPrefix${user.id}');
-    if (storedHash == null) return false;
-
-    final hash = sha256.convert(utf8.encode(rawPassword)).toString();
-    return hash == storedHash;
-  }
-
-  /// Returns true if [username] has set a backup password.
-  Future<bool> hasPasswordBackup(String username) async {
-    final users = await _getAllUsers();
-    return users
-            .where((u) => u.username == username)
-            .firstOrNull
-            ?.hasPasswordBackup ??
-        false;
-  }
-
-  Future<void> _setPasswordBackupFlag(
-    String userId, {
-    required bool value,
-  }) async {
-    final users = await _getAllUsers();
-    final index = users.indexWhere((u) => u.id == userId);
-    if (index >= 0) {
-      users[index] = users[index].copyWith(hasPasswordBackup: value);
-      await _saveUsers(users);
-    }
   }
 
   // Helper methods
