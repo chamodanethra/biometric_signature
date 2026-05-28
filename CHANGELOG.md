@@ -1,3 +1,9 @@
+## [12.0.1] - 2026-05-28
+
+### Fixed
+* **Android prompt customization fields are now honored on `createKeys`, `createSignature`, and `decrypt`.** The Dart API and Pigeon schema have always exposed `promptSubtitle`, `promptDescription`, and `cancelButtonText` on `CreateKeysConfig` / `CreateSignatureConfig` / `DecryptConfig`, and the README documented them, but the Android plugin was silently dropping them — `createKeys` and `decrypt` hard-coded `null, null, "Cancel"` into the `BiometricPrompt`, and `createSignature` hard-coded `null` for the description. All three are now threaded through to `BiometricPrompt.PromptInfo.Builder`. Fixes [#67](https://github.com/chamodanethra/biometric_signature/issues/67).
+* **Release-build biometric type detection on Android.** Added ProGuard/R8 keep rules for `androidx.biometric.BiometricManager#getStrings(int)` and `BiometricManager$Strings#getButtonLabel()` / `getPromptMessage()` / `getSettingButtonLabel()`, which are invoked via reflection by `BiometricPromptHelper.detectBiometricTypes` to disambiguate face/fingerprint/iris on devices that advertise multiple BIOMETRIC_STRONG modalities. Without these rules, R8 would rename or strip the methods in release builds and the label-matching path would silently fall back to feature-flag-only detection.
+
 ## [12.0.0] - 2026-05-09
 
 ### Changed
