@@ -170,7 +170,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^12.0.0
+  biometric_signature: ^12.0.1
 ```
 
 |             | Android | iOS   | macOS  | Windows |

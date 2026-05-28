@@ -12,3 +12,13 @@
 
 # Keep class names only (not members) for readable stack traces
 -keepnames class com.visionflutter.biometric_signature.**
+
+# Keep reflection targets in androidx.biometric for detecting biometric types
+-keep class androidx.biometric.BiometricManager {
+    *** getStrings(...);
+}
+-keep class androidx.biometric.BiometricManager$Strings {
+    *** getButtonLabel(...);
+    *** getPromptMessage(...);
+    *** getSettingButtonLabel(...);
+}

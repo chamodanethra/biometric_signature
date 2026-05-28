@@ -146,11 +146,14 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 }
 
                 val prompt = promptMessage ?: "Authenticate to create keys"
+                val promptSubtitle = config?.promptSubtitle
+                val promptDescription = config?.promptDescription
+                val cancelButtonText = config?.cancelButtonText ?: "Cancel"
 
                 when (mode) {
-                    KeyMode.RSA -> createRsaKeys(act, keyAlias, callback, useDeviceCredentials, invalidateOnEnrollment, enableDecryption, enforceBiometric, keyFormat, prompt)
-                    KeyMode.EC_SIGN_ONLY -> createEcSigningKeys(act, keyAlias, callback, useDeviceCredentials, invalidateOnEnrollment, enforceBiometric, keyFormat, prompt)
-                    KeyMode.HYBRID_EC -> createHybridEcKeys(act, keyAlias, callback, useDeviceCredentials, invalidateOnEnrollment, keyFormat, enforceBiometric, prompt)
+                    KeyMode.RSA -> createRsaKeys(act, keyAlias, callback, useDeviceCredentials, invalidateOnEnrollment, enableDecryption, enforceBiometric, keyFormat, prompt, promptSubtitle, promptDescription, cancelButtonText)
+                    KeyMode.EC_SIGN_ONLY -> createEcSigningKeys(act, keyAlias, callback, useDeviceCredentials, invalidateOnEnrollment, enforceBiometric, keyFormat, prompt, promptSubtitle, promptDescription, cancelButtonText)
+                    KeyMode.HYBRID_EC -> createHybridEcKeys(act, keyAlias, callback, useDeviceCredentials, invalidateOnEnrollment, keyFormat, enforceBiometric, prompt, promptSubtitle, promptDescription, cancelButtonText)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -176,13 +179,16 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         enableDecryption: Boolean,
         enforceBiometric: Boolean,
         keyFormat: KeyFormat,
-        promptMessage: String
+        promptMessage: String,
+        promptSubtitle: String?,
+        promptDescription: String?,
+        cancelButtonText: String
     ) {
         var authType: AuthenticationType? = null
         if (enforceBiometric) {
             biometricPromptHelper.checkBiometricAvailability(activity, useDeviceCredentials)
             val outcome = biometricPromptHelper.authenticate(
-                activity, promptMessage, null, null, "Cancel",
+                activity, promptMessage, promptSubtitle, promptDescription, cancelButtonText,
                 useDeviceCredentials, null
             )
             authType = outcome.authenticationType
@@ -205,13 +211,16 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         invalidateOnEnrollment: Boolean,
         enforceBiometric: Boolean,
         keyFormat: KeyFormat,
-        promptMessage: String
+        promptMessage: String,
+        promptSubtitle: String?,
+        promptDescription: String?,
+        cancelButtonText: String
     ) {
         var authType: AuthenticationType? = null
         if (enforceBiometric) {
             biometricPromptHelper.checkBiometricAvailability(activity, useDeviceCredentials)
             val outcome = biometricPromptHelper.authenticate(
-                activity, promptMessage, null, null, "Cancel",
+                activity, promptMessage, promptSubtitle, promptDescription, cancelButtonText,
                 useDeviceCredentials, null
             )
             authType = outcome.authenticationType
@@ -234,12 +243,15 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         invalidateOnEnrollment: Boolean,
         keyFormat: KeyFormat,
         enforceBiometric: Boolean,
-        promptMessage: String
+        promptMessage: String,
+        promptSubtitle: String?,
+        promptDescription: String?,
+        cancelButtonText: String
     ) {
         if (enforceBiometric) {
             biometricPromptHelper.checkBiometricAvailability(activity, useDeviceCredentials)
             biometricPromptHelper.authenticate(
-                activity, promptMessage, null, null, "Cancel",
+                activity, promptMessage, promptSubtitle, promptDescription, cancelButtonText,
                 useDeviceCredentials, null
             )
         }
@@ -256,7 +268,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
 
             biometricPromptHelper.checkBiometricAvailability(activity, useDeviceCredentials)
             val wrapSuccess = biometricPromptHelper.authenticate(
-                activity, promptMessage, null, null, "Cancel",
+                activity, promptMessage, promptSubtitle, promptDescription, cancelButtonText,
                 useDeviceCredentials, BiometricPrompt.CryptoObject(cipherForWrap)
             )
 
@@ -320,7 +332,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 biometricPromptHelper.checkBiometricAvailability(act, allowDeviceCredentials)
 
                 val successOutcome = biometricPromptHelper.authenticate(
-                    act, promptMessage ?: "Authenticate", config?.promptSubtitle, null,
+                    act, promptMessage ?: "Authenticate", config?.promptSubtitle, config?.promptDescription,
                     config?.cancelButtonText ?: "Cancel", allowDeviceCredentials, cryptoObject
                 )
 
@@ -377,11 +389,12 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 val allowDeviceCredentials = config?.allowDeviceCredentials ?: false
                 val prompt = promptMessage ?: "Authenticate"
                 val subtitle = config?.promptSubtitle
+                val description = config?.promptDescription
                 val cancel = config?.cancelButtonText ?: "Cancel"
 
                 val success = when (mode) {
-                    KeyMode.RSA -> decryptRsa(act, keyAlias, payload, payloadFormat, prompt, subtitle, cancel, allowDeviceCredentials)
-                    KeyMode.HYBRID_EC -> decryptHybridEc(act, keyAlias, payload, payloadFormat, prompt, subtitle, cancel, allowDeviceCredentials)
+                    KeyMode.RSA -> decryptRsa(act, keyAlias, payload, payloadFormat, prompt, subtitle, description, cancel, allowDeviceCredentials)
+                    KeyMode.HYBRID_EC -> decryptHybridEc(act, keyAlias, payload, payloadFormat, prompt, subtitle, description, cancel, allowDeviceCredentials)
                     else -> throw SecurityException("Unsupported decryption mode")
                 }
 
@@ -408,6 +421,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         payloadFormat: PayloadFormat,
         prompt: String,
         subtitle: String?,
+        description: String?,
         cancel: String,
         allowDeviceCredentials: Boolean
     ): DecryptSuccess {
@@ -430,7 +444,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         biometricPromptHelper.checkBiometricAvailability(activity, allowDeviceCredentials)
 
         val successOutcome = biometricPromptHelper.authenticate(
-            activity, prompt, subtitle, null, cancel, allowDeviceCredentials,
+            activity, prompt, subtitle, description, cancel, allowDeviceCredentials,
             BiometricPrompt.CryptoObject(cipher)
         )
 
@@ -455,6 +469,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         payloadFormat: PayloadFormat,
         prompt: String,
         subtitle: String?,
+        description: String?,
         cancel: String,
         allowDeviceCredentials: Boolean
     ): DecryptSuccess {
@@ -464,7 +479,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         biometricPromptHelper.checkBiometricAvailability(activity, allowDeviceCredentials)
 
         val successOutcome = biometricPromptHelper.authenticate(
-            activity, prompt, subtitle, null, cancel, allowDeviceCredentials,
+            activity, prompt, subtitle, description, cancel, allowDeviceCredentials,
             BiometricPrompt.CryptoObject(cipher)
         )
 
