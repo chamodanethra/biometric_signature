@@ -21,7 +21,18 @@ object ErrorMapper {
             BiometricError.PROMPT_ERROR -> "Biometric prompt error"
             BiometricError.KEY_ALREADY_EXISTS -> "Key already exists"
             BiometricError.PASSCODE_NOT_SET -> "No screen lock configured. Set up a PIN, pattern, or password to use biometrics"
-            else -> "Biometric operation failed"
+            else -> {
+                // Preserve the raw BiometricPrompt error code and the original
+                // (localized) message so UNKNOWN failures stay self-classifying in
+                // logs instead of collapsing to a constant.
+                val causeCode = e.cause?.message?.toIntOrNull()
+                val original = e.message?.takeIf { it.isNotBlank() }
+                val details = mutableListOf<String>()
+                if (causeCode != null) details.add("code=$causeCode")
+                if (original != null) details.add("msg=$original")
+                if (details.isEmpty()) "Biometric operation failed"
+                else "Biometric operation failed (${details.joinToString(" ")})"
+            }
         }
     }
 
