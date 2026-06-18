@@ -41,8 +41,11 @@ object ErrorMapper {
             causeCode == 7 -> BiometricError.LOCKED_OUT
             causeCode == 9 -> BiometricError.LOCKED_OUT_PERMANENT
             causeCode == 10 -> BiometricError.USER_CANCELED
+            causeCode == 11 -> BiometricError.NOT_ENROLLED
+            causeCode == 12 -> BiometricError.NOT_AVAILABLE
             causeCode == 13 -> BiometricError.USER_CANCELED
             causeCode == 14 -> BiometricError.PASSCODE_NOT_SET
+            causeCode == 15 -> BiometricError.SECURITY_UPDATE_REQUIRED
 
             e is KeyPermanentlyInvalidatedException -> BiometricError.KEY_INVALIDATED
 
