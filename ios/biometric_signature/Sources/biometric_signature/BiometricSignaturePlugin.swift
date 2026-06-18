@@ -954,6 +954,19 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         )))
     }
 
+    /// Extracts the underlying `LAError` from a `SecKeyCreateSignature` failure.
+    /// Mirrors the unwrap logic in `unwrapRsaKey` so signing faithfully reports
+    /// codes such as `.userCanceled` and `.notAvailable` rather than `.unknown`.
+    private func mapSigningCFError(_ error: Unmanaged<CFError>?) -> BiometricError {
+        guard let cfError = error?.takeRetainedValue() else { return .unknown }
+        let nsError = cfError as Error as NSError
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
+           underlying.domain == LAErrorDomain {
+            return mapLAError(underlying)
+        }
+        return .unknown
+    }
+
     private func performRsaSigning(keyAlias: String?, dataToSign: Data, prompt: String, signatureFormat: SignatureFormat, keyFormat: KeyFormat, authenticationType: AuthenticationType, completion: @escaping (Result<SignatureResult, Error>) -> Void) {
         let keyResult = unwrapRsaKey(keyAlias: keyAlias, prompt: prompt)
         guard let rsaPrivateKey = keyResult.key else {
@@ -963,8 +976,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
 
         var error: Unmanaged<CFError>?
         guard let signature = SecKeyCreateSignature(rsaPrivateKey, .rsaSignatureMessagePKCS1v15SHA256, dataToSign as CFData, &error) as Data? else {
-             let msg = error?.takeRetainedValue().localizedDescription ?? "Unknown"
-             completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: "Signing Error: \(msg)", code: .unknown)))
+             let msg = error?.takeUnretainedValue().localizedDescription ?? "Unknown"
+             completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: "Signing Error: \(msg)", code: mapSigningCFError(error))))
              return
         }
 
@@ -994,8 +1007,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
 
         var error: Unmanaged<CFError>?
         guard let signature = SecKeyCreateSignature(ecKey, .ecdsaSignatureMessageX962SHA256, dataToSign as CFData, &error) as Data? else {
-              let msg = error?.takeRetainedValue().localizedDescription ?? "Unknown"
-               completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: "Signing Error: \(msg)", code: .unknown)))
+              let msg = error?.takeUnretainedValue().localizedDescription ?? "Unknown"
+               completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: "Signing Error: \(msg)", code: mapSigningCFError(error))))
               return
         }
          guard let pub = SecKeyCopyPublicKey(ecKey) else {
