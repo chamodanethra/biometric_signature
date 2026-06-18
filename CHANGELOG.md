@@ -1,3 +1,13 @@
+## [12.1.0] - 2026-06-18
+
+### Changed
+* **Signing failures now report a meaningful error code instead of `unknown` (iOS/macOS).** `createSignature` previously hard-coded `code: .unknown` on every `SecKeyCreateSignature` failure, discarding the real cause. A new `mapSigningCFError` helper extracts the underlying `LAError` from the `CFError` (the same `NSUnderlyingErrorKey` approach already used when unwrapping the hybrid RSA key), so a cancelled or unavailable signing prompt now surfaces `BiometricError.userCanceled` / `BiometricError.notAvailable` to the caller. Both the RSA and EC signing paths are covered.
+* **Android `UNKNOWN` errors are no longer flattened to a constant string.** `ErrorMapper.safeErrorMessage` used to collapse every unmapped failure to `"Biometric operation failed"`, throwing away both the numeric `BiometricPrompt` code and the original `errString`. The `UNKNOWN` branch now appends whatever context is available, e.g. `"Biometric operation failed (code=3 msg=…)"`, keeping failures diagnosable in logs without an API/schema change.
+
+### Added
+* **Android: three more `BiometricPrompt` error codes are classified.** `ErrorMapper.mapToBiometricError` now maps `ERROR_NO_BIOMETRICS` (11) → `notEnrolled`, `ERROR_HW_NOT_PRESENT` (12) → `notAvailable`, and `ERROR_SECURITY_UPDATE_REQUIRED` (15) → `securityUpdateRequired`. `ERROR_TIMEOUT` (3) and `ERROR_VENDOR` (8) intentionally remain enriched-`UNKNOWN` so their volume can be observed before assigning a dedicated bucket.
+* **Android: error-source markers.** Failures now carry a short source tag so a "couldn't even show the prompt" failure isn't mistaken for a signing failure: `[src=prompt cred=<allowDeviceCredentials>]` for real `onAuthenticationError` callbacks, `[src=availability]` for `canAuthenticate` pre-checks, and `[src=launch]` for setup/launch failures (e.g. the host is not a `FragmentActivity`). `CancellationException` is passed through unchanged so coroutine cancellation semantics and its `userCanceled` classification are preserved.
+
 ## [12.0.1] - 2026-05-28
 
 ### Fixed
