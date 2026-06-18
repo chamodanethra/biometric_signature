@@ -8,6 +8,7 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -124,7 +125,7 @@ class BiometricPromptHelper(private val appContext: Context) {
         val authenticators = getAuthenticators(allowDeviceCredentials)
         val canAuth = BiometricManager.from(activity).canAuthenticate(authenticators)
         if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
-            throw SecurityException("Biometric not available (code: ${ErrorMapper.biometricErrorName(canAuth)})")
+            throw SecurityException("Biometric not available (code: ${ErrorMapper.biometricErrorName(canAuth)}) [src=availability]")
         }
     }
 
@@ -152,7 +153,7 @@ class BiometricPromptHelper(private val appContext: Context) {
                 if (cont.isActive) {
                     cont.resumeWithException(
                         SecurityException(
-                            "$errString",
+                            "$errString [src=prompt cred=$allowDeviceCredentials]",
                             Throwable(errorCode.toString())
                         )
                     )
@@ -179,7 +180,20 @@ class BiometricPromptHelper(private val appContext: Context) {
             val prompt = BiometricPrompt(activity, ContextCompat.getMainExecutor(activity), callback)
             if (cryptoObject != null) prompt.authenticate(promptInfo, cryptoObject)
             else prompt.authenticate(promptInfo)
-        }.onFailure { e -> if (cont.isActive) cont.resumeWithException(e) }
+        }.onFailure { e ->
+            if (cont.isActive) {
+                // Setup/launch failure (e.g. host is not a FragmentActivity) carries
+                // no BiometricPrompt error code. Tag the source so it isn't mistaken
+                // for a prompt/signing failure. Preserve CancellationException as-is
+                // to retain its USER_CANCELED classification.
+                val tagged = if (e is CancellationException) {
+                    e
+                } else {
+                    SecurityException("${e.message ?: e.javaClass.simpleName} [src=launch]", e)
+                }
+                cont.resumeWithException(tagged)
+            }
+        }
     }
 
     fun getAuthenticators(
