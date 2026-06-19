@@ -954,15 +954,30 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         )))
     }
 
-    /// Extracts the underlying `LAError` from a `SecKeyCreateSignature` failure.
-    /// Mirrors the unwrap logic in `unwrapRsaKey` so signing faithfully reports
-    /// codes such as `.userCanceled` and `.notAvailable` rather than `.unknown`.
+    /// Classifies a `SecKey` operation failure (e.g. `SecKeyCreateSignature`).
+    ///
+    /// The `CFError` may itself be an `LAError`, an `NSOSStatusErrorDomain` error
+    /// (e.g. `errSecUserCanceled` / -128 when the user cancels Face ID / Touch ID),
+    /// or it may wrap one of those at an arbitrary depth via `NSUnderlyingErrorKey`.
+    /// An earlier single-level, `LAErrorDomain`-only probe missed cancellations
+    /// whose actionable error was the top-level `CFError` or an OSStatus layer —
+    /// those fell through to `.unknown`. We now walk the whole underlying-error
+    /// chain and return the first layer whose domain we recognise.
     private func mapSigningCFError(_ error: Unmanaged<CFError>?) -> BiometricError {
         guard let cfError = error?.takeRetainedValue() else { return .unknown }
-        let nsError = cfError as Error as NSError
-        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
-           underlying.domain == LAErrorDomain {
-            return mapLAError(underlying)
+        var current: NSError? = cfError as Error as NSError
+        while let err = current {
+            let mapped: BiometricError
+            switch err.domain {
+            case LAErrorDomain:
+                mapped = mapLAError(err)
+            case NSOSStatusErrorDomain:
+                mapped = mapSecError(OSStatus(err.code))
+            default:
+                mapped = .unknown
+            }
+            if mapped != .unknown { return mapped }
+            current = err.userInfo[NSUnderlyingErrorKey] as? NSError
         }
         return .unknown
     }
