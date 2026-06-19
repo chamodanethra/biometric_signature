@@ -8,6 +8,9 @@
 * **Android: three more `BiometricPrompt` error codes are classified.** `ErrorMapper.mapToBiometricError` now maps `ERROR_NO_BIOMETRICS` (11) → `notEnrolled`, `ERROR_HW_NOT_PRESENT` (12) → `notAvailable`, and `ERROR_SECURITY_UPDATE_REQUIRED` (15) → `securityUpdateRequired`. `ERROR_TIMEOUT` (3) and `ERROR_VENDOR` (8) intentionally remain enriched-`UNKNOWN` so their volume can be observed before assigning a dedicated bucket.
 * **Android: error-source markers.** Failures now carry a short source tag so a "couldn't even show the prompt" failure isn't mistaken for a signing failure: `[src=prompt cred=<allowDeviceCredentials>]` for real `onAuthenticationError` callbacks, `[src=availability]` for `canAuthenticate` pre-checks, and `[src=launch]` for setup/launch failures (e.g. the host is not a `FragmentActivity`). `CancellationException` is passed through unchanged so coroutine cancellation semantics and its `userCanceled` classification are preserved.
 
+### Fixed
+* **Android: transient Keystore operation pruning during signing is now retried.** The crypto-bound signing operation is opened at `prepareSignature()` and held open across the entire `BiometricPrompt` interaction. While a device-credential (PIN/pattern) prompt is showing, the app is backgrounded and its operation has the lowest pruning resistance, so `keystore2` can evict it (`INVALID_OPERATION_HANDLE` / `"outcome: Pruned"`) whenever another operation needs a slot — which previously surfaced as a hard `"Biometric operation failed"`. Since the key is intact, `createSignature` now detects this specific transient failure (`ErrorMapper.isPrunedOperationError`) and transparently re-runs begin → authenticate → sign once before giving up. Pruning is contention-based, not a timeout, so it can strike no matter how long the user takes on the credential screen.
+
 ## [12.0.1] - 2026-05-28
 
 ### Fixed

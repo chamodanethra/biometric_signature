@@ -325,31 +325,53 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 val mode = keyManager.inferKeyModeFromKeystore(keyAlias) ?: throw SecurityException("Signing key not found")
                 val allowDeviceCredentials = config?.allowDeviceCredentials ?: false
 
-                val (_, cryptoObject) = withContext(Dispatchers.IO) {
-                    cryptoOperations.prepareSignature(keyAlias, mode)
-                }
-
-                biometricPromptHelper.checkBiometricAvailability(act, allowDeviceCredentials)
-
-                val successOutcome = biometricPromptHelper.authenticate(
-                    act, promptMessage ?: "Authenticate", config?.promptSubtitle, config?.promptDescription,
-                    config?.cancelButtonText ?: "Cancel", allowDeviceCredentials, cryptoObject
-                )
-
-                val authenticatedCrypto = successOutcome.cryptoObject
-
-                val signatureBytes = withContext(Dispatchers.IO) {
-                    val sig = authenticatedCrypto?.signature ?: throw SecurityException("Biometric authentication did not return an authenticated signature")
+                // The Keystore signing operation is opened at prepareSignature() and
+                // held open across the entire BiometricPrompt interaction. While a
+                // device-credential (PIN/pattern) prompt is showing, this app is in the
+                // background, so the operation has the lowest pruning resistance and
+                // Android keystore2 can evict it (INVALID_OPERATION_HANDLE / "outcome:
+                // Pruned") the moment any other operation needs a slot. The key itself
+                // is intact, so re-running begin() + auth() + finish() once recovers it.
+                var attempt = 0
+                var signatureBytes: ByteArray? = null
+                var resultAuthType: AuthenticationType = AuthenticationType.UNKNOWN
+                while (signatureBytes == null) {
                     try {
-                        sig.update(payload.toByteArray(Charsets.UTF_8))
-                        sig.sign()
-                    } catch (e: IllegalArgumentException) {
-                        throw IllegalArgumentException("Invalid payload", e)
+                        val (_, cryptoObject) = withContext(Dispatchers.IO) {
+                            cryptoOperations.prepareSignature(keyAlias, mode)
+                        }
+
+                        biometricPromptHelper.checkBiometricAvailability(act, allowDeviceCredentials)
+
+                        val successOutcome = biometricPromptHelper.authenticate(
+                            act, promptMessage ?: "Authenticate", config?.promptSubtitle, config?.promptDescription,
+                            config?.cancelButtonText ?: "Cancel", allowDeviceCredentials, cryptoObject
+                        )
+
+                        val authenticatedCrypto = successOutcome.cryptoObject
+                        signatureBytes = withContext(Dispatchers.IO) {
+                            val sig = authenticatedCrypto?.signature ?: throw SecurityException("Biometric authentication did not return an authenticated signature")
+                            try {
+                                sig.update(payload.toByteArray(Charsets.UTF_8))
+                                sig.sign()
+                            } catch (e: IllegalArgumentException) {
+                                throw IllegalArgumentException("Invalid payload", e)
+                            }
+                        }
+                        resultAuthType = successOutcome.authenticationType
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        if (attempt < 1 && ErrorMapper.isPrunedOperationError(e)) {
+                            attempt++
+                            continue
+                        }
+                        throw e
                     }
                 }
 
                 val publicKey = cryptoOperations.getSigningPublicKey(keyAlias)
-                val response = buildSignatureResponse(signatureBytes, publicKey, signatureFormat, keyFormat, successOutcome.authenticationType)
+                val response = buildSignatureResponse(signatureBytes, publicKey, signatureFormat, keyFormat, resultAuthType)
                 callback(Result.success(response))
 
             } catch (e: CancellationException) {

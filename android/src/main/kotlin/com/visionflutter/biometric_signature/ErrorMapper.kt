@@ -68,6 +68,27 @@ object ErrorMapper {
         }
     }
 
+    /// True if [e] (or any throwable in its cause chain) is an Android Keystore
+    /// operation that was pruned: `INVALID_OPERATION_HANDLE` / "Call on finalized
+    /// operation with outcome: Pruned". This is transient — the key is intact, but
+    /// the in-flight operation slot was reclaimed (typically while the app sat in
+    /// the background behind a device-credential prompt), so re-running
+    /// begin() + auth() + finish() usually succeeds.
+    fun isPrunedOperationError(e: Throwable): Boolean {
+        var current: Throwable? = e
+        while (current != null) {
+            val msg = current.message ?: ""
+            if (msg.contains("INVALID_OPERATION_HANDLE") ||
+                msg.contains("Invalid operation handle") ||
+                msg.contains("outcome: Pruned")
+            ) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
+    }
+
     fun biometricErrorName(code: Int) = when (code) {
         BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "BIOMETRIC_ERROR_NO_HARDWARE"
         BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "BIOMETRIC_ERROR_HW_UNAVAILABLE"
