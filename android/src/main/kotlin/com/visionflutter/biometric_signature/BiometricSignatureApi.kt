@@ -601,7 +601,14 @@ data class CreateKeysConfig (
    *
    * When `false` (default), existing keys are silently replaced.
    */
-  val failIfExists: Boolean? = null
+  val failIfExists: Boolean? = null,
+  /**
+   * [Android/iOS/macOS] Whether the key requires user authentication at use
+   * time (signing/decryption). Defaults to `true`. When `false`, the key can
+   * be used to sign/decrypt without any biometric or device-credential prompt.
+   * Ignored on Windows (Windows Hello always authenticates).
+   */
+  val requireAuthentication: Boolean? = null
 )
  {
   companion object {
@@ -615,7 +622,8 @@ data class CreateKeysConfig (
       val promptDescription = pigeonVar_list[6] as String?
       val cancelButtonText = pigeonVar_list[7] as String?
       val failIfExists = pigeonVar_list[8] as Boolean?
-      return CreateKeysConfig(signatureType, enforceBiometric, setInvalidatedByBiometricEnrollment, useDeviceCredentials, enableDecryption, promptSubtitle, promptDescription, cancelButtonText, failIfExists)
+      val requireAuthentication = pigeonVar_list[9] as Boolean?
+      return CreateKeysConfig(signatureType, enforceBiometric, setInvalidatedByBiometricEnrollment, useDeviceCredentials, enableDecryption, promptSubtitle, promptDescription, cancelButtonText, failIfExists, requireAuthentication)
     }
   }
   fun toList(): List<Any?> {
@@ -629,6 +637,7 @@ data class CreateKeysConfig (
       promptDescription,
       cancelButtonText,
       failIfExists,
+      requireAuthentication,
     )
   }
   override fun equals(other: Any?): Boolean {

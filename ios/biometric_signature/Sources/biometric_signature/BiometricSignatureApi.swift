@@ -586,6 +586,11 @@ struct CreateKeysConfig: Hashable {
   ///
   /// When `false` (default), existing keys are silently replaced.
   var failIfExists: Bool? = nil
+  /// [Android/iOS/macOS] Whether the key requires user authentication at use
+  /// time (signing/decryption). Defaults to `true`. When `false`, the key can
+  /// be used to sign/decrypt without any biometric or device-credential prompt.
+  /// Ignored on Windows (Windows Hello always authenticates).
+  var requireAuthentication: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -599,6 +604,7 @@ struct CreateKeysConfig: Hashable {
     let promptDescription: String? = nilOrValue(pigeonVar_list[6])
     let cancelButtonText: String? = nilOrValue(pigeonVar_list[7])
     let failIfExists: Bool? = nilOrValue(pigeonVar_list[8])
+    let requireAuthentication: Bool? = nilOrValue(pigeonVar_list[9])
 
     return CreateKeysConfig(
       signatureType: signatureType,
@@ -609,7 +615,8 @@ struct CreateKeysConfig: Hashable {
       promptSubtitle: promptSubtitle,
       promptDescription: promptDescription,
       cancelButtonText: cancelButtonText,
-      failIfExists: failIfExists
+      failIfExists: failIfExists,
+      requireAuthentication: requireAuthentication
     )
   }
   func toList() -> [Any?] {
@@ -623,6 +630,7 @@ struct CreateKeysConfig: Hashable {
       promptDescription,
       cancelButtonText,
       failIfExists,
+      requireAuthentication,
     ]
   }
   static func == (lhs: CreateKeysConfig, rhs: CreateKeysConfig) -> Bool {

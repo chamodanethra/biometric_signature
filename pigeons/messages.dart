@@ -291,6 +291,31 @@ class CreateKeysConfig {
   ///
   /// When `false` (default), existing keys are silently replaced.
   bool? failIfExists;
+
+  // === Non-interactive (no user authentication) key ===
+
+  /// [Android/iOS/macOS] Whether the key requires user authentication at *use*
+  /// time (signing/decryption). Defaults to `true`.
+  ///
+  /// When `false`, the key is created without a user-authentication constraint
+  /// and can be used to sign/decrypt **without any biometric or device-credential
+  /// prompt**. This is useful for a non-interactive, device-bound key that lives
+  /// alongside an interactive (biometric) key under a different [keyAlias].
+  ///
+  /// Platform behaviour:
+  /// - **Android**: the keystore key is generated without
+  ///   `setUserAuthenticationRequired(true)`, and signing/decryption skip the
+  ///   `BiometricPrompt`.
+  /// - **iOS/macOS**: the Secure Enclave key is created with only
+  ///   `.privateKeyUsage` access control (no `.biometryAny`/`.userPresence`) and
+  ///   `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so signing never
+  ///   prompts while the device is unlocked.
+  /// - **Windows**: ignored — Windows Hello always authenticates.
+  ///
+  /// **Security note**: a non-interactive key provides device binding
+  /// ("something you have") only; it does not verify user presence and cannot
+  /// satisfy inherence-based SCA requirements.
+  bool? requireAuthentication;
 }
 
 /// Configuration for signature creation (all platforms).

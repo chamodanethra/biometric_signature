@@ -334,7 +334,10 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         let useDeviceCredentials = config?.useDeviceCredentials ?? false
         let biometryCurrentSet = config?.setInvalidatedByBiometricEnrollment ?? false
         let signatureType = config?.signatureType ?? .rsa
-        let enforceBiometric = config?.enforceBiometric ?? false
+        let requireAuthentication = config?.requireAuthentication ?? true
+        // A non-interactive key (requireAuthentication == false) must never prompt,
+        // not even at creation time, regardless of enforceBiometric.
+        let enforceBiometric = (config?.enforceBiometric ?? false) && requireAuthentication
         let prompt = promptMessage ?? "Authenticate to create keys"
 
         // Delete existing keys for this alias first
@@ -349,7 +352,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
                 biometryCurrentSet: biometryCurrentSet,
                 signatureType: signatureType,
                 keyFormat: keyFormat,
-                authenticationType: authType
+                authenticationType: authType,
+                requireAuthentication: requireAuthentication
             ) { result in
                 completion(result)
             }
@@ -835,11 +839,22 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         signatureType: SignatureType,
         keyFormat: KeyFormat,
         authenticationType: AuthenticationType? = nil,
+        requireAuthentication: Bool = true,
         completion: @escaping (Result<KeyCreationResult, Error>) -> Void
     ) {
-        // Access Control
-        let flags: SecAccessControlCreateFlags = [.privateKeyUsage, useDeviceCredentials ? .userPresence : (biometryCurrentSet ? .biometryCurrentSet : .biometryAny)]
-        guard let accessControl = SecAccessControlCreateWithFlags(kCFAllocatorDefault, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, flags, nil) else {
+        // Access Control.
+        //
+        // When `requireAuthentication` is false we deliberately omit any
+        // user-presence/biometry flag so the Secure Enclave key can be used to
+        // sign/decrypt without a prompt, and relax accessibility to
+        // `AfterFirstUnlock` so it does not require a device passcode to be set.
+        let secAccessible: CFString = requireAuthentication
+            ? kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
+            : kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let flags: SecAccessControlCreateFlags = requireAuthentication
+            ? [.privateKeyUsage, useDeviceCredentials ? .userPresence : (biometryCurrentSet ? .biometryCurrentSet : .biometryAny)]
+            : [.privateKeyUsage]
+        guard let accessControl = SecAccessControlCreateWithFlags(kCFAllocatorDefault, secAccessible, flags, nil) else {
             completion(.success(KeyCreationResult(publicKey: nil, publicKeyBytes: nil, error: "Failed to create access control", code: .unknown)))
             return
         }
@@ -929,7 +944,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             kSecAttrService as String: tag,
             kSecAttrAccount as String: tag,
             kSecValueData as String: encryptedRsa,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
+            kSecAttrAccessible as String: secAccessible
         ]
         SecItemAdd(saveQuery as CFDictionary, nil)
 

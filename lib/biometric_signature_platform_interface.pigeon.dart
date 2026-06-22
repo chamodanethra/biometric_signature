@@ -606,6 +606,7 @@ class CreateKeysConfig {
     this.promptDescription,
     this.cancelButtonText,
     this.failIfExists,
+    this.requireAuthentication,
   });
 
   /// [Android/iOS/macOS] The cryptographic algorithm to use.
@@ -648,6 +649,12 @@ class CreateKeysConfig {
   /// When `false` (default), existing keys are silently replaced.
   bool? failIfExists;
 
+  /// [Android/iOS/macOS] Whether the key requires user authentication at use
+  /// time (signing/decryption). Defaults to `true`. When `false`, the key can
+  /// be used to sign/decrypt without any biometric or device-credential prompt.
+  /// Ignored on Windows (Windows Hello always authenticates).
+  bool? requireAuthentication;
+
   List<Object?> _toList() {
     return <Object?>[
       signatureType,
@@ -659,6 +666,7 @@ class CreateKeysConfig {
       promptDescription,
       cancelButtonText,
       failIfExists,
+      requireAuthentication,
     ];
   }
 
@@ -678,6 +686,7 @@ class CreateKeysConfig {
       promptDescription: result[6] as String?,
       cancelButtonText: result[7] as String?,
       failIfExists: result[8] as bool?,
+      requireAuthentication: result[9] as bool?,
     );
   }
 

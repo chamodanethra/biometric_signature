@@ -5,6 +5,13 @@
 * **Android `UNKNOWN` errors are no longer flattened to a constant string.** `ErrorMapper.safeErrorMessage` used to collapse every unmapped failure to `"Biometric operation failed"`, throwing away both the numeric `BiometricPrompt` code and the original `errString`. The `UNKNOWN` branch now appends whatever context is available, e.g. `"Biometric operation failed (code=3 msg=…)"`, keeping failures diagnosable in logs without an API/schema change.
 
 ### Added
+
+* **Non-interactive (no user authentication) keys via `CreateKeysConfig.requireAuthentication`.** Defaults to `true` (existing behaviour). When set to `false`, the key pair is created without a use-time user-authentication constraint and can be used to sign/decrypt **without any biometric or device-credential prompt** — useful for a device-bound key that lives alongside an interactive (biometric) key under a different `keyAlias`.
+  * **Android**: the keystore key is generated without `setUserAuthenticationRequired(true)` (and without per-operation auth / invalidation), and `createSignature`/`decrypt` detect the key's `KeyInfo.isUserAuthenticationRequired` and skip the `BiometricPrompt` entirely.
+  * **iOS/macOS**: the Secure Enclave key is created with only `.privateKeyUsage` access control (no `.biometryAny`/`.userPresence`) and `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so signing/decryption never prompt while the device is unlocked.
+  * **Windows**: ignored — Windows Hello always authenticates.
+  * **Security note**: a non-interactive key provides device binding ("something you have") only; it does not verify user presence and cannot satisfy inherence-based SCA requirements.
+
 * **Android: three more `BiometricPrompt` error codes are classified.** `ErrorMapper.mapToBiometricError` now maps `ERROR_NO_BIOMETRICS` (11) → `notEnrolled`, `ERROR_HW_NOT_PRESENT` (12) → `notAvailable`, and `ERROR_SECURITY_UPDATE_REQUIRED` (15) → `securityUpdateRequired`. `ERROR_TIMEOUT` (3) and `ERROR_VENDOR` (8) intentionally remain enriched-`UNKNOWN` so their volume can be observed before assigning a dedicated bucket.
 * **Android: error-source markers.** Failures now carry a short source tag so a "couldn't even show the prompt" failure isn't mistaken for a signing failure: `[src=prompt cred=<allowDeviceCredentials>]` for real `onAuthenticationError` callbacks, `[src=availability]` for `canAuthenticate` pre-checks, and `[src=launch]` for setup/launch failures (e.g. the host is not a `FragmentActivity`). `CancellationException` is passed through unchanged so coroutine cancellation semantics and its `userCanceled` classification are preserved.
 
