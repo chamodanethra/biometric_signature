@@ -954,6 +954,44 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         )))
     }
 
+    /// Walks a `SecKey` operation failure's `NSUnderlyingErrorKey` chain and
+    /// classifies the first layer whose domain we recognise: `LAErrorDomain` via
+    /// `mapLAError`, `NSOSStatusErrorDomain` (e.g. `errSecUserCanceled` / -128 when
+    /// the user cancels Face ID / Touch ID) via `mapSecError`. Returns `.unknown`
+    /// only if no layer in the chain is recognised.
+    private func classifySigningError(_ nsError: NSError?) -> BiometricError {
+        var current: NSError? = nsError
+        while let err = current {
+            let mapped: BiometricError
+            switch err.domain {
+            case LAErrorDomain:
+                mapped = mapLAError(err)
+            case NSOSStatusErrorDomain:
+                mapped = mapSecError(OSStatus(err.code))
+            default:
+                mapped = .unknown
+            }
+            if mapped != .unknown { return mapped }
+            current = err.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return .unknown
+    }
+
+    /// Renders a `SecKey` failure as a self-diagnosing string: the localized
+    /// description followed by the full `domain:code` underlying-error chain
+    /// (e.g. `... [CryptoTokenKit:-4 -> com.apple.LocalAuthentication:-2]`). This
+    /// keeps a still-unmapped failure diagnosable from logs without a device.
+    private func describeSigningError(_ nsError: NSError?) -> String {
+        guard let nsError = nsError else { return "Unknown" }
+        var chain: [String] = []
+        var current: NSError? = nsError
+        while let err = current {
+            chain.append("\(err.domain):\(err.code)")
+            current = err.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return "\(nsError.localizedDescription) [\(chain.joined(separator: " -> "))]"
+    }
+
     private func performRsaSigning(keyAlias: String?, dataToSign: Data, prompt: String, signatureFormat: SignatureFormat, keyFormat: KeyFormat, authenticationType: AuthenticationType, completion: @escaping (Result<SignatureResult, Error>) -> Void) {
         let keyResult = unwrapRsaKey(keyAlias: keyAlias, prompt: prompt)
         guard let rsaPrivateKey = keyResult.key else {
@@ -963,8 +1001,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
 
         var error: Unmanaged<CFError>?
         guard let signature = SecKeyCreateSignature(rsaPrivateKey, .rsaSignatureMessagePKCS1v15SHA256, dataToSign as CFData, &error) as Data? else {
-             let msg = error?.takeRetainedValue().localizedDescription ?? "Unknown"
-             completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: "Signing Error: \(msg)", code: .unknown)))
+             let nsError = (error?.takeRetainedValue()).map { $0 as Error as NSError }
+             completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: "Signing Error: \(describeSigningError(nsError))", code: classifySigningError(nsError))))
              return
         }
 
@@ -994,8 +1032,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
 
         var error: Unmanaged<CFError>?
         guard let signature = SecKeyCreateSignature(ecKey, .ecdsaSignatureMessageX962SHA256, dataToSign as CFData, &error) as Data? else {
-              let msg = error?.takeRetainedValue().localizedDescription ?? "Unknown"
-               completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: "Signing Error: \(msg)", code: .unknown)))
+              let nsError = (error?.takeRetainedValue()).map { $0 as Error as NSError }
+               completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: "Signing Error: \(describeSigningError(nsError))", code: classifySigningError(nsError))))
               return
         }
          guard let pub = SecKeyCopyPublicKey(ecKey) else {

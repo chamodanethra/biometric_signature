@@ -21,7 +21,18 @@ object ErrorMapper {
             BiometricError.PROMPT_ERROR -> "Biometric prompt error"
             BiometricError.KEY_ALREADY_EXISTS -> "Key already exists"
             BiometricError.PASSCODE_NOT_SET -> "No screen lock configured. Set up a PIN, pattern, or password to use biometrics"
-            else -> "Biometric operation failed"
+            else -> {
+                // Preserve the raw BiometricPrompt error code and the original
+                // (localized) message so UNKNOWN failures stay self-classifying in
+                // logs instead of collapsing to a constant.
+                val causeCode = e.cause?.message?.toIntOrNull()
+                val original = e.message?.takeIf { it.isNotBlank() }
+                val details = mutableListOf<String>()
+                if (causeCode != null) details.add("code=$causeCode")
+                if (original != null) details.add("msg=$original")
+                if (details.isEmpty()) "Biometric operation failed"
+                else "Biometric operation failed (${details.joinToString(" ")})"
+            }
         }
     }
 
@@ -41,8 +52,11 @@ object ErrorMapper {
             causeCode == 7 -> BiometricError.LOCKED_OUT
             causeCode == 9 -> BiometricError.LOCKED_OUT_PERMANENT
             causeCode == 10 -> BiometricError.USER_CANCELED
+            causeCode == 11 -> BiometricError.NOT_ENROLLED
+            causeCode == 12 -> BiometricError.NOT_AVAILABLE
             causeCode == 13 -> BiometricError.USER_CANCELED
             causeCode == 14 -> BiometricError.PASSCODE_NOT_SET
+            causeCode == 15 -> BiometricError.SECURITY_UPDATE_REQUIRED
 
             e is KeyPermanentlyInvalidatedException -> BiometricError.KEY_INVALIDATED
 
@@ -52,6 +66,27 @@ object ErrorMapper {
 
             else -> BiometricError.UNKNOWN
         }
+    }
+
+    /// True if [e] (or any throwable in its cause chain) is an Android Keystore
+    /// operation that was pruned: `INVALID_OPERATION_HANDLE` / "Call on finalized
+    /// operation with outcome: Pruned". This is transient — the key is intact, but
+    /// the in-flight operation slot was reclaimed (typically while the app sat in
+    /// the background behind a device-credential prompt), so re-running
+    /// begin() + auth() + finish() usually succeeds.
+    fun isPrunedOperationError(e: Throwable): Boolean {
+        var current: Throwable? = e
+        while (current != null) {
+            val msg = current.message ?: ""
+            if (msg.contains("INVALID_OPERATION_HANDLE") ||
+                msg.contains("Invalid operation handle") ||
+                msg.contains("outcome: Pruned")
+            ) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
     }
 
     fun biometricErrorName(code: Int) = when (code) {
