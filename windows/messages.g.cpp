@@ -1740,6 +1740,53 @@ void BiometricSignatureApi::SetUp(
     }
   }
   {
+    BasicMessageChannel<> channel(binary_messenger, "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.createSignatureFromBytes" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_payload_arg = args.at(0);
+          if (encodable_payload_arg.IsNull()) {
+            reply(WrapError("payload_arg unexpectedly null."));
+            return;
+          }
+          const auto& payload_arg = std::get<std::vector<uint8_t>>(encodable_payload_arg);
+          const auto& encodable_key_alias_arg = args.at(1);
+          const auto* key_alias_arg = std::get_if<std::string>(&encodable_key_alias_arg);
+          const auto& encodable_config_arg = args.at(2);
+          const auto* config_arg = encodable_config_arg.IsNull() ? nullptr : &(std::any_cast<const CreateSignatureConfig&>(std::get<CustomEncodableValue>(encodable_config_arg)));
+          const auto& encodable_signature_format_arg = args.at(3);
+          if (encodable_signature_format_arg.IsNull()) {
+            reply(WrapError("signature_format_arg unexpectedly null."));
+            return;
+          }
+          const auto& signature_format_arg = std::any_cast<const SignatureFormat&>(std::get<CustomEncodableValue>(encodable_signature_format_arg));
+          const auto& encodable_key_format_arg = args.at(4);
+          if (encodable_key_format_arg.IsNull()) {
+            reply(WrapError("key_format_arg unexpectedly null."));
+            return;
+          }
+          const auto& key_format_arg = std::any_cast<const KeyFormat&>(std::get<CustomEncodableValue>(encodable_key_format_arg));
+          const auto& encodable_prompt_message_arg = args.at(5);
+          const auto* prompt_message_arg = std::get_if<std::string>(&encodable_prompt_message_arg);
+          api->CreateSignatureFromBytes(payload_arg, key_alias_arg, config_arg, signature_format_arg, key_format_arg, prompt_message_arg, [reply](ErrorOr<SignatureResult>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
+            }
+            EncodableList wrapped;
+            wrapped.push_back(CustomEncodableValue(std::move(output).TakeValue()));
+            reply(EncodableValue(std::move(wrapped)));
+          });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
     BasicMessageChannel<> channel(binary_messenger, "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.decrypt" + prepended_suffix, &GetCodec());
     if (api != nullptr) {
       channel.SetMessageHandler([api](const EncodableValue& message, const flutter::MessageReply<EncodableValue>& reply) {

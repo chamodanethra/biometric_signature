@@ -389,6 +389,36 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
              return
         }
 
+        createSignatureInternal(dataToSign: dataToSign, keyAlias: keyAlias, config: config, signatureFormat: signatureFormat, keyFormat: keyFormat, promptMessage: promptMessage, completion: completion)
+    }
+
+    func createSignatureFromBytes(
+        payload: FlutterStandardTypedData,
+        keyAlias: String?,
+        config: CreateSignatureConfig?,
+        signatureFormat: SignatureFormat,
+        keyFormat: KeyFormat,
+        promptMessage: String?,
+        completion: @escaping (Result<SignatureResult, Error>) -> Void
+    ) {
+        let dataToSign = payload.data
+        if dataToSign.isEmpty {
+             completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: "Payload is required", code: .invalidInput)))
+             return
+        }
+
+        createSignatureInternal(dataToSign: dataToSign, keyAlias: keyAlias, config: config, signatureFormat: signatureFormat, keyFormat: keyFormat, promptMessage: promptMessage, completion: completion)
+    }
+
+    private func createSignatureInternal(
+        dataToSign: Data,
+        keyAlias: String?,
+        config: CreateSignatureConfig?,
+        signatureFormat: SignatureFormat,
+        keyFormat: KeyFormat,
+        promptMessage: String?,
+        completion: @escaping (Result<SignatureResult, Error>) -> Void
+    ) {
         let prompt = promptMessage ?? "Authenticate"
         let authType = inferAuthenticationType(allowDeviceCredentials: DeviceCredentialsSetting.read(keyAlias))
 

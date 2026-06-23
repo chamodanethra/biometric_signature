@@ -23,7 +23,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
       home: Scaffold(
-        appBar: AppBar(title: const Text('Biometric Signature v12.0.1')),
+        appBar: AppBar(title: const Text('Biometric Signature v12.1.0')),
         body: const ExampleAppBody(),
       ),
     );
@@ -58,6 +58,10 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
   String? errorMessage;
   bool isLoading = false;
   BiometricAvailability? availability;
+
+  // Raw Bytes Payload (for challenge-response demo)
+  Uint8List? rawBytesPayload;
+  String? rawBytesPayloadHex;
 
   // Simple Prompt options
   bool _allowDeviceCredentials = false;
@@ -117,11 +121,69 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
     });
 
     try {
+      final keyExists = await _biometricSignature.biometricKeyExists();
+      if (!keyExists) {
+        _showSnack("No biometric keys found. Please 'Create Keys' first.");
+        return;
+      }
+
       final result = await _biometricSignature.createSignature(
         payload: payload!,
         signatureFormat: _signatureFormat,
         keyFormat: _signatureKeyFormat,
         promptMessage: 'Sign Data',
+        config: CreateSignatureConfig(
+          allowDeviceCredentials: false,
+        ),
+      );
+
+      if (result.code == BiometricError.success) {
+        setState(() => signatureResult = result);
+      } else {
+        setState(
+          () => errorMessage = 'Error: ${result.code} - ${result.error}',
+        );
+      }
+    } catch (e) {
+      setState(() => errorMessage = e.toString());
+    }
+  }
+
+  Future<void> _createSignatureFromBytes() async {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      errorMessage = null;
+      signatureResult = null;
+      rawBytesPayload = null;
+      rawBytesPayloadHex = null;
+    });
+
+    try {
+      final keyExists = await _biometricSignature.biometricKeyExists();
+      if (!keyExists) {
+        _showSnack("No biometric keys found. Please 'Create Keys' first.");
+        return;
+      }
+
+      // 1) Generate a cryptographically secure mock 32-byte binary nonce (challenge)
+      final random = Random.secure();
+      final nonceBytes = Uint8List.fromList(
+        List<int>.generate(32, (_) => random.nextInt(256)),
+      );
+      final nonceHex =
+          nonceBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+      setState(() {
+        rawBytesPayload = nonceBytes;
+        rawBytesPayloadHex = nonceHex;
+      });
+
+      // 2) Request signature over these raw bytes
+      final result = await _biometricSignature.createSignatureFromBytes(
+        payload: nonceBytes,
+        signatureFormat: _signatureFormat,
+        keyFormat: _signatureKeyFormat,
+        promptMessage: 'Sign Binary Nonce',
         config: CreateSignatureConfig(
           allowDeviceCredentials: false,
         ),
@@ -815,6 +877,56 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
                       },
                     ),
                   ],
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 15),
+
+          // Binary Challenge-Response (createSignatureFromBytes)
+          Card(
+            color: Colors.blue.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Binary Challenge-Response (Raw Bytes)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Generates a cryptographically secure 32-byte mock nonce/challenge and signs the raw bytes directly (ideal for backend transaction verification/auth).',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  if (rawBytesPayloadHex != null) ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Generated Nonce (Hex):',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      rawBytesPayloadHex!,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _createSignatureFromBytes,
+                      icon: const Icon(Icons.security),
+                      label: const Text('Generate Nonce & Sign Bytes'),
+                    ),
+                  ),
                 ],
               ),
             ),

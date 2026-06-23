@@ -1015,6 +1015,15 @@ protocol BiometricSignatureApi {
   /// [keyFormat] specifies the output format for the public key.
   /// [promptMessage] is the message shown to the user during authentication.
   func createSignature(payload: String, keyAlias: String?, config: CreateSignatureConfig?, signatureFormat: SignatureFormat, keyFormat: KeyFormat, promptMessage: String?, completion: @escaping (Result<SignatureResult, Error>) -> Void)
+  /// Creates a signature from raw bytes.
+  ///
+  /// [payload] is the raw byte data to sign.
+  /// [keyAlias] specifies which key to sign with. Defaults to the default alias.
+  /// [config] contains platform-specific options. See [CreateSignatureConfig].
+  /// [signatureFormat] specifies the output format for the signature.
+  /// [keyFormat] specifies the output format for the public key.
+  /// [promptMessage] is the message shown to the user during authentication.
+  func createSignatureFromBytes(payload: FlutterStandardTypedData, keyAlias: String?, config: CreateSignatureConfig?, signatureFormat: SignatureFormat, keyFormat: KeyFormat, promptMessage: String?, completion: @escaping (Result<SignatureResult, Error>) -> Void)
   /// Decrypts data.
   ///
   /// Note: Not supported on Windows.
@@ -1157,6 +1166,36 @@ class BiometricSignatureApiSetup {
       }
     } else {
       createSignatureChannel.setMessageHandler(nil)
+    }
+    /// Creates a signature from raw bytes.
+    ///
+    /// [payload] is the raw byte data to sign.
+    /// [keyAlias] specifies which key to sign with. Defaults to the default alias.
+    /// [config] contains platform-specific options. See [CreateSignatureConfig].
+    /// [signatureFormat] specifies the output format for the signature.
+    /// [keyFormat] specifies the output format for the public key.
+    /// [promptMessage] is the message shown to the user during authentication.
+    let createSignatureFromBytesChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.createSignatureFromBytes\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      createSignatureFromBytesChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let payloadArg = args[0] as! FlutterStandardTypedData
+        let keyAliasArg: String? = nilOrValue(args[1])
+        let configArg: CreateSignatureConfig? = nilOrValue(args[2])
+        let signatureFormatArg = args[3] as! SignatureFormat
+        let keyFormatArg = args[4] as! KeyFormat
+        let promptMessageArg: String? = nilOrValue(args[5])
+        api.createSignatureFromBytes(payload: payloadArg, keyAlias: keyAliasArg, config: configArg, signatureFormat: signatureFormatArg, keyFormat: keyFormatArg, promptMessage: promptMessageArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      createSignatureFromBytesChannel.setMessageHandler(nil)
     }
     /// Decrypts data.
     ///

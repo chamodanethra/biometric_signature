@@ -410,6 +410,24 @@ abstract class BiometricSignatureApi {
     String? promptMessage,
   );
 
+  /// Creates a signature from raw bytes.
+  ///
+  /// [payload] is the raw byte data to sign.
+  /// [keyAlias] specifies which key to sign with. Defaults to the default alias.
+  /// [config] contains platform-specific options. See [CreateSignatureConfig].
+  /// [signatureFormat] specifies the output format for the signature.
+  /// [keyFormat] specifies the output format for the public key.
+  /// [promptMessage] is the message shown to the user during authentication.
+  @async
+  SignatureResult createSignatureFromBytes(
+    Uint8List payload,
+    String? keyAlias,
+    CreateSignatureConfig? config,
+    SignatureFormat signatureFormat,
+    KeyFormat keyFormat,
+    String? promptMessage,
+  );
+
   /// Decrypts data.
   ///
   /// Note: Not supported on Windows.

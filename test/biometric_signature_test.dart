@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:biometric_signature/biometric_signature.dart';
 import 'package:biometric_signature/biometric_signature_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -108,6 +110,27 @@ class MockBiometricSignaturePlatform
     final effectiveAlias = keyAlias ?? 'biometric_key';
     return SignatureResult(
       signature: 'test_signature_$effectiveAlias',
+      publicKey: 'test_public_key_$effectiveAlias',
+      code: BiometricError.success,
+      algorithm: 'RSA',
+      keySize: 2048,
+    );
+  }
+
+  @override
+  Future<SignatureResult> createSignatureFromBytes(
+    Uint8List payload,
+    String? keyAlias,
+    CreateSignatureConfig? config,
+    SignatureFormat signatureFormat,
+    KeyFormat keyFormat,
+    String? promptMessage,
+  ) async {
+    if (_shouldThrowError) throw Exception('Signing failed');
+
+    final effectiveAlias = keyAlias ?? 'biometric_key';
+    return SignatureResult(
+      signature: 'test_signature_bytes_$effectiveAlias',
       publicKey: 'test_public_key_$effectiveAlias',
       code: BiometricError.success,
       algorithm: 'RSA',
@@ -301,6 +324,50 @@ void main() {
 
       expect(
         () => biometricSignature.createSignature(payload: 'test'),
+        throwsException,
+      );
+    });
+  });
+
+  group('createSignatureFromBytes', () {
+    test('Success with default options', () async {
+      BiometricSignature biometricSignature = BiometricSignature();
+      MockBiometricSignaturePlatform fakePlatform =
+          MockBiometricSignaturePlatform();
+      BiometricSignaturePlatform.instance = fakePlatform;
+
+      final result = await biometricSignature.createSignatureFromBytes(
+        payload: Uint8List.fromList([1, 2, 3, 4]),
+      );
+      expect(result.signature, 'test_signature_bytes_biometric_key');
+      expect(result.publicKey, 'test_public_key_biometric_key');
+      expect(result.code, BiometricError.success);
+    });
+
+    test('with custom prompt message', () async {
+      BiometricSignature biometricSignature = BiometricSignature();
+      MockBiometricSignaturePlatform fakePlatform =
+          MockBiometricSignaturePlatform();
+      BiometricSignaturePlatform.instance = fakePlatform;
+
+      final result = await biometricSignature.createSignatureFromBytes(
+        payload: Uint8List.fromList([5, 6, 7]),
+        promptMessage: 'Please authenticate',
+        config: CreateSignatureConfig(allowDeviceCredentials: false),
+      );
+      expect(result.code, BiometricError.success);
+    });
+
+    test('Error handling', () async {
+      BiometricSignature biometricSignature = BiometricSignature();
+      MockBiometricSignaturePlatform fakePlatform =
+          MockBiometricSignaturePlatform();
+      fakePlatform.setShouldThrowError(true);
+      BiometricSignaturePlatform.instance = fakePlatform;
+
+      expect(
+        () => biometricSignature.createSignatureFromBytes(
+            payload: Uint8List.fromList([1])),
         throwsException,
       );
     });
