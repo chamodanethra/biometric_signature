@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'biometric_signature_platform_interface.dart';
 
 export 'biometric_signature_platform_interface.dart'
@@ -68,6 +70,34 @@ class BiometricSignature {
     String? promptMessage,
   }) async {
     return BiometricSignaturePlatform.instance.createSignature(
+      payload,
+      keyAlias,
+      config,
+      signatureFormat,
+      keyFormat,
+      promptMessage,
+    );
+  }
+
+  /// Creates a digital signature from raw bytes using biometric authentication.
+  ///
+  /// [payload] is the raw byte data to sign.
+  /// [keyAlias] specifies which key to sign with. Defaults to the default alias.
+  /// [config] contains platform-specific options. See [CreateSignatureConfig].
+  /// [signatureFormat] specifies the output format for the signature.
+  /// [keyFormat] specifies the output format for the public key.
+  /// [promptMessage] is the message shown during biometric authentication.
+  ///
+  /// Returns a [SignatureResult] containing the signature or error details.
+  Future<SignatureResult> createSignatureFromBytes({
+    required Uint8List payload,
+    String? keyAlias,
+    CreateSignatureConfig? config,
+    SignatureFormat signatureFormat = SignatureFormat.base64,
+    KeyFormat keyFormat = KeyFormat.base64,
+    String? promptMessage,
+  }) async {
+    return BiometricSignaturePlatform.instance.createSignatureFromBytes(
       payload,
       keyAlias,
       config,

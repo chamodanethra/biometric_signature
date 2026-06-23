@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'biometric_signature_platform_interface.pigeon.dart';
@@ -52,6 +54,19 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
     String? promptMessage,
   ) {
     throw UnimplementedError('createSignature() has not been implemented.');
+  }
+
+  /// Creates a signature from raw bytes.
+  Future<SignatureResult> createSignatureFromBytes(
+    Uint8List payload,
+    String? keyAlias,
+    CreateSignatureConfig? config,
+    SignatureFormat signatureFormat,
+    KeyFormat keyFormat,
+    String? promptMessage,
+  ) {
+    throw UnimplementedError(
+        'createSignatureFromBytes() has not been implemented.');
   }
 
   /// Decrypts data.
@@ -126,6 +141,25 @@ class _PigeonBiometricSignature extends BiometricSignaturePlatform {
     String? promptMessage,
   ) {
     return _api.createSignature(
+      payload,
+      keyAlias,
+      config,
+      signatureFormat,
+      keyFormat,
+      promptMessage,
+    );
+  }
+
+  @override
+  Future<SignatureResult> createSignatureFromBytes(
+    Uint8List payload,
+    String? keyAlias,
+    CreateSignatureConfig? config,
+    SignatureFormat signatureFormat,
+    KeyFormat keyFormat,
+    String? promptMessage,
+  ) {
+    return _api.createSignatureFromBytes(
       payload,
       keyAlias,
       config,

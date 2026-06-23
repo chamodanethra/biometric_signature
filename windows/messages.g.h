@@ -907,6 +907,22 @@ class BiometricSignatureApi {
     const KeyFormat& key_format,
     const std::string* prompt_message,
     std::function<void(ErrorOr<SignatureResult> reply)> result) = 0;
+  // Creates a signature from raw bytes.
+  //
+  // [payload] is the raw byte data to sign.
+  // [keyAlias] specifies which key to sign with. Defaults to the default alias.
+  // [config] contains platform-specific options. See [CreateSignatureConfig].
+  // [signatureFormat] specifies the output format for the signature.
+  // [keyFormat] specifies the output format for the public key.
+  // [promptMessage] is the message shown to the user during authentication.
+  virtual void CreateSignatureFromBytes(
+    const std::vector<uint8_t>& payload,
+    const std::string* key_alias,
+    const CreateSignatureConfig* config,
+    const SignatureFormat& signature_format,
+    const KeyFormat& key_format,
+    const std::string* prompt_message,
+    std::function<void(ErrorOr<SignatureResult> reply)> result) = 0;
   // Decrypts data.
   //
   // Note: Not supported on Windows.
