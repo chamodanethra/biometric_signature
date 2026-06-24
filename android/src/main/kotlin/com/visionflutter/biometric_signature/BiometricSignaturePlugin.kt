@@ -1,6 +1,7 @@
 package com.visionflutter.biometric_signature
 
 import android.content.Context
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import androidx.biometric.BiometricPrompt
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -780,15 +781,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                     val mode = keyManager.inferKeyModeFromKeystore(keyAlias)
 
                     val isValid = if (checkValidity) {
-                        runCatching {
-                            val algorithm = when (mode) {
-                                KeyMode.RSA -> "SHA256withRSA"
-                                else -> "SHA256withECDSA"
-                            }
-                            val signature = java.security.Signature.getInstance(algorithm)
-                            signature.initSign(entry.privateKey)
-                            true
-                        }.getOrDefault(false)
+                        probeKeyValidityAndRelease(entry.privateKey, mode)
                     } else {
                         null
                     }
@@ -827,6 +820,48 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 callback(Result.success(KeyInfo(exists = false)))
             }
         }
+    }
+
+    /**
+     * Probes whether [privateKey] is still usable (i.e. not invalidated by new
+     * biometric enrollment) and releases the KeyMint operation immediately.
+     *
+     * Signature.initSign begins a KeyMint operation. On StrongBox the slot pool
+     * is tiny, and a probe operation left dangling until GC accumulates and
+     * triggers TOO_MANY_OPERATIONS, which makes keystore2 prune in-flight
+     * signing operations (surfacing as INVALID_OPERATION_HANDLE / pruned). We
+     * therefore drive the probe to a terminal state right away so its slot is
+     * freed now instead of at an indeterminate GC point.
+     */
+    private fun probeKeyValidityAndRelease(privateKey: PrivateKey, mode: KeyMode?): Boolean {
+        val algorithm = when (mode) {
+            KeyMode.RSA -> "SHA256withRSA"
+            else -> "SHA256withECDSA"
+        }
+        val signature = Signature.getInstance(algorithm)
+        try {
+            signature.initSign(privateKey)
+        } catch (e: KeyPermanentlyInvalidatedException) {
+            // The key was invalidated (e.g. by new biometric enrollment).
+            return false
+        } catch (e: Exception) {
+            // Could not even begin the operation: treat as not usable, matching
+            // the previous behaviour.
+            return false
+        }
+
+        // initSign opened a KeyMint operation. Drive it to a terminal state so
+        // the slot is released now rather than lingering until GC.
+        try {
+            signature.update(byteArrayOf(0))
+            signature.sign()
+        } catch (_: Exception) {
+            // A user-authentication-bound key cannot be exercised without a
+            // fresh prompt, so finish() fails here, but that failure still
+            // finalizes (and frees) the operation. The key itself is valid: it
+            // was not KeyPermanentlyInvalidated above.
+        }
+        return true
     }
 
     override fun simplePrompt(
