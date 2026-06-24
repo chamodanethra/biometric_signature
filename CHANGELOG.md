@@ -1,4 +1,4 @@
-## [12.1.0] - 2026-06-18
+## [12.1.0] - 2026-06-24
 
 ### Changed
 * **Signing failures now report a meaningful error code instead of `unknown` (iOS/macOS).** `createSignature` previously hard-coded `code: .unknown` on every `SecKeyCreateSignature` failure, discarding the real cause. `classifySigningError` now walks the `CFError`'s `NSUnderlyingErrorKey` chain and maps the first layer it recognises — `LAErrorDomain` via `mapLAError`, `NSOSStatusErrorDomain` (e.g. `errSecUserCanceled` / -128) via `mapSecError` — so a cancelled or unavailable signing prompt surfaces `BiometricError.userCanceled` / `BiometricError.notAvailable` regardless of whether the cancel arrives as the top-level `CFError`, an OSStatus layer, or a nested `LAError` (e.g. a localized `"Authentifizierung abgebrochen."` cancel). The `"Signing Error: …"` message is additionally enriched with the full `domain:code` chain (e.g. `… [CryptoTokenKit:-4 -> com.apple.LocalAuthentication:-2]`) so any still-unmapped failure is self-describing in logs. Both the RSA and EC signing paths are covered.
@@ -12,6 +12,8 @@
   * **Windows**: ignored — Windows Hello always authenticates.
   * **Security note**: a non-interactive key provides device binding ("something you have") only; it does not verify user presence and cannot satisfy inherence-based SCA requirements.
 
+* **New `createSignatureFromBytes` method:** Introduced a high-level API to request biometric signatures directly over raw binary payloads (`Uint8List`), supporting secure challenge-response and transaction validation patterns across Android, iOS/macOS and Windows.
+* **Binary Challenge-Response Demo Card:** Added a demonstration card inside the example app showcasing the complete secure random nonce generation and direct signing workflow.
 * **Android: three more `BiometricPrompt` error codes are classified.** `ErrorMapper.mapToBiometricError` now maps `ERROR_NO_BIOMETRICS` (11) → `notEnrolled`, `ERROR_HW_NOT_PRESENT` (12) → `notAvailable`, and `ERROR_SECURITY_UPDATE_REQUIRED` (15) → `securityUpdateRequired`. `ERROR_TIMEOUT` (3) and `ERROR_VENDOR` (8) intentionally remain enriched-`UNKNOWN` so their volume can be observed before assigning a dedicated bucket.
 * **Android: error-source markers.** Failures now carry a short source tag so a "couldn't even show the prompt" failure isn't mistaken for a signing failure: `[src=prompt cred=<allowDeviceCredentials>]` for real `onAuthenticationError` callbacks, `[src=availability]` for `canAuthenticate` pre-checks, and `[src=launch]` for setup/launch failures (e.g. the host is not a `FragmentActivity`). `CancellationException` is passed through unchanged so coroutine cancellation semantics and its `userCanceled` classification are preserved.
 

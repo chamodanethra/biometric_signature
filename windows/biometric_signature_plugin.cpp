@@ -370,17 +370,45 @@ void BiometricSignaturePlugin::CreateSignature(
     return;
   }
 
+  std::vector<uint8_t> payload_bytes(payload.begin(), payload.end());
+  CreateSignatureInternal(payload_bytes, key_alias, config, signature_format, key_format, prompt_message, result);
+}
+
+void BiometricSignaturePlugin::CreateSignatureFromBytes(
+    const std::vector<uint8_t> &payload, const std::string *key_alias,
+    const CreateSignatureConfig *config,
+    const SignatureFormat &signature_format, const KeyFormat &key_format,
+    const std::string *prompt_message,
+    std::function<void(ErrorOr<SignatureResult> reply)> result) {
+
+  if (payload.empty()) {
+    SignatureResult response;
+    response.set_error("Payload is required");
+    response.set_code(BiometricError::kInvalidInput);
+    result(response);
+    return;
+  }
+
+  CreateSignatureInternal(payload, key_alias, config, signature_format, key_format, prompt_message, result);
+}
+
+void BiometricSignaturePlugin::CreateSignatureInternal(
+    const std::vector<uint8_t> &payload_bytes, const std::string *key_alias,
+    const CreateSignatureConfig *config,
+    const SignatureFormat &signature_format, const KeyFormat &key_format,
+    const std::string *prompt_message,
+    std::function<void(ErrorOr<SignatureResult> reply)> result) {
+
   // Bring Flutter window to foreground so Windows Hello dialog appears properly
   BringWindowToForeground();
 
-  std::string payload_copy = payload;
   std::wstring key_name = KeyNameForAlias(key_alias);
 
   auto async_op =
       winrt::Windows::Security::Credentials::KeyCredentialManager::OpenAsync(
           key_name);
 
-  async_op.Completed([result, payload_copy, key_format,
+  async_op.Completed([result, payload_bytes, key_format,
                       signature_format](auto const &op, auto status) {
     SignatureResult response;
 
@@ -391,8 +419,6 @@ void BiometricSignaturePlugin::CreateSignature(
           winrt::Windows::Security::Credentials::KeyCredentialStatus::Success) {
 
         auto credential = open_result.Credential();
-        std::vector<uint8_t> payload_bytes(payload_copy.begin(),
-                                           payload_copy.end());
         auto data_buffer = VectorToIBuffer(payload_bytes);
 
         auto sign_op = credential.RequestSignAsync(data_buffer);
@@ -405,7 +431,7 @@ void BiometricSignaturePlugin::CreateSignature(
             auto sign_result = sign_async.GetResults();
 
             if (sign_result.Status() == winrt::Windows::Security::Credentials::
-                                            KeyCredentialStatus::Success) {
+                                             KeyCredentialStatus::Success) {
 
               auto signature_buffer = sign_result.Result();
               auto signature_bytes = IBufferToVector(signature_buffer);

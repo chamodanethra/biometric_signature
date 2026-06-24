@@ -42,6 +42,15 @@ class BiometricSignaturePlugin : public flutter::Plugin,
       const std::string* prompt_message,
       std::function<void(ErrorOr<SignatureResult> reply)> result) override;
 
+  void CreateSignatureFromBytes(
+      const std::vector<uint8_t>& payload,
+      const std::string* key_alias,
+      const CreateSignatureConfig* config,
+      const SignatureFormat& signature_format,
+      const KeyFormat& key_format,
+      const std::string* prompt_message,
+      std::function<void(ErrorOr<SignatureResult> reply)> result) override;
+
   void Decrypt(
       const std::string& payload,
       const std::string* key_alias,
@@ -70,6 +79,16 @@ class BiometricSignaturePlugin : public flutter::Plugin,
 
   void IsDeviceLockSet(
       std::function<void(ErrorOr<bool> reply)> result) override;
+
+ private:
+  void CreateSignatureInternal(
+      const std::vector<uint8_t>& payload_bytes,
+      const std::string* key_alias,
+      const CreateSignatureConfig* config,
+      const SignatureFormat& signature_format,
+      const KeyFormat& key_format,
+      const std::string* prompt_message,
+      std::function<void(ErrorOr<SignatureResult> reply)> result);
 };
 
 }  // namespace biometric_signature

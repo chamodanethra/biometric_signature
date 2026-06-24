@@ -1080,6 +1080,17 @@ interface BiometricSignatureApi {
    */
   fun createSignature(payload: String, keyAlias: String?, config: CreateSignatureConfig?, signatureFormat: SignatureFormat, keyFormat: KeyFormat, promptMessage: String?, callback: (Result<SignatureResult>) -> Unit)
   /**
+   * Creates a signature from raw bytes.
+   *
+   * [payload] is the raw byte data to sign.
+   * [keyAlias] specifies which key to sign with. Defaults to the default alias.
+   * [config] contains platform-specific options. See [CreateSignatureConfig].
+   * [signatureFormat] specifies the output format for the signature.
+   * [keyFormat] specifies the output format for the public key.
+   * [promptMessage] is the message shown to the user during authentication.
+   */
+  fun createSignatureFromBytes(payload: ByteArray, keyAlias: String?, config: CreateSignatureConfig?, signatureFormat: SignatureFormat, keyFormat: KeyFormat, promptMessage: String?, callback: (Result<SignatureResult>) -> Unit)
+  /**
    * Decrypts data.
    *
    * Note: Not supported on Windows.
@@ -1216,6 +1227,31 @@ interface BiometricSignatureApi {
             val keyFormatArg = args[4] as KeyFormat
             val promptMessageArg = args[5] as String?
             api.createSignature(payloadArg, keyAliasArg, configArg, signatureFormatArg, keyFormatArg, promptMessageArg) { result: Result<SignatureResult> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(BiometricSignatureApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(BiometricSignatureApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.createSignatureFromBytes$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val payloadArg = args[0] as ByteArray
+            val keyAliasArg = args[1] as String?
+            val configArg = args[2] as CreateSignatureConfig?
+            val signatureFormatArg = args[3] as SignatureFormat
+            val keyFormatArg = args[4] as KeyFormat
+            val promptMessageArg = args[5] as String?
+            api.createSignatureFromBytes(payloadArg, keyAliasArg, configArg, signatureFormatArg, keyFormatArg, promptMessageArg) { result: Result<SignatureResult> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(BiometricSignatureApiPigeonUtils.wrapError(error))

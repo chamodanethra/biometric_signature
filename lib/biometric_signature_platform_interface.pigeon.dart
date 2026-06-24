@@ -1247,6 +1247,58 @@ class BiometricSignatureApi {
     }
   }
 
+  /// Creates a signature from raw bytes.
+  ///
+  /// [payload] is the raw byte data to sign.
+  /// [keyAlias] specifies which key to sign with. Defaults to the default alias.
+  /// [config] contains platform-specific options. See [CreateSignatureConfig].
+  /// [signatureFormat] specifies the output format for the signature.
+  /// [keyFormat] specifies the output format for the public key.
+  /// [promptMessage] is the message shown to the user during authentication.
+  Future<SignatureResult> createSignatureFromBytes(
+      Uint8List payload,
+      String? keyAlias,
+      CreateSignatureConfig? config,
+      SignatureFormat signatureFormat,
+      KeyFormat keyFormat,
+      String? promptMessage) async {
+    final String pigeonVar_channelName =
+        'dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.createSignatureFromBytes$pigeonVar_messageChannelSuffix';
+    final BasicMessageChannel<Object?> pigeonVar_channel =
+        BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel
+        .send(<Object?>[
+      payload,
+      keyAlias,
+      config,
+      signatureFormat,
+      keyFormat,
+      promptMessage
+    ]);
+    final List<Object?>? pigeonVar_replyList =
+        await pigeonVar_sendFuture as List<Object?>?;
+    if (pigeonVar_replyList == null) {
+      throw _createConnectionError(pigeonVar_channelName);
+    } else if (pigeonVar_replyList.length > 1) {
+      throw PlatformException(
+        code: pigeonVar_replyList[0]! as String,
+        message: pigeonVar_replyList[1] as String?,
+        details: pigeonVar_replyList[2],
+      );
+    } else if (pigeonVar_replyList[0] == null) {
+      throw PlatformException(
+        code: 'null-error',
+        message: 'Host platform returned null value for non-null return value.',
+      );
+    } else {
+      return (pigeonVar_replyList[0] as SignatureResult?)!;
+    }
+  }
+
   /// Decrypts data.
   ///
   /// Note: Not supported on Windows.

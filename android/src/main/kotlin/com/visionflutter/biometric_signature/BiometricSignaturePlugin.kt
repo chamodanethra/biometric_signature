@@ -385,6 +385,60 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         promptMessage: String?,
         callback: (Result<SignatureResult>) -> Unit
     ) {
+        if (payload.isBlank()) {
+            callback(
+                Result.success(
+                    SignatureResult(
+                        code = BiometricError.INVALID_INPUT,
+                        error = "Payload is required"
+                    )
+                )
+            )
+            return
+        }
+        createSignatureInternal(
+            payload.toByteArray(Charsets.UTF_8),
+            keyAlias,
+            config,
+            signatureFormat,
+            keyFormat,
+            promptMessage,
+            callback
+        )
+    }
+
+    override fun createSignatureFromBytes(
+        payload: ByteArray,
+        keyAlias: String?,
+        config: CreateSignatureConfig?,
+        signatureFormat: SignatureFormat,
+        keyFormat: KeyFormat,
+        promptMessage: String?,
+        callback: (Result<SignatureResult>) -> Unit
+    ) {
+        if (payload.isEmpty()) {
+            callback(
+                Result.success(
+                    SignatureResult(
+                        code = BiometricError.INVALID_INPUT,
+                        error = "Payload is required"
+                    )
+                )
+            )
+            return
+        }
+        createSignatureInternal(payload, keyAlias, config, signatureFormat, keyFormat, promptMessage, callback)
+    }
+
+    private fun createSignatureInternal(
+        payloadBytes: ByteArray,
+        keyAlias: String?,
+        config: CreateSignatureConfig?,
+        signatureFormat: SignatureFormat,
+        keyFormat: KeyFormat,
+        promptMessage: String?,
+        callback: (Result<SignatureResult>) -> Unit
+    ) {
         val act = activity
         if (act == null) {
             callback(
@@ -488,7 +542,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                             val sig = authenticatedCrypto?.signature
                                 ?: throw SecurityException("Biometric authentication did not return an authenticated signature")
                             try {
-                                sig.update(payload.toByteArray(Charsets.UTF_8))
+                                sig.update(payloadBytes)
                                 sig.sign()
                             } catch (e: IllegalArgumentException) {
                                 throw IllegalArgumentException("Invalid payload", e)

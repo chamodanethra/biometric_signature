@@ -170,7 +170,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^12.0.1
+  biometric_signature: ^12.1.0
 ```
 
 |             | Android | iOS   | macOS  | Windows |
@@ -415,6 +415,51 @@ Prompts the user for biometric authentication and generates a cryptographic sign
 ```dart
 final result = await biometricSignature.createSignature(
   payload: 'Data to sign',
+  keyAlias: 'payment_key',  // Optional: use named key
+  promptMessage: 'Please authenticate',
+  signatureFormat: SignatureFormat.base64,
+  keyFormat: KeyFormat.base64,
+  config: CreateSignatureConfig(
+    allowDeviceCredentials: false,
+  ),
+);
+```
+
+### `createSignatureFromBytes({ payload, keyAlias, config, signatureFormat, keyFormat, promptMessage })`
+
+Prompts the user for biometric authentication and generates a cryptographic signature over raw binary data. This is ideal for challenge-response authentication flows where a random nonce is generated as raw bytes.
+
+- **Parameters**:
+  - `payload`: The raw byte data (`Uint8List`) to sign
+  - `keyAlias`: Which key to sign with. Defaults to the default alias.
+  - `config`: `CreateSignatureConfig` with platform options
+  - `signatureFormat`: Output format for signature
+  - `keyFormat`: Output format for public key
+  - `promptMessage`: Custom authentication prompt
+
+#### CreateSignatureConfig Options
+
+| Option | Platforms | Description |
+|--------|-----------|-------------|
+| `allowDeviceCredentials` | Android | Allow PIN/pattern fallback |
+| `promptSubtitle` | Android | Subtitle for biometric prompt |
+| `promptDescription` | Android | Description for biometric prompt |
+| `cancelButtonText` | Android | Cancel button text |
+
+- **Returns**: `Future<SignatureResult>`.
+  - `signature`: The signed payload.
+  - `signatureBytes`: The raw signature bytes.
+  - `publicKey`: The public key.
+  - `code`: `BiometricError` code.
+
+```dart
+final random = Random.secure();
+final nonceBytes = Uint8List.fromList(
+  List<int>.generate(32, (_) => random.nextInt(256)),
+);
+
+final result = await biometricSignature.createSignatureFromBytes(
+  payload: nonceBytes,
   keyAlias: 'payment_key',  // Optional: use named key
   promptMessage: 'Please authenticate',
   signatureFormat: SignatureFormat.base64,
