@@ -778,13 +778,11 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         case kLAErrorBiometryLockout:
             return .lockedOut
         case kLAErrorAuthenticationFailed:
-            // a bad read (wet finger, glance-away) — retrying can work.
-            return .temporary
+            return .authenticationFailed
         case kLAErrorAppCancel:
             return .systemCanceled
         case kLAErrorNotInteractive:
-            // no UI allowed (app backgrounded) — works again once foregrounded.
-            return .temporary
+            return .notInteractive
         case kLAErrorPasscodeNotSet:
             return .passcodeNotSet
         case kLAErrorInvalidContext:
@@ -795,7 +793,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             // biometry not available *for this app* (permission/entitlement).
             return .notAvailable
         case -1000:
-            return .temporary
+            return .authenticationFailed
         default:
             return .unknown
         }
@@ -806,7 +804,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         case errSecUserCanceled, -128:
             return .userCanceled
         case errSecAuthFailed:
-            return .temporary
+            return .authenticationFailed
         case errSecInteractionNotAllowed:
             // UI not allowed (locked/suppressed) — not reliably transient; let
             // callers fall back to a non-interactive key instead.
