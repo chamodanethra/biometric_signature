@@ -141,6 +141,12 @@ enum BiometricError {
   /// should migrate to [passcodeNotSet]. iOS/macOS mapping of
   /// `kLAErrorPasscodeNotSet` changed in the same release.
   passcodeNotSet,
+
+  /// A transient problem that should resolve on its own — no user action
+  /// needed (e.g. app backgrounded mid-prompt, a pruned keystore operation,
+  /// a one-off system UI glitch). Callers should treat this as "try again
+  /// soon" and must NOT degrade to a weaker signer or force re-enrollment.
+  temporary,
 }
 
 class BiometricAvailability {

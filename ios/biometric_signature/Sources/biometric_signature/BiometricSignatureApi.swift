@@ -229,6 +229,11 @@ enum BiometricError: Int {
   /// should migrate to [passcodeNotSet]. iOS/macOS mapping of
   /// `kLAErrorPasscodeNotSet` changed in the same release.
   case passcodeNotSet = 15
+  /// A transient problem that should resolve on its own — no user action
+  /// needed (e.g. app backgrounded mid-prompt, a pruned keystore operation,
+  /// a one-off system UI glitch). Callers should treat this as "try again
+  /// soon" and must NOT degrade to a weaker signer or force re-enrollment.
+  case temporary = 16
 }
 
 /// The cryptographic algorithm to use for key generation.
@@ -586,10 +591,27 @@ struct CreateKeysConfig: Hashable {
   ///
   /// When `false` (default), existing keys are silently replaced.
   var failIfExists: Bool? = nil
-  /// [Android/iOS/macOS] Whether the key requires user authentication at use
-  /// time (signing/decryption). Defaults to `true`. When `false`, the key can
-  /// be used to sign/decrypt without any biometric or device-credential prompt.
-  /// Ignored on Windows (Windows Hello always authenticates).
+  /// [Android/iOS/macOS] Whether the key requires user authentication at *use*
+  /// time (signing/decryption). Defaults to `true`.
+  ///
+  /// When `false`, the key is created without a user-authentication constraint
+  /// and can be used to sign/decrypt **without any biometric or device-credential
+  /// prompt**. This is useful for a non-interactive, device-bound key that lives
+  /// alongside an interactive (biometric) key under a different [keyAlias].
+  ///
+  /// Platform behaviour:
+  /// - **Android**: the keystore key is generated without
+  ///   `setUserAuthenticationRequired(true)`, and signing/decryption skip the
+  ///   `BiometricPrompt`.
+  /// - **iOS/macOS**: the Secure Enclave key is created with only
+  ///   `.privateKeyUsage` access control (no `.biometryAny`/`.userPresence`) and
+  ///   `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so signing never
+  ///   prompts while the device is unlocked.
+  /// - **Windows**: ignored — Windows Hello always authenticates.
+  ///
+  /// **Security note**: a non-interactive key provides device binding
+  /// ("something you have") only; it does not verify user presence and cannot
+  /// satisfy inherence-based SCA requirements.
   var requireAuthentication: Bool? = nil
 
 

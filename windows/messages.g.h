@@ -156,7 +156,12 @@ enum class BiometricError {
   // were pattern-matching on [notAvailable] to drive a "no screen lock" UX
   // should migrate to [passcodeNotSet]. iOS/macOS mapping of
   // `kLAErrorPasscodeNotSet` changed in the same release.
-  kPasscodeNotSet = 15
+  kPasscodeNotSet = 15,
+  // A transient problem that should resolve on its own — no user action
+  // needed (e.g. app backgrounded mid-prompt, a pruned keystore operation,
+  // a one-off system UI glitch). Callers should treat this as "try again
+  // soon" and must NOT degrade to a weaker signer or force re-enrollment.
+  kTemporary = 16
 };
 
 // The cryptographic algorithm to use for key generation.
@@ -550,7 +555,8 @@ class CreateKeysConfig {
     const std::string* prompt_subtitle,
     const std::string* prompt_description,
     const std::string* cancel_button_text,
-    const bool* fail_if_exists);
+    const bool* fail_if_exists,
+    const bool* require_authentication);
 
   // [Android/iOS/macOS] The cryptographic algorithm to use.
   // Windows only supports RSA and ignores this field.
@@ -610,6 +616,31 @@ class CreateKeysConfig {
   void set_fail_if_exists(const bool* value_arg);
   void set_fail_if_exists(bool value_arg);
 
+  // [Android/iOS/macOS] Whether the key requires user authentication at *use*
+  // time (signing/decryption). Defaults to `true`.
+  //
+  // When `false`, the key is created without a user-authentication constraint
+  // and can be used to sign/decrypt **without any biometric or device-credential
+  // prompt**. This is useful for a non-interactive, device-bound key that lives
+  // alongside an interactive (biometric) key under a different [keyAlias].
+  //
+  // Platform behaviour:
+  // - **Android**: the keystore key is generated without
+  //   `setUserAuthenticationRequired(true)`, and signing/decryption skip the
+  //   `BiometricPrompt`.
+  // - **iOS/macOS**: the Secure Enclave key is created with only
+  //   `.privateKeyUsage` access control (no `.biometryAny`/`.userPresence`) and
+  //   `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so signing never
+  //   prompts while the device is unlocked.
+  // - **Windows**: ignored — Windows Hello always authenticates.
+  //
+  // **Security note**: a non-interactive key provides device binding
+  // ("something you have") only; it does not verify user presence and cannot
+  // satisfy inherence-based SCA requirements.
+  const bool* require_authentication() const;
+  void set_require_authentication(const bool* value_arg);
+  void set_require_authentication(bool value_arg);
+
  private:
   static CreateKeysConfig FromEncodableList(const flutter::EncodableList& list);
   flutter::EncodableList ToEncodableList() const;
@@ -624,6 +655,7 @@ class CreateKeysConfig {
   std::optional<std::string> prompt_description_;
   std::optional<std::string> cancel_button_text_;
   std::optional<bool> fail_if_exists_;
+  std::optional<bool> require_authentication_;
 };
 
 
