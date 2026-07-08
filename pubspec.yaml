@@ -1,7 +1,7 @@
 name: biometric_signature
 description: Hardware-backed biometric authentication for Flutter (Android, iOS, macOS, Windows). Create cryptographic signatures using Secure Enclave, StrongBox, and Windows Hello.
 topics: [biometrics, secure-enclave, strongbox, rsa, ecdsa]
-version: 12.1.0
+version: 13.0.0
 homepage: https://github.com/chamodanethra/biometric_signature
 
 environment:

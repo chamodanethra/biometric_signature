@@ -1,3 +1,14 @@
+## [13.0.0]
+
+### Added
+* **New `BiometricError.temporary`** for problems that resolve on their own with no user action (app backgrounded mid-prompt, a pruned keystore operation, a bad biometric read, a one-off system glitch). Consumers should treat it as "try again soon" and must not degrade to a weaker signer or force re-enrollment.
+
+### Changed (breaking)
+* Errors that used to surface as `unknown` are now classified as `temporary` where we can reliably tell they're transient:
+  * **iOS**: `authenticationFailed`, `notInteractive`, app-cancel, and the observed `-1000` code; `-1018` now maps to `notAvailable` ("not available for this app"); keychain `errSecAuthFailed` / `errSecInteractionNotAllowed` map to `temporary`.
+  * **Android**: pruned keystore operations, `TIMEOUT` (3), `UNABLE_TO_PROCESS` (2), and "key user not authenticated" now map to `temporary`.
+* Adding the enum value is breaking for exhaustive `switch`es on `BiometricError`.
+
 ## [12.1.0] - 2026-06-24
 
 ### Changed
