@@ -21,7 +21,8 @@ object ErrorMapper {
             BiometricError.PROMPT_ERROR -> "Biometric prompt error"
             BiometricError.KEY_ALREADY_EXISTS -> "Key already exists"
             BiometricError.PASSCODE_NOT_SET -> "No screen lock configured. Set up a PIN, pattern, or password to use biometrics"
-            BiometricError.TEMPORARY -> "Temporary problem, please try again"
+            BiometricError.AUTHENTICATION_FAILED -> "Authentication failed, please try again"
+            BiometricError.NOT_INTERACTIVE -> "Biometric prompt could not be shown right now"
             else -> {
                 // Preserve the raw BiometricPrompt error code and the original
                 // (localized) message so UNKNOWN failures stay self-classifying in
@@ -48,8 +49,7 @@ object ErrorMapper {
             msg.contains("BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED") -> BiometricError.SECURITY_UPDATE_REQUIRED
             msg.contains("BIOMETRIC_ERROR_UNSUPPORTED") -> BiometricError.NOT_SUPPORTED
 
-            causeCode == 2 -> BiometricError.TEMPORARY
-            causeCode == 3 -> BiometricError.TEMPORARY
+            causeCode == 2 -> BiometricError.AUTHENTICATION_FAILED
             causeCode == 4 -> BiometricError.SYSTEM_CANCELED
             causeCode == 5 -> BiometricError.USER_CANCELED
             causeCode == 7 -> BiometricError.LOCKED_OUT
@@ -65,10 +65,8 @@ object ErrorMapper {
 
             e is CancellationException -> BiometricError.USER_CANCELED
 
-            // Transient keystore faults: a pruned operation slot, or a key that
-            // wasn't authenticated in time. The key is intact — retry works.
-            isPrunedOperationError(e) -> BiometricError.TEMPORARY
-            msg.contains("Key user not authenticated") -> BiometricError.TEMPORARY
+            // The key required auth that wasn't satisfied — a failed attempt.
+            msg.contains("Key user not authenticated") -> BiometricError.AUTHENTICATION_FAILED
 
             e is IllegalArgumentException && (msg.contains("Base64") || msg.contains("payload")) -> BiometricError.INVALID_INPUT
 

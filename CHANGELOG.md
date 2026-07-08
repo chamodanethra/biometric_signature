@@ -1,13 +1,14 @@
 ## [13.0.0]
 
 ### Added
-* **New `BiometricError.temporary`** for problems that resolve on their own with no user action (app backgrounded mid-prompt, a pruned keystore operation, a bad biometric read, a one-off system glitch). Consumers should treat it as "try again soon" and must not degrade to a weaker signer or force re-enrollment.
+* **Two new descriptive `BiometricError` causes**: `authenticationFailed` (an attempt that didn't succeed — unrecognised biometric or the platform couldn't process it; retrying usually works) and `notInteractive` (the prompt couldn't be shown, e.g. the app is backgrounded). Whether to retry or degrade is left to the consumer.
 
 ### Changed (breaking)
-* Errors that used to surface as `unknown` are now classified as `temporary` where we can reliably tell they're transient:
-  * **iOS**: `authenticationFailed`, `notInteractive`, app-cancel, and the observed `-1000` code; `-1018` now maps to `notAvailable` ("not available for this app"); keychain `errSecAuthFailed` maps to `temporary`, `errSecInteractionNotAllowed` to `notAvailable`.
-  * **Android**: pruned keystore operations, `TIMEOUT` (3), `UNABLE_TO_PROCESS` (2), and "key user not authenticated" now map to `temporary`.
-* Adding the enum value is breaking for exhaustive `switch`es on `BiometricError`.
+* Errors that used to surface as `unknown` are now classified more precisely:
+  * **iOS**: `authenticationFailed` and the observed `-1000` code → `authenticationFailed`; `notInteractive` → `notInteractive`; app-cancel → `systemCanceled`; `-1018` and keychain `errSecInteractionNotAllowed` → `notAvailable`; keychain `errSecAuthFailed` → `authenticationFailed`.
+  * **Android**: `UNABLE_TO_PROCESS` (2) and "key user not authenticated" → `authenticationFailed`. Pruned keystore ops and `TIMEOUT` (3) stay `unknown` with the enriched message; the retry-once for pruned ops still applies.
+* Adding enum values is breaking for exhaustive `switch`es on `BiometricError`.
+
 
 ## [12.1.0] - 2026-06-24
 
