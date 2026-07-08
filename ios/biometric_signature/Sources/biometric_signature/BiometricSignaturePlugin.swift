@@ -808,8 +808,9 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         case errSecAuthFailed:
             return .temporary
         case errSecInteractionNotAllowed:
-            // keychain interaction not allowed right now (locked/background).
-            return .temporary
+            // UI not allowed (locked/suppressed) — not reliably transient; let
+            // callers fall back to a non-interactive key instead.
+            return .notAvailable
         case -25300:
             return .keyNotFound
         default:

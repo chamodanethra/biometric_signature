@@ -5,7 +5,7 @@
 
 ### Changed (breaking)
 * Errors that used to surface as `unknown` are now classified as `temporary` where we can reliably tell they're transient:
-  * **iOS**: `authenticationFailed`, `notInteractive`, app-cancel, and the observed `-1000` code; `-1018` now maps to `notAvailable` ("not available for this app"); keychain `errSecAuthFailed` / `errSecInteractionNotAllowed` map to `temporary`.
+  * **iOS**: `authenticationFailed`, `notInteractive`, app-cancel, and the observed `-1000` code; `-1018` now maps to `notAvailable` ("not available for this app"); keychain `errSecAuthFailed` maps to `temporary`, `errSecInteractionNotAllowed` to `notAvailable`.
   * **Android**: pruned keystore operations, `TIMEOUT` (3), `UNABLE_TO_PROCESS` (2), and "key user not authenticated" now map to `temporary`.
 * Adding the enum value is breaking for exhaustive `switch`es on `BiometricError`.
 
