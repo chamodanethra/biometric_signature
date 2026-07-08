@@ -208,12 +208,16 @@ enum class BiometricError(val raw: Int) {
    */
   PASSCODE_NOT_SET(15),
   /**
-   * A transient problem that should resolve on its own — no user action
-   * needed (e.g. app backgrounded mid-prompt, a pruned keystore operation,
-   * a one-off system UI glitch). Callers should treat this as "try again
-   * soon" and must NOT degrade to a weaker signer or force re-enrollment.
+   * Authentication was attempted but did not succeed (e.g. an unrecognised
+   * biometric, or the platform could not process the sample). The key is
+   * intact — retrying usually works.
    */
-  TEMPORARY(16);
+  AUTHENTICATION_FAILED(16),
+  /**
+   * The prompt could not be shown because UI is not currently allowed
+   * (e.g. the app is backgrounded). Works again once the app is foreground.
+   */
+  NOT_INTERACTIVE(17);
 
   companion object {
     fun ofRaw(raw: Int): BiometricError? {

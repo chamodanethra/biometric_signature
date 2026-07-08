@@ -154,11 +154,14 @@ enum BiometricError {
   /// `kLAErrorPasscodeNotSet` changed in the same release.
   passcodeNotSet,
 
-  /// A transient problem that should resolve on its own — no user action
-  /// needed (e.g. app backgrounded mid-prompt, a pruned keystore operation,
-  /// a one-off system UI glitch). Callers should treat this as "try again
-  /// soon" and must NOT degrade to a weaker signer or force re-enrollment.
-  temporary,
+  /// Authentication was attempted but did not succeed (e.g. an unrecognised
+  /// biometric, or the platform could not process the sample). The key is
+  /// intact — retrying usually works.
+  authenticationFailed,
+
+  /// The prompt could not be shown because UI is not currently allowed
+  /// (e.g. the app is backgrounded). Works again once the app is foreground.
+  notInteractive,
 }
 
 /// The cryptographic algorithm to use for key generation.
