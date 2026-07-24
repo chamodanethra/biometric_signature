@@ -38,6 +38,7 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
 
         if (enableDecryption) {
             builder.setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_OAEP)
+            tryPinOaepMgf1Digest(builder)
         }
 
         configurePerOperationAuth(builder, useDeviceCredentials)
@@ -177,6 +178,23 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
     ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && invalidateOnEnrollment) {
             builder.setInvalidatedByBiometricEnrollment(true)
+        }
+    }
+
+    /**
+     * Authorises SHA-1 as the OAEP MGF1 digest so the key matches the parameters decryption pins.
+     *
+     * Before API 35 a key carried no MGF1 authorisation at all and AndroidKeyStore always used
+     * SHA-1. From API 35 the set is explicit, and a key that does not declare one falls back to a
+     * platform default — the same undocumented behaviour this fix removes from the decrypt side.
+     * Declaring SHA-1 records today's value rather than inheriting whatever the default becomes.
+     * Best-effort: an unsupported builder call must not stop key creation.
+     */
+    private fun tryPinOaepMgf1Digest(builder: KeyGenParameterSpec.Builder) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            try {
+                builder.setMgf1Digests(KeyProperties.DIGEST_SHA1)
+            } catch (_: Throwable) {}
         }
     }
 

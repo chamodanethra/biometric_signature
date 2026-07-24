@@ -14,7 +14,7 @@ Even if an attacker bypasses or hooks biometric APIs, your backend will still re
 
 - **Cryptographic Proof Of Identity:** Hardware-backed RSA (Android) or ECDSA (all platforms) signatures that your backend can independently verify.
 - **Decryption Support:** 
-  - **RSA**: RSA/ECB/PKCS1Padding (Android native, iOS/macOS via wrapped software key)
+  - **RSA**: RSA-OAEP with a SHA-256 main digest (Android native, iOS/macOS via wrapped software key). The MGF1 digest differs by platform — see [Encrypting a payload](#encrypting-a-payload).
   - **EC**: ECIES (`eciesEncryptionStandardX963SHA256AESGCM`)
 - **Hardware Security:** Uses Secure Enclave (iOS/macOS) and Keystore/StrongBox (Android).
 - **Hybrid Architectures:**
@@ -39,7 +39,7 @@ Android supports three key modes:
 
 1. **RSA Mode** (`SignatureType.rsa`):
    - Hardware-backed RSA-2048 signing (Keystore/StrongBox)
-   - Optional RSA decryption (PKCS#1 padding)
+   - Optional RSA decryption (OAEP padding, SHA-256 main digest, SHA-1 MGF1 digest)
    - Private key never leaves secure hardware
 
 2. **EC Signing-Only** (`SignatureType.ecdsa`, `enableDecryption: false`):
@@ -170,7 +170,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^12.1.0
+  biometric_signature: ^12.1.1
 ```
 
 |             | Android | iOS   | macOS  | Windows |
@@ -331,6 +331,57 @@ The plugin also supports secure decryption, ensuring that sensitive data transmi
 4.  **Authentication**: The encrypted payload is sent to the device. The user must authenticate biometrically to proceed.
 5.  **Decryption**: Once authenticated, the secure hardware uses the private key to decrypt the payload, revealing the plaintext data to the app.
 
+#### Encrypting a payload
+
+Step 3 above has to match the scheme the device decrypts with. For RSA keys that is OAEP with a
+SHA-256 main digest on every platform — but the **MGF1 digest differs**, because each platform's
+crypto API fixes it:
+
+| Platform | Scheme | Main digest | MGF1 digest | Label |
+|----------|--------|-------------|-------------|-------|
+| Android | RSA-OAEP | SHA-256 | **SHA-1** | empty |
+| iOS / macOS | RSA-OAEP | SHA-256 | **SHA-256** | empty |
+
+Android Keystore applies SHA-1 for MGF1, while Apple's `SecKeyAlgorithm`
+`.rsaEncryptionOAEPSHA256` uses SHA-256 for both digests. From v12.1.1 the plugin states Android's
+parameters explicitly instead of inheriting the provider default, and pins SHA-1 on the key itself
+where the platform allows it (API 35+), so a backend can rely on the values above rather than on
+whatever the device happens to default to. Select the MGF1 digest from the client platform you
+issued the public key to:
+
+```python
+# Python (cryptography) — Android
+ciphertext = public_key.encrypt(
+    plaintext,
+    padding.OAEP(
+        mgf=padding.MGF1(algorithm=hashes.SHA1()),
+        algorithm=hashes.SHA256(),
+        label=None,
+    ),
+)
+
+# Python (cryptography) — iOS / macOS
+ciphertext = public_key.encrypt(
+    plaintext,
+    padding.OAEP(
+        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+        algorithm=hashes.SHA256(),
+        label=None,
+    ),
+)
+```
+
+RSA-2048 with a SHA-256 OAEP digest leaves 190 bytes of plaintext capacity; wrap a symmetric key
+rather than the payload itself if you need more.
+
+For EC keys the payload is encrypted with ECIES (`eciesEncryptionStandardX963SHA256AESGCM`) on all
+platforms, so no per-platform branch is needed. iOS/macOS keys created with `SignatureType.rsa` use
+the hybrid architecture and still decrypt RSA-OAEP payloads — encrypt against the RSA key returned
+in `decryptingPublicKey`.
+
+> Keys created before v11.0.0 authorise PKCS#1 v1.5 instead of OAEP. The plugin still falls back to
+> PKCS#1 v1.5 for those, so existing ciphertext keeps working, but new keys should use OAEP.
+
 ## Class: BiometricSignaturePlugin
 
 This class provides methods to manage and utilize biometric authentication for secure server interactions. It supports both Android and iOS platforms.
@@ -475,7 +526,7 @@ final result = await biometricSignature.createSignatureFromBytes(
 Decrypts the given payload using the private key and biometrics.
 
 - **Parameters**:
-  - `payload`: The encrypted data
+  - `payload`: The encrypted data. See [Encrypting a payload](#encrypting-a-payload) for the exact scheme the backend must use.
   - `payloadFormat`: Format of encrypted data (`PayloadFormat.base64`, `hex`)
   - `keyAlias`: Which key to decrypt with. Defaults to the default alias.
   - `config`: `DecryptConfig` with platform options
