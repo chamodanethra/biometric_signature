@@ -451,7 +451,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             )
             return
         }
-        if (payload.isBlank()) {
+        if (payloadBytes.isEmpty()) {
             callback(
                 Result.success(
                     SignatureResult(
@@ -486,7 +486,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                             signatureBytes = withContext(Dispatchers.IO) {
                                 val (signature, _) = cryptoOperations.prepareSignature(keyAlias, mode)
                                 try {
-                                    signature.update(payload.toByteArray(Charsets.UTF_8))
+                                    signature.update(payloadBytes)
                                     signature.sign()
                                 } catch (e: IllegalArgumentException) {
                                     throw IllegalArgumentException("Invalid payload", e)

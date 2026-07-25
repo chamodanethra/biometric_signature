@@ -1,3 +1,15 @@
+## [13.0.0]
+
+### Added
+* **Two new descriptive `BiometricError` causes**: `authenticationFailed` (an attempt that didn't succeed — unrecognised biometric or the platform couldn't process it; retrying usually works) and `notInteractive` (the prompt couldn't be shown, e.g. the app is backgrounded). Whether to retry or degrade is left to the consumer.
+
+### Changed (breaking)
+* Errors that used to surface as `unknown` are now classified more precisely:
+  * **iOS**: `authenticationFailed` and the observed `-1000` code → `authenticationFailed`; `notInteractive` → `notInteractive`; app-cancel → `systemCanceled`; `-1018` and keychain `errSecInteractionNotAllowed` → `notAvailable`; keychain `errSecAuthFailed` → `authenticationFailed`.
+  * **Android**: `UNABLE_TO_PROCESS` (2) and "key user not authenticated" → `authenticationFailed`. Pruned keystore ops and `TIMEOUT` (3) stay `unknown` with the enriched message; the retry-once for pruned ops still applies.
+* Adding enum values is breaking for exhaustive `switch`es on `BiometricError`.
+
+
 ## [12.1.0] - 2026-06-24
 
 ### Changed

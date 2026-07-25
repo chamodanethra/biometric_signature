@@ -141,6 +141,15 @@ enum BiometricError {
   /// should migrate to [passcodeNotSet]. iOS/macOS mapping of
   /// `kLAErrorPasscodeNotSet` changed in the same release.
   passcodeNotSet,
+
+  /// Authentication was attempted but did not succeed (e.g. an unrecognised
+  /// biometric, or the platform could not process the sample). The key is
+  /// intact — retrying usually works.
+  authenticationFailed,
+
+  /// The prompt could not be shown because UI is not currently allowed
+  /// (e.g. the app is backgrounded). Works again once the app is foreground.
+  notInteractive,
 }
 
 class BiometricAvailability {

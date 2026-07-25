@@ -778,11 +778,22 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         case kLAErrorBiometryLockout:
             return .lockedOut
         case kLAErrorAuthenticationFailed:
-            return .unknown
+            return .authenticationFailed
+        case kLAErrorAppCancel:
+            return .systemCanceled
+        case kLAErrorNotInteractive:
+            return .notInteractive
         case kLAErrorPasscodeNotSet:
             return .passcodeNotSet
         case kLAErrorInvalidContext:
             return .promptError
+        // Newer iOS surfaces these under the LA domain without matching a
+        // public LAError constant; mapped from observed production events.
+        case -1018:
+            // biometry not available *for this app* (permission/entitlement).
+            return .notAvailable
+        case -1000:
+            return .authenticationFailed
         default:
             return .unknown
         }
@@ -793,8 +804,10 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         case errSecUserCanceled, -128:
             return .userCanceled
         case errSecAuthFailed:
-            return .unknown
+            return .authenticationFailed
         case errSecInteractionNotAllowed:
+            // UI not allowed (locked/suppressed) — not reliably transient; let
+            // callers fall back to a non-interactive key instead.
             return .notAvailable
         case -25300:
             return .keyNotFound

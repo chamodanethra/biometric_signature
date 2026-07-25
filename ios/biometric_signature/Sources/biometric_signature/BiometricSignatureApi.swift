@@ -229,6 +229,13 @@ enum BiometricError: Int {
   /// should migrate to [passcodeNotSet]. iOS/macOS mapping of
   /// `kLAErrorPasscodeNotSet` changed in the same release.
   case passcodeNotSet = 15
+  /// Authentication was attempted but did not succeed (e.g. an unrecognised
+  /// biometric, or the platform could not process the sample). The key is
+  /// intact — retrying usually works.
+  case authenticationFailed = 16
+  /// The prompt could not be shown because UI is not currently allowed
+  /// (e.g. the app is backgrounded). Works again once the app is foreground.
+  case notInteractive = 17
 }
 
 /// The cryptographic algorithm to use for key generation.
@@ -586,10 +593,27 @@ struct CreateKeysConfig: Hashable {
   ///
   /// When `false` (default), existing keys are silently replaced.
   var failIfExists: Bool? = nil
-  /// [Android/iOS/macOS] Whether the key requires user authentication at use
-  /// time (signing/decryption). Defaults to `true`. When `false`, the key can
-  /// be used to sign/decrypt without any biometric or device-credential prompt.
-  /// Ignored on Windows (Windows Hello always authenticates).
+  /// [Android/iOS/macOS] Whether the key requires user authentication at *use*
+  /// time (signing/decryption). Defaults to `true`.
+  ///
+  /// When `false`, the key is created without a user-authentication constraint
+  /// and can be used to sign/decrypt **without any biometric or device-credential
+  /// prompt**. This is useful for a non-interactive, device-bound key that lives
+  /// alongside an interactive (biometric) key under a different [keyAlias].
+  ///
+  /// Platform behaviour:
+  /// - **Android**: the keystore key is generated without
+  ///   `setUserAuthenticationRequired(true)`, and signing/decryption skip the
+  ///   `BiometricPrompt`.
+  /// - **iOS/macOS**: the Secure Enclave key is created with only
+  ///   `.privateKeyUsage` access control (no `.biometryAny`/`.userPresence`) and
+  ///   `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so signing never
+  ///   prompts while the device is unlocked.
+  /// - **Windows**: ignored — Windows Hello always authenticates.
+  ///
+  /// **Security note**: a non-interactive key provides device binding
+  /// ("something you have") only; it does not verify user presence and cannot
+  /// satisfy inherence-based SCA requirements.
   var requireAuthentication: Bool? = nil
 
 
