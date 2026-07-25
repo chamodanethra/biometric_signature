@@ -1,4 +1,17 @@
-## [12.1.0] - 2026-06-23
+## [13.0.0]
+
+### Added
+* **Two new descriptive `BiometricError` causes**: `authenticationFailed` (an attempt that didn't succeed — unrecognised biometric or the platform couldn't process it; retrying usually works) and `notInteractive` (the prompt couldn't be shown, e.g. the app is backgrounded). Whether to retry or degrade is left to the consumer.
+
+### Changed (breaking)
+* Errors that used to surface as `unknown` are now classified more precisely:
+  * **iOS**: `authenticationFailed` and the observed `-1000` code → `authenticationFailed`; `notInteractive` → `notInteractive`; app-cancel → `systemCanceled`; `-1018` and keychain `errSecInteractionNotAllowed` → `notAvailable`; keychain `errSecAuthFailed` → `authenticationFailed`.
+  * **Android**: `UNABLE_TO_PROCESS` (2) and "key user not authenticated" → `authenticationFailed`. Pruned keystore ops and `TIMEOUT` (3) stay `unknown` with the enriched message; the retry-once for pruned ops still applies.
+* Adding enum values is breaking for exhaustive `switch`es on `BiometricError`.
+
+### Fixed(android): pin RSA-OAEP MGF1 digest to SHA-1 for decryption
+
+AndroidKeyStore defaults to SHA-1 for the MGF1 digest in RSA-OAEP, even when SHA-256 is used as the main digest. To prevent future platform changes from making existing ciphertexts undecryptable, this change explicitly pins the RSA-OAEP parameters.
 
 ### Changed
 * **Signing failures now report a meaningful error code instead of `unknown` (iOS/macOS).** `createSignature` previously hard-coded `code: .unknown` on every `SecKeyCreateSignature` failure, discarding the real cause. `classifySigningError` now walks the `CFError`'s `NSUnderlyingErrorKey` chain and maps the first layer it recognises — `LAErrorDomain` via `mapLAError`, `NSOSStatusErrorDomain` (e.g. `errSecUserCanceled` / -128) via `mapSecError` — so a cancelled or unavailable signing prompt surfaces `BiometricError.userCanceled` / `BiometricError.notAvailable` regardless of whether the cancel arrives as the top-level `CFError`, an OSStatus layer, or a nested `LAError` (e.g. a localized `"Authentifizierung abgebrochen."` cancel). The `"Signing Error: …"` message is additionally enriched with the full `domain:code` chain (e.g. `… [CryptoTokenKit:-4 -> com.apple.LocalAuthentication:-2]`) so any still-unmapped failure is self-describing in logs. Both the RSA and EC signing paths are covered.
