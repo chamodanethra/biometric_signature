@@ -737,15 +737,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             val alias = Constants.biometricKeyAlias(keyAlias)
             val entry = keyStore.getEntry(alias, null) as? KeyStore.PrivateKeyEntry
                 ?: throw IllegalStateException("RSA key not found")
-            try {
-                Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding").apply {
-                    init(Cipher.DECRYPT_MODE, entry.privateKey)
-                }
-            } catch (e: InvalidKeyException) {
-                Cipher.getInstance("RSA/ECB/PKCS1Padding").apply {
-                    init(Cipher.DECRYPT_MODE, entry.privateKey)
-                }
-            }
+            openRsaDecryptCipher(entry.privateKey)
         }
 
         biometricPromptHelper.checkBiometricAvailability(activity, allowDeviceCredentials)
@@ -768,6 +760,38 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
 
         return DecryptSuccess(String(decrypted, Charsets.UTF_8), successOutcome.authenticationType)
     }
+
+    /**
+     * Opens the cipher used to decrypt an RSA payload, preferring OAEP with both digests pinned.
+     *
+     * `Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding")` names only the main digest;
+     * AndroidKeyStore then picks the MGF1 digest itself and has always chosen SHA-1. Relying on
+     * that undocumented default means a future platform change could make already-encrypted data
+     * undecryptable, so the primary path states both digests explicitly via
+     * [Constants.RSA_OAEP_SHA256_MGF1_SHA1]. SHA-1 reproduces the parameters every existing
+     * ciphertext was built with, so pinning is behaviour-preserving.
+     *
+     * Two fallbacks stay in place so no key that decrypts today stops decrypting:
+     * a provider that rejects the explicit spec still gets the previous unparameterised OAEP
+     * call, and keys created before v11.0.0 — which only authorise PKCS#1 v1.5 — still reach
+     * that transformation.
+     */
+    private fun openRsaDecryptCipher(privateKey: PrivateKey): Cipher =
+        try {
+            Cipher.getInstance(Constants.RSA_OAEP_TRANSFORMATION).apply {
+                init(Cipher.DECRYPT_MODE, privateKey, Constants.RSA_OAEP_SHA256_MGF1_SHA1)
+            }
+        } catch (_: GeneralSecurityException) {
+            try {
+                Cipher.getInstance(Constants.RSA_OAEP_SHA256_TRANSFORMATION).apply {
+                    init(Cipher.DECRYPT_MODE, privateKey)
+                }
+            } catch (_: GeneralSecurityException) {
+                Cipher.getInstance(Constants.RSA_PKCS1_TRANSFORMATION).apply {
+                    init(Cipher.DECRYPT_MODE, privateKey)
+                }
+            }
+        }
 
     private suspend fun decryptHybridEc(
         activity: FlutterFragmentActivity,

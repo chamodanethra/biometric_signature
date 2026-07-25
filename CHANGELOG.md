@@ -1,4 +1,4 @@
-## [13.0.0]
+## [13.0.0] - 2026-07-25
 
 ### Added
 * **Two new descriptive `BiometricError` causes**: `authenticationFailed` (an attempt that didn't succeed — unrecognised biometric or the platform couldn't process it; retrying usually works) and `notInteractive` (the prompt couldn't be shown, e.g. the app is backgrounded). Whether to retry or degrade is left to the consumer.
@@ -9,6 +9,9 @@
   * **Android**: `UNABLE_TO_PROCESS` (2) and "key user not authenticated" → `authenticationFailed`. Pruned keystore ops and `TIMEOUT` (3) stay `unknown` with the enriched message; the retry-once for pruned ops still applies.
 * Adding enum values is breaking for exhaustive `switch`es on `BiometricError`.
 
+### Fixed(android): pin RSA-OAEP MGF1 digest to SHA-1 for decryption
+
+AndroidKeyStore defaults to SHA-1 for the MGF1 digest in RSA-OAEP, even when SHA-256 is used as the main digest. To prevent future platform changes from making existing ciphertexts undecryptable, this change explicitly pins the RSA-OAEP parameters.
 
 ## [12.1.0] - 2026-06-24
 
