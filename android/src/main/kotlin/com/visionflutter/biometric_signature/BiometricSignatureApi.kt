@@ -206,7 +206,18 @@ enum class BiometricError(val raw: Int) {
    * should migrate to [passcodeNotSet]. iOS/macOS mapping of
    * `kLAErrorPasscodeNotSet` changed in the same release.
    */
-  PASSCODE_NOT_SET(15);
+  PASSCODE_NOT_SET(15),
+  /**
+   * Authentication was attempted but did not succeed (e.g. an unrecognised
+   * biometric, or the platform could not process the sample). The key is
+   * intact — retrying usually works.
+   */
+  AUTHENTICATION_FAILED(16),
+  /**
+   * The prompt could not be shown because UI is not currently allowed
+   * (e.g. the app is backgrounded). Works again once the app is foreground.
+   */
+  NOT_INTERACTIVE(17);
 
   companion object {
     fun ofRaw(raw: Int): BiometricError? {
@@ -601,7 +612,31 @@ data class CreateKeysConfig (
    *
    * When `false` (default), existing keys are silently replaced.
    */
-  val failIfExists: Boolean? = null
+  val failIfExists: Boolean? = null,
+  /**
+   * [Android/iOS/macOS] Whether the key requires user authentication at *use*
+   * time (signing/decryption). Defaults to `true`.
+   *
+   * When `false`, the key is created without a user-authentication constraint
+   * and can be used to sign/decrypt **without any biometric or device-credential
+   * prompt**. This is useful for a non-interactive, device-bound key that lives
+   * alongside an interactive (biometric) key under a different [keyAlias].
+   *
+   * Platform behaviour:
+   * - **Android**: the keystore key is generated without
+   *   `setUserAuthenticationRequired(true)`, and signing/decryption skip the
+   *   `BiometricPrompt`.
+   * - **iOS/macOS**: the Secure Enclave key is created with only
+   *   `.privateKeyUsage` access control (no `.biometryAny`/`.userPresence`) and
+   *   `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so signing never
+   *   prompts while the device is unlocked.
+   * - **Windows**: ignored — Windows Hello always authenticates.
+   *
+   * **Security note**: a non-interactive key provides device binding
+   * ("something you have") only; it does not verify user presence and cannot
+   * satisfy inherence-based SCA requirements.
+   */
+  val requireAuthentication: Boolean? = null
 )
  {
   companion object {
@@ -615,7 +650,8 @@ data class CreateKeysConfig (
       val promptDescription = pigeonVar_list[6] as String?
       val cancelButtonText = pigeonVar_list[7] as String?
       val failIfExists = pigeonVar_list[8] as Boolean?
-      return CreateKeysConfig(signatureType, enforceBiometric, setInvalidatedByBiometricEnrollment, useDeviceCredentials, enableDecryption, promptSubtitle, promptDescription, cancelButtonText, failIfExists)
+      val requireAuthentication = pigeonVar_list[9] as Boolean?
+      return CreateKeysConfig(signatureType, enforceBiometric, setInvalidatedByBiometricEnrollment, useDeviceCredentials, enableDecryption, promptSubtitle, promptDescription, cancelButtonText, failIfExists, requireAuthentication)
     }
   }
   fun toList(): List<Any?> {
@@ -629,6 +665,7 @@ data class CreateKeysConfig (
       promptDescription,
       cancelButtonText,
       failIfExists,
+      requireAuthentication,
     )
   }
   override fun equals(other: Any?): Boolean {

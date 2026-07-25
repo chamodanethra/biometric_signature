@@ -7,6 +7,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import java.io.File
 import java.security.KeyPair
+import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.interfaces.ECPublicKey
@@ -21,7 +22,8 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
         keyAlias: String?,
         useDeviceCredentials: Boolean,
         invalidateOnEnrollment: Boolean,
-        enableDecryption: Boolean
+        enableDecryption: Boolean,
+        requireAuthentication: Boolean
     ): KeyPair {
         val purposes = if (enableDecryption) {
             KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_DECRYPT
@@ -34,15 +36,17 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
             .setDigests(KeyProperties.DIGEST_SHA256)
             .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
             .setAlgorithmParameterSpec(RSAKeyGenParameterSpec(2048, RSAKeyGenParameterSpec.F4))
-            .setUserAuthenticationRequired(true)
+            .setUserAuthenticationRequired(requireAuthentication)
 
         if (enableDecryption) {
             builder.setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_OAEP)
             tryPinOaepMgf1Digest(builder)
         }
 
-        configurePerOperationAuth(builder, useDeviceCredentials)
-        configureInvalidation(builder, invalidateOnEnrollment)
+        if (requireAuthentication) {
+            configurePerOperationAuth(builder, useDeviceCredentials)
+            configureInvalidation(builder, invalidateOnEnrollment)
+        }
         tryEnableStrongBox(builder)
 
         val kpg = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, Constants.KEYSTORE_PROVIDER)
@@ -53,16 +57,19 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
     fun generateEcKeyInKeyStore(
         keyAlias: String?,
         useDeviceCredentials: Boolean,
-        invalidateOnEnrollment: Boolean
+        invalidateOnEnrollment: Boolean,
+        requireAuthentication: Boolean
     ): KeyPair {
         val alias = Constants.biometricKeyAlias(keyAlias)
         val builder = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
             .setDigests(KeyProperties.DIGEST_SHA256)
             .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
-            .setUserAuthenticationRequired(true)
+            .setUserAuthenticationRequired(requireAuthentication)
 
-        configurePerOperationAuth(builder, useDeviceCredentials)
-        configureInvalidation(builder, invalidateOnEnrollment)
+        if (requireAuthentication) {
+            configurePerOperationAuth(builder, useDeviceCredentials)
+            configureInvalidation(builder, invalidateOnEnrollment)
+        }
         tryEnableStrongBox(builder)
 
         val kpg = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, Constants.KEYSTORE_PROVIDER)
@@ -70,7 +77,7 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
         return kpg.generateKeyPair()
     }
 
-    fun generateMasterKey(keyAlias: String?, useDeviceCredentials: Boolean, invalidateOnEnrollment: Boolean) {
+    fun generateMasterKey(keyAlias: String?, useDeviceCredentials: Boolean, invalidateOnEnrollment: Boolean, requireAuthentication: Boolean) {
         val alias = Constants.masterKeyAlias(keyAlias)
         val builder = KeyGenParameterSpec.Builder(
             alias,
@@ -79,10 +86,12 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
             .setKeySize(256)
-            .setUserAuthenticationRequired(true)
+            .setUserAuthenticationRequired(requireAuthentication)
 
-        configurePerOperationAuth(builder, useDeviceCredentials)
-        configureInvalidation(builder, invalidateOnEnrollment)
+        if (requireAuthentication) {
+            configurePerOperationAuth(builder, useDeviceCredentials)
+            configureInvalidation(builder, invalidateOnEnrollment)
+        }
 
         val keyGen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, Constants.KEYSTORE_PROVIDER)
         keyGen.init(builder.build())
@@ -132,6 +141,25 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
                 runCatching { file.writeBytes(ByteArray(file.length().toInt())) }
                 file.delete()
             }
+        }
+    }
+
+    /**
+     * Whether the signing key for [keyAlias] was created requiring user
+     * authentication. Returns `true` (the safe default) when the key is missing
+     * or its metadata cannot be read. Used to decide whether signing/decryption
+     * must show a BiometricPrompt.
+     */
+    fun isUserAuthenticationRequired(keyAlias: String?): Boolean {
+        val keyStore = KeyStore.getInstance(Constants.KEYSTORE_PROVIDER).apply { load(null) }
+        val alias = Constants.biometricKeyAlias(keyAlias)
+        val entry = keyStore.getEntry(alias, null) as? KeyStore.PrivateKeyEntry ?: return true
+        return try {
+            val factory = KeyFactory.getInstance(entry.privateKey.algorithm, Constants.KEYSTORE_PROVIDER)
+            val info = factory.getKeySpec(entry.privateKey, android.security.keystore.KeyInfo::class.java)
+            (info as android.security.keystore.KeyInfo).isUserAuthenticationRequired
+        } catch (e: Exception) {
+            true
         }
     }
 

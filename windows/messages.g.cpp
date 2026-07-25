@@ -846,7 +846,8 @@ CreateKeysConfig::CreateKeysConfig(
   const std::string* prompt_subtitle,
   const std::string* prompt_description,
   const std::string* cancel_button_text,
-  const bool* fail_if_exists)
+  const bool* fail_if_exists,
+  const bool* require_authentication)
  : signature_type_(signature_type ? std::optional<SignatureType>(*signature_type) : std::nullopt),
     enforce_biometric_(enforce_biometric ? std::optional<bool>(*enforce_biometric) : std::nullopt),
     set_invalidated_by_biometric_enrollment_(set_invalidated_by_biometric_enrollment ? std::optional<bool>(*set_invalidated_by_biometric_enrollment) : std::nullopt),
@@ -855,7 +856,8 @@ CreateKeysConfig::CreateKeysConfig(
     prompt_subtitle_(prompt_subtitle ? std::optional<std::string>(*prompt_subtitle) : std::nullopt),
     prompt_description_(prompt_description ? std::optional<std::string>(*prompt_description) : std::nullopt),
     cancel_button_text_(cancel_button_text ? std::optional<std::string>(*cancel_button_text) : std::nullopt),
-    fail_if_exists_(fail_if_exists ? std::optional<bool>(*fail_if_exists) : std::nullopt) {}
+    fail_if_exists_(fail_if_exists ? std::optional<bool>(*fail_if_exists) : std::nullopt),
+    require_authentication_(require_authentication ? std::optional<bool>(*require_authentication) : std::nullopt) {}
 
 const SignatureType* CreateKeysConfig::signature_type() const {
   return signature_type_ ? &(*signature_type_) : nullptr;
@@ -974,9 +976,22 @@ void CreateKeysConfig::set_fail_if_exists(bool value_arg) {
 }
 
 
+const bool* CreateKeysConfig::require_authentication() const {
+  return require_authentication_ ? &(*require_authentication_) : nullptr;
+}
+
+void CreateKeysConfig::set_require_authentication(const bool* value_arg) {
+  require_authentication_ = value_arg ? std::optional<bool>(*value_arg) : std::nullopt;
+}
+
+void CreateKeysConfig::set_require_authentication(bool value_arg) {
+  require_authentication_ = value_arg;
+}
+
+
 EncodableList CreateKeysConfig::ToEncodableList() const {
   EncodableList list;
-  list.reserve(9);
+  list.reserve(10);
   list.push_back(signature_type_ ? CustomEncodableValue(*signature_type_) : EncodableValue());
   list.push_back(enforce_biometric_ ? EncodableValue(*enforce_biometric_) : EncodableValue());
   list.push_back(set_invalidated_by_biometric_enrollment_ ? EncodableValue(*set_invalidated_by_biometric_enrollment_) : EncodableValue());
@@ -986,6 +1001,7 @@ EncodableList CreateKeysConfig::ToEncodableList() const {
   list.push_back(prompt_description_ ? EncodableValue(*prompt_description_) : EncodableValue());
   list.push_back(cancel_button_text_ ? EncodableValue(*cancel_button_text_) : EncodableValue());
   list.push_back(fail_if_exists_ ? EncodableValue(*fail_if_exists_) : EncodableValue());
+  list.push_back(require_authentication_ ? EncodableValue(*require_authentication_) : EncodableValue());
   return list;
 }
 
@@ -1026,6 +1042,10 @@ CreateKeysConfig CreateKeysConfig::FromEncodableList(const EncodableList& list) 
   auto& encodable_fail_if_exists = list[8];
   if (!encodable_fail_if_exists.IsNull()) {
     decoded.set_fail_if_exists(std::get<bool>(encodable_fail_if_exists));
+  }
+  auto& encodable_require_authentication = list[9];
+  if (!encodable_require_authentication.IsNull()) {
+    decoded.set_require_authentication(std::get<bool>(encodable_require_authentication));
   }
   return decoded;
 }
