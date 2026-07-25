@@ -21,6 +21,8 @@ object ErrorMapper {
             BiometricError.PROMPT_ERROR -> "Biometric prompt error"
             BiometricError.KEY_ALREADY_EXISTS -> "Key already exists"
             BiometricError.PASSCODE_NOT_SET -> "No screen lock configured. Set up a PIN, pattern, or password to use biometrics"
+            BiometricError.AUTHENTICATION_FAILED -> "Authentication failed, please try again"
+            BiometricError.NOT_INTERACTIVE -> "Biometric prompt could not be shown right now"
             else -> {
                 // Preserve the raw BiometricPrompt error code and the original
                 // (localized) message so UNKNOWN failures stay self-classifying in
@@ -47,6 +49,7 @@ object ErrorMapper {
             msg.contains("BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED") -> BiometricError.SECURITY_UPDATE_REQUIRED
             msg.contains("BIOMETRIC_ERROR_UNSUPPORTED") -> BiometricError.NOT_SUPPORTED
 
+            causeCode == 2 -> BiometricError.AUTHENTICATION_FAILED
             causeCode == 4 -> BiometricError.SYSTEM_CANCELED
             causeCode == 5 -> BiometricError.USER_CANCELED
             causeCode == 7 -> BiometricError.LOCKED_OUT
@@ -61,6 +64,9 @@ object ErrorMapper {
             e is KeyPermanentlyInvalidatedException -> BiometricError.KEY_INVALIDATED
 
             e is CancellationException -> BiometricError.USER_CANCELED
+
+            // The key required auth that wasn't satisfied — a failed attempt.
+            msg.contains("Key user not authenticated") -> BiometricError.AUTHENTICATION_FAILED
 
             e is IllegalArgumentException && (msg.contains("Base64") || msg.contains("payload")) -> BiometricError.INVALID_INPUT
 
@@ -104,14 +110,32 @@ object ErrorMapper {
         requestedStrength: BiometricStrength
     ): Pair<BiometricError, String> {
         return when (canAuthResult) {
-            BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> Pair(BiometricError.NOT_AVAILABLE, "No biometric hardware available")
-            BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> Pair(BiometricError.NOT_AVAILABLE, "Biometric hardware unavailable")
+            BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> Pair(
+                BiometricError.NOT_AVAILABLE,
+                "No biometric hardware available"
+            )
+
+            BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> Pair(
+                BiometricError.NOT_AVAILABLE,
+                "Biometric hardware unavailable"
+            )
+
             BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> {
-                val strengthName = if (requestedStrength == BiometricStrength.STRONG) "Class 3 (strong)" else "Class 2+ (weak or strong)"
+                val strengthName =
+                    if (requestedStrength == BiometricStrength.STRONG) "Class 3 (strong)" else "Class 2+ (weak or strong)"
                 Pair(BiometricError.NOT_ENROLLED, "No $strengthName biometrics enrolled.")
             }
-            BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED -> Pair(BiometricError.SECURITY_UPDATE_REQUIRED, "Security update required")
-            BiometricManager.BIOMETRIC_ERROR_UNSUPPORTED -> Pair(BiometricError.NOT_SUPPORTED, "Biometric authentication not supported")
+
+            BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED -> Pair(
+                BiometricError.SECURITY_UPDATE_REQUIRED,
+                "Security update required"
+            )
+
+            BiometricManager.BIOMETRIC_ERROR_UNSUPPORTED -> Pair(
+                BiometricError.NOT_SUPPORTED,
+                "Biometric authentication not supported"
+            )
+
             BiometricManager.BIOMETRIC_STATUS_UNKNOWN -> Pair(BiometricError.UNKNOWN, "Biometric status unknown")
             else -> Pair(BiometricError.UNKNOWN, "Unknown biometric error (code: $canAuthResult)")
         }

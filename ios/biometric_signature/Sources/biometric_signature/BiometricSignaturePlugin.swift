@@ -334,7 +334,10 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         let useDeviceCredentials = config?.useDeviceCredentials ?? false
         let biometryCurrentSet = config?.setInvalidatedByBiometricEnrollment ?? false
         let signatureType = config?.signatureType ?? .rsa
-        let enforceBiometric = config?.enforceBiometric ?? false
+        let requireAuthentication = config?.requireAuthentication ?? true
+        // A non-interactive key (requireAuthentication == false) must never prompt,
+        // not even at creation time, regardless of enforceBiometric.
+        let enforceBiometric = (config?.enforceBiometric ?? false) && requireAuthentication
         let prompt = promptMessage ?? "Authenticate to create keys"
 
         // Delete existing keys for this alias first
@@ -349,7 +352,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
                 biometryCurrentSet: biometryCurrentSet,
                 signatureType: signatureType,
                 keyFormat: keyFormat,
-                authenticationType: authType
+                authenticationType: authType,
+                requireAuthentication: requireAuthentication
             ) { result in
                 completion(result)
             }
@@ -774,11 +778,22 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         case kLAErrorBiometryLockout:
             return .lockedOut
         case kLAErrorAuthenticationFailed:
-            return .unknown
+            return .authenticationFailed
+        case kLAErrorAppCancel:
+            return .systemCanceled
+        case kLAErrorNotInteractive:
+            return .notInteractive
         case kLAErrorPasscodeNotSet:
             return .passcodeNotSet
         case kLAErrorInvalidContext:
             return .promptError
+        // Newer iOS surfaces these under the LA domain without matching a
+        // public LAError constant; mapped from observed production events.
+        case -1018:
+            // biometry not available *for this app* (permission/entitlement).
+            return .notAvailable
+        case -1000:
+            return .authenticationFailed
         default:
             return .unknown
         }
@@ -789,8 +804,10 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         case errSecUserCanceled, -128:
             return .userCanceled
         case errSecAuthFailed:
-            return .unknown
+            return .authenticationFailed
         case errSecInteractionNotAllowed:
+            // UI not allowed (locked/suppressed) — not reliably transient; let
+            // callers fall back to a non-interactive key instead.
             return .notAvailable
         case -25300:
             return .keyNotFound
@@ -865,11 +882,22 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         signatureType: SignatureType,
         keyFormat: KeyFormat,
         authenticationType: AuthenticationType? = nil,
+        requireAuthentication: Bool = true,
         completion: @escaping (Result<KeyCreationResult, Error>) -> Void
     ) {
-        // Access Control
-        let flags: SecAccessControlCreateFlags = [.privateKeyUsage, useDeviceCredentials ? .userPresence : (biometryCurrentSet ? .biometryCurrentSet : .biometryAny)]
-        guard let accessControl = SecAccessControlCreateWithFlags(kCFAllocatorDefault, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, flags, nil) else {
+        // Access Control.
+        //
+        // When `requireAuthentication` is false we deliberately omit any
+        // user-presence/biometry flag so the Secure Enclave key can be used to
+        // sign/decrypt without a prompt, and relax accessibility to
+        // `AfterFirstUnlock` so it does not require a device passcode to be set.
+        let secAccessible: CFString = requireAuthentication
+            ? kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
+            : kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let flags: SecAccessControlCreateFlags = requireAuthentication
+            ? [.privateKeyUsage, useDeviceCredentials ? .userPresence : (biometryCurrentSet ? .biometryCurrentSet : .biometryAny)]
+            : [.privateKeyUsage]
+        guard let accessControl = SecAccessControlCreateWithFlags(kCFAllocatorDefault, secAccessible, flags, nil) else {
             completion(.success(KeyCreationResult(publicKey: nil, publicKeyBytes: nil, error: "Failed to create access control", code: .unknown)))
             return
         }
@@ -959,7 +987,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             kSecAttrService as String: tag,
             kSecAttrAccount as String: tag,
             kSecValueData as String: encryptedRsa,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
+            kSecAttrAccessible as String: secAccessible
         ]
         SecItemAdd(saveQuery as CFDictionary, nil)
 

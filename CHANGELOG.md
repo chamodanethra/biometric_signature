@@ -1,10 +1,29 @@
-## [12.1.0] - 2026-06-23
+## [13.0.0]
+
+### Added
+* **Two new descriptive `BiometricError` causes**: `authenticationFailed` (an attempt that didn't succeed — unrecognised biometric or the platform couldn't process it; retrying usually works) and `notInteractive` (the prompt couldn't be shown, e.g. the app is backgrounded). Whether to retry or degrade is left to the consumer.
+
+### Changed (breaking)
+* Errors that used to surface as `unknown` are now classified more precisely:
+  * **iOS**: `authenticationFailed` and the observed `-1000` code → `authenticationFailed`; `notInteractive` → `notInteractive`; app-cancel → `systemCanceled`; `-1018` and keychain `errSecInteractionNotAllowed` → `notAvailable`; keychain `errSecAuthFailed` → `authenticationFailed`.
+  * **Android**: `UNABLE_TO_PROCESS` (2) and "key user not authenticated" → `authenticationFailed`. Pruned keystore ops and `TIMEOUT` (3) stay `unknown` with the enriched message; the retry-once for pruned ops still applies.
+* Adding enum values is breaking for exhaustive `switch`es on `BiometricError`.
+
+
+## [12.1.0] - 2026-06-24
 
 ### Changed
 * **Signing failures now report a meaningful error code instead of `unknown` (iOS/macOS).** `createSignature` previously hard-coded `code: .unknown` on every `SecKeyCreateSignature` failure, discarding the real cause. `classifySigningError` now walks the `CFError`'s `NSUnderlyingErrorKey` chain and maps the first layer it recognises — `LAErrorDomain` via `mapLAError`, `NSOSStatusErrorDomain` (e.g. `errSecUserCanceled` / -128) via `mapSecError` — so a cancelled or unavailable signing prompt surfaces `BiometricError.userCanceled` / `BiometricError.notAvailable` regardless of whether the cancel arrives as the top-level `CFError`, an OSStatus layer, or a nested `LAError` (e.g. a localized `"Authentifizierung abgebrochen."` cancel). The `"Signing Error: …"` message is additionally enriched with the full `domain:code` chain (e.g. `… [CryptoTokenKit:-4 -> com.apple.LocalAuthentication:-2]`) so any still-unmapped failure is self-describing in logs. Both the RSA and EC signing paths are covered.
 * **Android `UNKNOWN` errors are no longer flattened to a constant string.** `ErrorMapper.safeErrorMessage` used to collapse every unmapped failure to `"Biometric operation failed"`, throwing away both the numeric `BiometricPrompt` code and the original `errString`. The `UNKNOWN` branch now appends whatever context is available, e.g. `"Biometric operation failed (code=3 msg=…)"`, keeping failures diagnosable in logs without an API/schema change.
 
 ### Added
+
+* **Non-interactive (no user authentication) keys via `CreateKeysConfig.requireAuthentication`.** Defaults to `true` (existing behaviour). When set to `false`, the key pair is created without a use-time user-authentication constraint and can be used to sign/decrypt **without any biometric or device-credential prompt** — useful for a device-bound key that lives alongside an interactive (biometric) key under a different `keyAlias`.
+  * **Android**: the keystore key is generated without `setUserAuthenticationRequired(true)` (and without per-operation auth / invalidation), and `createSignature`/`decrypt` detect the key's `KeyInfo.isUserAuthenticationRequired` and skip the `BiometricPrompt` entirely.
+  * **iOS/macOS**: the Secure Enclave key is created with only `.privateKeyUsage` access control (no `.biometryAny`/`.userPresence`) and `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so signing/decryption never prompt while the device is unlocked.
+  * **Windows**: ignored — Windows Hello always authenticates.
+  * **Security note**: a non-interactive key provides device binding ("something you have") only; it does not verify user presence and cannot satisfy inherence-based SCA requirements.
+
 * **New `createSignatureFromBytes` method:** Introduced a high-level API to request biometric signatures directly over raw binary payloads (`Uint8List`), supporting secure challenge-response and transaction validation patterns across Android, iOS/macOS and Windows.
 * **Binary Challenge-Response Demo Card:** Added a demonstration card inside the example app showcasing the complete secure random nonce generation and direct signing workflow.
 * **Android: three more `BiometricPrompt` error codes are classified.** `ErrorMapper.mapToBiometricError` now maps `ERROR_NO_BIOMETRICS` (11) → `notEnrolled`, `ERROR_HW_NOT_PRESENT` (12) → `notAvailable`, and `ERROR_SECURITY_UPDATE_REQUIRED` (15) → `securityUpdateRequired`. `ERROR_TIMEOUT` (3) and `ERROR_VENDOR` (8) intentionally remain enriched-`UNKNOWN` so their volume can be observed before assigning a dedicated bucket.
