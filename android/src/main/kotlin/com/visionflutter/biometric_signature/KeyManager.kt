@@ -200,12 +200,23 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
         }
     }
 
+    /**
+     * Applies the caller's enrollment-invalidation choice to an auth-bound key.
+     *
+     * The setter is always called, never only for `true`: AndroidKeyStore's own
+     * default is `true` (`mInvalidatedByBiometricEnrollment = true`), so skipping
+     * the call for `false` left the platform default in place and silently
+     * invalidated keys the caller asked to keep across enrollment changes.
+     *
+     * API 23 has no setter — those keys are always invalidated by the platform
+     * when the enrolled fingerprints change.
+     */
     private fun configureInvalidation(
         builder: KeyGenParameterSpec.Builder,
         invalidateOnEnrollment: Boolean
     ) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && invalidateOnEnrollment) {
-            builder.setInvalidatedByBiometricEnrollment(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            builder.setInvalidatedByBiometricEnrollment(invalidateOnEnrollment)
         }
     }
 

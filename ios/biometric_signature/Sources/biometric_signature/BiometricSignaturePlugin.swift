@@ -403,9 +403,18 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
 
         // Extract config values with defaults
         let useDeviceCredentials = config?.useDeviceCredentials ?? false
-        let biometryCurrentSet = config?.setInvalidatedByBiometricEnrollment ?? false
         let signatureType = config?.signatureType ?? .rsa
         let requireAuthentication = config?.requireAuthentication ?? true
+        // Defaults to `true` on every platform: an unset flag produces a
+        // `.biometryCurrentSet` key, matching AndroidKeyStore's own default for
+        // auth-bound keys. Pass `false` explicitly for a `.biometryAny` key that
+        // survives enrollment changes.
+        //
+        // A non-interactive key (requireAuthentication == false) carries no
+        // biometry flag at all, so it cannot be invalidated by an enrollment
+        // change; recording it as invalidatable would make
+        // `getKeyInfo(checkValidity:)` report a still-usable key as invalid.
+        let biometryCurrentSet = (config?.setInvalidatedByBiometricEnrollment ?? true) && requireAuthentication
         // A non-interactive key (requireAuthentication == false) must never prompt,
         // not even at creation time, regardless of enforceBiometric.
         let enforceBiometric = (config?.enforceBiometric ?? false) && requireAuthentication

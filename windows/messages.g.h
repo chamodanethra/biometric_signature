@@ -573,11 +573,23 @@ class CreateKeysConfig {
   void set_enforce_biometric(bool value_arg);
 
   // [Android/iOS/macOS] Whether to invalidate the key when new biometrics
-  // are enrolled. Not supported on Windows.
+  // are enrolled. Defaults to `true` on all platforms. Not supported on Windows.
   //
   // **Security Note**: When `true`, keys become invalid if fingerprints/faces
   // are added or removed, preventing unauthorized access if an attacker
-  // enrolls their own biometrics on a compromised device.
+  // enrolls their own biometrics on a compromised device. The app must then
+  // create a new key and re-enroll its public key with the server.
+  //
+  // Platform behaviour:
+  // - **Android**: maps to `KeyGenParameterSpec.Builder`
+  //   `.setInvalidatedByBiometricEnrollment(...)`. API 23 has no such setter,
+  //   so keys there are always invalidated on enrollment changes.
+  // - **iOS/macOS**: selects the Secure Enclave access-control flag —
+  //   `.biometryCurrentSet` when `true`, `.biometryAny` when `false`.
+  // - **Windows**: ignored — Windows Hello manages key lifetime itself.
+  //
+  // Ignored when [requireAuthentication] is `false`: a key with no
+  // user-authentication constraint is not tied to the enrolled biometric set.
   const bool* set_invalidated_by_biometric_enrollment() const;
   void set_set_invalidated_by_biometric_enrollment(const bool* value_arg);
   void set_set_invalidated_by_biometric_enrollment(bool value_arg);

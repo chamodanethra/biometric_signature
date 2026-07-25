@@ -138,6 +138,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
 
                 val useDeviceCredentials = config?.useDeviceCredentials ?: false
                 val enableDecryption = config?.enableDecryption ?: false
+                // Defaults to `true` on every platform, matching AndroidKeyStore's
+                // own default for auth-bound keys.
                 val invalidateOnEnrollment = config?.setInvalidatedByBiometricEnrollment ?: true
                 val signatureType = config?.signatureType ?: SignatureType.RSA
                 val requireAuthentication = config?.requireAuthentication ?: true

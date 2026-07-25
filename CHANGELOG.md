@@ -8,6 +8,13 @@
   * **iOS**: `authenticationFailed` and the observed `-1000` code → `authenticationFailed`; `notInteractive` → `notInteractive`; app-cancel → `systemCanceled`; `-1018` and keychain `errSecInteractionNotAllowed` → `notAvailable`; keychain `errSecAuthFailed` → `authenticationFailed`.
   * **Android**: `UNABLE_TO_PROCESS` (2) and "key user not authenticated" → `authenticationFailed`. Pruned keystore ops and `TIMEOUT` (3) stay `unknown` with the enriched message; the retry-once for pruned ops still applies.
 * Adding enum values is breaking for exhaustive `switch`es on `BiometricError`.
+* **`CreateKeysConfig.setInvalidatedByBiometricEnrollment` now defaults to `true` on every platform.** The default diverged per platform: Android used `true`, iOS/macOS used `false`, so the same `createKeys` call produced keys with different lifetimes on each platform. All platforms now default to `true`, matching AndroidKeyStore's own default for auth-bound keys (`mInvalidatedByBiometricEnrollment = true`) and the flag's documented security intent. Fixes [#70](https://github.com/chamodanethra/biometric_signature/issues/70).
+  * **Android**: unchanged.
+  * **iOS/macOS**: a `createKeys` call that leaves the flag unset now produces a `.biometryCurrentSet` Secure Enclave key instead of `.biometryAny`, so the key is permanently invalidated when a face/fingerprint is enrolled or removed and the app must create a new key and re-enroll its public key. Pass `setInvalidatedByBiometricEnrollment: false` to keep the previous behaviour. Use `getKeyInfo(checkValidity: true)` to detect an invalidated key before signing.
+  * The flag remains ignored on Windows, and is ignored when `requireAuthentication` is `false` — a key created without a user-authentication constraint carries no biometry binding, so it is neither invalidated nor reported as invalid on enrollment changes.
+
+### Fixed
+* **Android: an explicit `setInvalidatedByBiometricEnrollment: false` was silently ignored.** `KeyManager.configureInvalidation` only ever called `KeyGenParameterSpec.Builder.setInvalidatedByBiometricEnrollment(true)` and skipped the call entirely for `false`. Since AndroidKeyStore's own default is `true`, opting out left the platform default in place and the key was still permanently invalidated on the next biometric enrollment — with no error to indicate the request had been dropped. The setter is now always called with the caller's value (API 24+; API 23 has no setter and always invalidates).
 
 ### Fixed(android): pin RSA-OAEP MGF1 digest to SHA-1 for decryption
 

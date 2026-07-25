@@ -403,17 +403,31 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
 
 #### CreateKeysConfig Options
 
-| Option | Platforms | Description |
-|--------|-----------|-------------|
-| `signatureType` | Android/iOS/macOS | `SignatureType.rsa` or `SignatureType.ecdsa` |
-| `enforceBiometric` | Android/iOS/macOS | Require biometric during key creation |
-| `setInvalidatedByBiometricEnrollment` | Android/iOS/macOS | Invalidate key on biometric changes |
-| `useDeviceCredentials` | Android/iOS/macOS | Allow PIN/passcode fallback |
-| `enableDecryption` | Android | Enable decryption capability |
-| `failIfExists` | All | Fail with `keyAlreadyExists` if key already exists |
-| `promptSubtitle` | Android | Subtitle for biometric prompt |
-| `promptDescription` | Android | Description for biometric prompt |
-| `cancelButtonText` | Android | Cancel button text |
+| Option | Platforms | Default | Description |
+|--------|-----------|---------|-------------|
+| `signatureType` | Android/iOS/macOS | `SignatureType.rsa` | `SignatureType.rsa` or `SignatureType.ecdsa` |
+| `enforceBiometric` | Android/iOS/macOS | `false` | Require biometric during key creation |
+| `setInvalidatedByBiometricEnrollment` | Android/iOS/macOS | `true` | Invalidate key on biometric changes |
+| `useDeviceCredentials` | Android/iOS/macOS | `false` | Allow PIN/passcode fallback |
+| `requireAuthentication` | Android/iOS/macOS | `true` | Require authentication at signing/decryption time |
+| `enableDecryption` | Android | `false` | Enable decryption capability |
+| `failIfExists` | All | `false` | Fail with `keyAlreadyExists` if key already exists |
+| `promptSubtitle` | Android | none | Subtitle for biometric prompt |
+| `promptDescription` | Android | none | Description for biometric prompt |
+| `cancelButtonText` | Android | `"Cancel"` | Cancel button text |
+
+**On `setInvalidatedByBiometricEnrollment`:** the default is `true` on every platform that
+supports it — a key created without the flag is bound to the biometric set enrolled at
+creation time, and enrolling or removing a fingerprint/face permanently invalidates it. Your
+app must then create a new key and re-enroll its public key with the server; use
+`getKeyInfo(checkValidity: true)` to detect this before signing. Pass `false` to opt out and
+keep keys usable across enrollment changes.
+
+It maps to `KeyGenParameterSpec.Builder.setInvalidatedByBiometricEnrollment(...)` on Android
+(API 23 has no such setter, so keys there are always invalidated) and selects
+`.biometryCurrentSet` vs `.biometryAny` on the Secure Enclave key for iOS/macOS. It is ignored
+on Windows, and ignored when `requireAuthentication` is `false` — a key with no
+user-authentication constraint is not tied to the enrolled biometric set.
 
 ```dart
 final result = await biometricSignature.createKeys(
