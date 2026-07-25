@@ -23,7 +23,25 @@ allprojects {
 }
 
 apply plugin: "com.android.library"
-apply plugin: "kotlin-android"
+
+// AGP 9 ships "built-in Kotlin": AGP supplies the Kotlin toolchain itself, and applying
+// "kotlin-android" on top of it is a hard error ("The 'org.jetbrains.kotlin.android' plugin is no
+// longer required for Kotlin support since AGP 9.0"). Consumers can still opt out with
+// `android.builtInKotlin=false` — which is exactly what Flutter's own AGP 9 migrator writes — and
+// then the Kotlin plugin *is* still required. So decide by asking whether AGP already registered
+// the `kotlin` extension rather than by parsing AGP version strings: that also covers AGP 8.10+,
+// where built-in Kotlin can be switched on explicitly on an AGP 8 major. See issue #78.
+//
+// Keep the `apply plugin: "kotlin-android"` line below verbatim and at the start of its own line.
+// Flutter greps plugin build files for exactly that line-anchored pattern, and on Flutter 3.44.x
+// it applies "kotlin-android" to this subproject itself whenever it does *not* find it — without
+// checking whether built-in Kotlin is on. That auto-apply then makes `com.android.library` fail
+// under built-in Kotlin. So hiding this line (moving it onto the `if`, or writing
+// `project.apply plugin:`) silences Flutter's "plugins that apply KGP" warning at the cost of
+// breaking the default AGP 9 build. The warning is a text match, not a report of what ran.
+if (project.extensions.findByName("kotlin") == null) {
+    apply plugin: "kotlin-android"
+}
 
 android {
     namespace = "com.visionflutter.biometric_signature"
@@ -32,15 +50,14 @@ android {
         buildConfig true
     }
 
+    // Deliberately left at 35. A library's compileSdk is a *floor* for its consumers (AGP fails an
+    // app whose compileSdk is lower than a dependency's), not a ceiling: an app on compileSdk 37
+    // builds fine against this. Raising it here would force every consuming app to raise theirs.
     compileSdk = 35
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11
     }
 
     sourceSets {
@@ -53,13 +70,24 @@ android {
         consumerProguardFiles 'proguard-rules.pro'
     }
 
-    lintOptions {
-        disable "InvalidPackage"
+    lint {
+        disable += "InvalidPackage"
     }
+}
 
-    dependencies {
-        implementation("androidx.biometric:biometric:1.4.0-alpha05")
-        implementation("androidx.appcompat:appcompat:1.6.1")
-        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+// Replaces `android { kotlinOptions { ... } }`, which AGP 9 removed from the Android extension.
+// The `kotlin` extension is registered either by AGP (built-in Kotlin) or by "kotlin-android"
+// above, so this single block keeps Kotlin and Java on the same JVM target in every combination.
+// It is not optional: with no explicit target Kotlin follows the JDK running Gradle (e.g. 21)
+// while Java stays on 11, and the build fails JVM-target validation.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
     }
+}
+
+dependencies {
+    implementation("androidx.biometric:biometric:1.4.0-alpha05")
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 }

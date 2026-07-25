@@ -215,6 +215,34 @@ pinned to AGP `8.6.0`. AGP `8.6.0` is one minor above Flutter 3.24.5's
 `maxKnownAndSupportedAgpVersion` (`8.4.0`), which produces a verbose-only trace
 log — the build succeeds normally on default Flutter 3.24.5 tooling.
 
+`compileSdk = 35` is a *floor* for consumers, not a ceiling — your app can
+compile and target SDK 36 or 37 against this plugin without changes.
+
+#### Android Gradle Plugin 9 (built-in Kotlin)
+
+AGP 9 supplies the Kotlin toolchain itself ("built-in Kotlin") and removes
+`kotlinOptions {}` from the Android extension, so a plugin that unconditionally
+applies `kotlin-android` fails to configure. This plugin picks the right path at
+configuration time and is verified on:
+
+| Toolchain | Status |
+| --- | --- |
+| AGP 8.9.1 / Gradle 8.12 / Flutter 3.24.5 | ✅ |
+| AGP 9.3.1 / Gradle 9.6.1 / Flutter 3.44.8, `android.builtInKotlin=true` (AGP 9 default) | ✅ |
+| AGP 9.3.1 / Gradle 9.6.1 / Flutter 3.44.8, `android.builtInKotlin=false` (what Flutter's AGP 9 migrator writes) | ✅ |
+
+On AGP 9 the build still prints:
+
+> `WARNING: Your app uses the following plugins that apply Kotlin Gradle Plugin`
+> `(KGP): biometric_signature`
+
+**This warning is safe to ignore.** It comes from Flutter searching the plugin's
+`android/build.gradle` for a literal `apply plugin: "kotlin-android"` line — it
+does not reflect what actually runs. That line is guarded by a runtime check and
+is skipped under built-in Kotlin, but it has to stay in the file verbatim:
+without it, Flutter applies KGP to the plugin itself, which breaks the default
+AGP 9 build.
+
 ### iOS Integration
 
 This plugin works with Touch ID **or** Face ID. To use Face ID in available devices,
