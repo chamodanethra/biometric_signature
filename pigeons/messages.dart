@@ -177,6 +177,12 @@ class KeyCreationResult {
   /// See [AuthenticationType] for how inference is performed when the
   /// platform does not report the method directly.
   AuthenticationType? authenticationType;
+
+  /// [Android] DER-encoded X.509 attestation certificate chain, leaf
+  /// (the attestation certificate for the new key) first, root last. Only
+  /// populated when [CreateKeysConfig.attestationChallenge] was set and
+  /// attestation succeeded; null otherwise and on all other platforms.
+  List<Uint8List?>? attestationCertificateChain;
 }
 
 class SignatureResult {
@@ -238,6 +244,13 @@ class KeyInfo {
 
   /// Key size of the decryption key in bits (hybrid mode only).
   int? decryptingKeySize;
+
+  /// [Android] DER-encoded X.509 attestation certificate chain of the
+  /// signing key, leaf first. Only populated when the key was created with
+  /// [CreateKeysConfig.attestationChallenge] (chain length > 1); a plain
+  /// self-signed keystore certificate is not reported here. Null on all
+  /// other platforms.
+  List<Uint8List?>? attestationCertificateChain;
 }
 
 /// The cryptographic algorithm to use for key generation.
@@ -337,6 +350,34 @@ class CreateKeysConfig {
   /// ("something you have") only; it does not verify user presence and cannot
   /// satisfy inherence-based SCA requirements.
   bool? requireAuthentication;
+
+  // === Hardware key attestation (Android only) ===
+
+  /// [Android] Server-issued challenge for hardware key attestation
+  /// (1–128 bytes). When set, the generated keystore key carries an X.509
+  /// attestation certificate chain rooted in Google's hardware attestation
+  /// roots, returned in [KeyCreationResult.attestationCertificateChain].
+  ///
+  /// Attestation is an explicit security opt-in, so it **hard-fails**
+  /// instead of silently degrading:
+  /// - Android 6 (API 23) returns [BiometricError.notSupported]
+  ///   (`setAttestationChallenge` requires API 24).
+  /// - If the device cannot produce an attestation chain at all, key
+  ///   creation fails with [BiometricError.notSupported] and no key is left
+  ///   behind. If StrongBox key generation fails with a challenge set, the
+  ///   plugin retries once without StrongBox (still TEE-backed attestation).
+  /// - Empty or >128-byte challenges return [BiometricError.invalidInput].
+  /// - **iOS/macOS/Windows**: setting this field makes `createKeys` return
+  ///   [BiometricError.notSupported] in-band. This deviates from the
+  ///   silent-ignore convention of other config fields deliberately:
+  ///   silently ignoring an attestation request would hand back an
+  ///   unattested key the caller believes is attested. Use
+  ///   [BiometricSignatureApi.getAppAttestation] on Apple platforms.
+  ///
+  /// Hybrid mode (`signatureType: ecdsa` + `enableDecryption: true`): only
+  /// the keystore EC *signing* key is attested; the software-generated
+  /// decryption key cannot be.
+  Uint8List? attestationChallenge;
 }
 
 /// Configuration for signature creation (all platforms).
@@ -556,6 +597,32 @@ abstract class BiometricSignatureApi {
   /// platform-specific equivalent described above).
   @async
   bool isDeviceLockSet();
+
+  /// Whether Apple App Attest is supported here: `true` only on physical
+  /// iOS 14+ devices with the App Attest capability configured. Always
+  /// `false` on Android, Windows, all Macs (including Mac Catalyst and
+  /// iOS-apps-on-Apple-silicon), and simulators.
+  @async
+  bool isAppAttestSupported();
+
+  /// [iOS 14+] Attests the app/device integrity via Apple App Attest.
+  ///
+  /// [challenge] is the server-issued challenge (non-empty). The plugin
+  /// computes SHA-256(challenge) natively as the required clientDataHash.
+  /// [keyAlias] namespaces the stored App Attest key id; null = default.
+  /// An App Attest key is generated and stored on first use per alias.
+  ///
+  /// Returns in-band [BiometricError.notSupported] everywhere App Attest is
+  /// unavailable, and [BiometricError.notAvailable] when Apple's servers
+  /// are unreachable (retry later with the SAME challenge).
+  @async
+  AppAttestResult getAppAttestation(Uint8List challenge, String? keyAlias);
+
+  /// [iOS 14+] Produces an App Attest assertion with the previously
+  /// attested key for [keyAlias]. Returns [BiometricError.keyNotFound] when
+  /// no key exists or the key was never successfully attested.
+  @async
+  AppAssertionResult getAppAssertion(Uint8List challenge, String? keyAlias);
 }
 
 /// Configuration for simple biometric prompt (authentication without crypto ops).
@@ -615,4 +682,50 @@ class SimplePromptResult {
   /// See [AuthenticationType] for how inference is performed when the
   /// platform does not report the method directly.
   AuthenticationType? authenticationType;
+}
+
+// NOTE: keep the two App Attest classes below at the very bottom of this
+// file. Pigeon assigns codec type ids to enums first, then classes, in
+// declaration order — declaring new classes last gives them fresh ids
+// (147/148) without renumbering any existing type on the wire.
+
+/// Result of [BiometricSignatureApi.getAppAttestation] (Apple App Attest).
+class AppAttestResult {
+  /// The App Attest key identifier (opaque, base64). Send it to your server
+  /// with [attestationObject]; it is also needed to interpret assertions.
+  String? keyId;
+
+  /// The CBOR attestation object produced by
+  /// `DCAppAttestService.attestKey`. Verify server-side per Apple's
+  /// "Validating Apps That Connect to Your Server".
+  Uint8List? attestationObject;
+
+  /// Error message if the operation failed.
+  String? error;
+
+  /// Standardized error code if the operation failed.
+  ///
+  /// [BiometricError.notAvailable] means Apple's servers were unreachable —
+  /// retry later with the SAME challenge. [BiometricError.notSupported] is
+  /// returned on Android, Windows, all Macs, simulators, and iOS < 14.
+  BiometricError? code;
+}
+
+/// Result of [BiometricSignatureApi.getAppAssertion] (Apple App Attest).
+class AppAssertionResult {
+  /// The App Attest key identifier the assertion was produced with.
+  String? keyId;
+
+  /// The CBOR assertion object produced by
+  /// `DCAppAttestService.generateAssertion`.
+  Uint8List? assertionObject;
+
+  /// Error message if the operation failed.
+  String? error;
+
+  /// Standardized error code if the operation failed.
+  ///
+  /// [BiometricError.keyNotFound] means no attested App Attest key exists
+  /// for this alias — call [BiometricSignatureApi.getAppAttestation] first.
+  BiometricError? code;
 }

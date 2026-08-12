@@ -275,6 +275,18 @@ void BiometricSignaturePlugin::CreateKeys(
     const KeyFormat &key_format, const std::string *prompt_message,
     std::function<void(ErrorOr<KeyCreationResult> reply)> result) {
 
+  // Attestation is an explicit security claim; silently ignoring the
+  // Android-only challenge would hand back an unattested key the caller
+  // believes is attested, so it hard-fails in-band instead.
+  if (config != nullptr && config->attestation_challenge() != nullptr) {
+    KeyCreationResult response;
+    response.set_error(
+        "Key attestation (attestationChallenge) is not supported on Windows.");
+    response.set_code(BiometricError::kNotSupported);
+    result(response);
+    return;
+  }
+
   // Bring Flutter window to foreground so Windows Hello dialog appears properly
   BringWindowToForeground();
 
@@ -776,6 +788,35 @@ void BiometricSignaturePlugin::IsDeviceLockSet(
       result(false);
     }
   });
+}
+
+void BiometricSignaturePlugin::IsAppAttestSupported(
+    std::function<void(ErrorOr<bool> reply)> result) {
+  result(false);
+}
+
+void BiometricSignaturePlugin::GetAppAttestation(
+    const std::vector<uint8_t> &challenge, const std::string *key_alias,
+    std::function<void(ErrorOr<AppAttestResult> reply)> result) {
+
+  AppAttestResult response;
+  response.set_error(
+      "App Attest is not supported on Windows. "
+      "It is an Apple platform feature (iOS 14+).");
+  response.set_code(BiometricError::kNotSupported);
+  result(response);
+}
+
+void BiometricSignaturePlugin::GetAppAssertion(
+    const std::vector<uint8_t> &challenge, const std::string *key_alias,
+    std::function<void(ErrorOr<AppAssertionResult> reply)> result) {
+
+  AppAssertionResult response;
+  response.set_error(
+      "App Attest is not supported on Windows. "
+      "It is an Apple platform feature (iOS 14+).");
+  response.set_code(BiometricError::kNotSupported);
+  result(response);
 }
 
 } // namespace biometric_signature

@@ -4,6 +4,8 @@ import 'biometric_signature_platform_interface.dart';
 
 export 'biometric_signature_platform_interface.dart'
     show
+        AppAssertionResult,
+        AppAttestResult,
         AuthenticationType,
         CreateKeysConfig,
         CreateSignatureConfig,
@@ -242,5 +244,58 @@ class BiometricSignature {
   ///   accounts get `false` even with a screen lock configured.
   Future<bool> isDeviceLockSet() async {
     return BiometricSignaturePlatform.instance.isDeviceLockSet();
+  }
+
+  /// Whether Apple App Attest is available: `true` only on physical iOS 14+
+  /// devices with the App Attest capability/entitlement configured.
+  ///
+  /// Always `false` on Android, Windows, all Macs (including Mac Catalyst
+  /// and iOS-apps-on-Apple-silicon), and simulators.
+  Future<bool> isAppAttestSupported() async {
+    return BiometricSignaturePlatform.instance.isAppAttestSupported();
+  }
+
+  /// Attests the integrity of the app/device with Apple App Attest
+  /// (iOS 14+ physical devices only) and returns a [AppAttestResult] with
+  /// the `keyId` and CBOR `attestationObject` for server-side verification
+  /// per Apple's "Validating Apps That Connect to Your Server". See the
+  /// README's "Hardware Key Attestation" section.
+  ///
+  /// [challenge] is the server-issued challenge; the plugin hashes it with
+  /// SHA-256 natively to form the required clientDataHash. [keyAlias]
+  /// namespaces the App Attest key; a key is generated and stored on first
+  /// use per alias.
+  ///
+  /// Error semantics (in-band, never thrown):
+  /// - [BiometricError.notSupported] on Android/Windows/macOS, simulators,
+  ///   iOS < 14, or a missing App Attest entitlement. Android callers
+  ///   should use [CreateKeysConfig.attestationChallenge] instead.
+  /// - [BiometricError.notAvailable]: Apple's servers were unreachable —
+  ///   retry later with the SAME challenge (a new key is deliberately not
+  ///   generated on server errors).
+  Future<AppAttestResult> getAppAttestation({
+    required Uint8List challenge,
+    String? keyAlias,
+  }) async {
+    return BiometricSignaturePlatform.instance.getAppAttestation(
+      challenge,
+      keyAlias,
+    );
+  }
+
+  /// Signs a server [challenge] with the previously attested App Attest key
+  /// for [keyAlias] (iOS 14+ physical devices only), returning the CBOR
+  /// assertion object for server-side verification.
+  ///
+  /// Returns [BiometricError.keyNotFound] in-band when no attested App
+  /// Attest key exists for the alias — call [getAppAttestation] first.
+  Future<AppAssertionResult> getAppAssertion({
+    required Uint8List challenge,
+    String? keyAlias,
+  }) async {
+    return BiometricSignaturePlatform.instance.getAppAssertion(
+      challenge,
+      keyAlias,
+    );
   }
 }

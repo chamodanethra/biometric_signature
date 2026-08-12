@@ -171,15 +171,15 @@ flutter run
 - Government services
 - High-security applications
 - User-friendly authentication
-- Apps requiring FIDO2/WebAuthn compliance
+- Apps using hardware-backed public-key challenge-response
 
 ## Advantages Over Passwords
 
-1. **Better Security**: No password theft, phishing, or credential stuffing
+1. **Better Security**: No reusable password to steal or use for credential stuffing
 2. **Better UX**: No remembering passwords, faster login
 3. **Lower Support Costs**: No password reset flows
-4. **Compliance**: Meets modern authentication standards
-5. **Future-proof**: Aligns with FIDO2/WebAuthn standards
+4. **Modern Design**: Uses public-key challenge-response authentication
+5. **Future-proof**: Built on standard public-key cryptography
 6. **Better Error Recovery**: Clear guidance for all error states
 7. **Device Flexibility**: Optional fallback to device credentials
 

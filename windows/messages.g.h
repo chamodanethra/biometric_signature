@@ -266,7 +266,8 @@ class KeyCreationResult {
     const std::string* decrypting_algorithm,
     const int64_t* decrypting_key_size,
     const bool* is_hybrid_mode,
-    const AuthenticationType* authentication_type);
+    const AuthenticationType* authentication_type,
+    const flutter::EncodableList* attestation_certificate_chain);
 
   const std::string* public_key() const;
   void set_public_key(const std::string_view* value_arg);
@@ -317,6 +318,14 @@ class KeyCreationResult {
   void set_authentication_type(const AuthenticationType* value_arg);
   void set_authentication_type(const AuthenticationType& value_arg);
 
+  // [Android] DER-encoded X.509 attestation certificate chain, leaf
+  // (the attestation certificate for the new key) first, root last. Only
+  // populated when [CreateKeysConfig.attestationChallenge] was set and
+  // attestation succeeded; null otherwise and on all other platforms.
+  const flutter::EncodableList* attestation_certificate_chain() const;
+  void set_attestation_certificate_chain(const flutter::EncodableList* value_arg);
+  void set_attestation_certificate_chain(const flutter::EncodableList& value_arg);
+
  private:
   static KeyCreationResult FromEncodableList(const flutter::EncodableList& list);
   flutter::EncodableList ToEncodableList() const;
@@ -333,6 +342,7 @@ class KeyCreationResult {
   std::optional<int64_t> decrypting_key_size_;
   std::optional<bool> is_hybrid_mode_;
   std::optional<AuthenticationType> authentication_type_;
+  std::optional<flutter::EncodableList> attestation_certificate_chain_;
 };
 
 
@@ -470,7 +480,8 @@ class KeyInfo {
     const std::string* public_key,
     const std::string* decrypting_public_key,
     const std::string* decrypting_algorithm,
-    const int64_t* decrypting_key_size);
+    const int64_t* decrypting_key_size,
+    const flutter::EncodableList* attestation_certificate_chain);
 
   // Whether any biometric key exists on the device.
   const bool* exists() const;
@@ -518,6 +529,15 @@ class KeyInfo {
   void set_decrypting_key_size(const int64_t* value_arg);
   void set_decrypting_key_size(int64_t value_arg);
 
+  // [Android] DER-encoded X.509 attestation certificate chain of the
+  // signing key, leaf first. Only populated when the key was created with
+  // [CreateKeysConfig.attestationChallenge] (chain length > 1); a plain
+  // self-signed keystore certificate is not reported here. Null on all
+  // other platforms.
+  const flutter::EncodableList* attestation_certificate_chain() const;
+  void set_attestation_certificate_chain(const flutter::EncodableList* value_arg);
+  void set_attestation_certificate_chain(const flutter::EncodableList& value_arg);
+
  private:
   static KeyInfo FromEncodableList(const flutter::EncodableList& list);
   flutter::EncodableList ToEncodableList() const;
@@ -532,6 +552,7 @@ class KeyInfo {
   std::optional<std::string> decrypting_public_key_;
   std::optional<std::string> decrypting_algorithm_;
   std::optional<int64_t> decrypting_key_size_;
+  std::optional<flutter::EncodableList> attestation_certificate_chain_;
 };
 
 
@@ -558,7 +579,8 @@ class CreateKeysConfig {
     const std::string* prompt_description,
     const std::string* cancel_button_text,
     const bool* fail_if_exists,
-    const bool* require_authentication);
+    const bool* require_authentication,
+    const std::vector<uint8_t>* attestation_challenge);
 
   // [Android/iOS/macOS] The cryptographic algorithm to use.
   // Windows only supports RSA and ignores this field.
@@ -655,6 +677,34 @@ class CreateKeysConfig {
   void set_require_authentication(const bool* value_arg);
   void set_require_authentication(bool value_arg);
 
+  // [Android] Server-issued challenge for hardware key attestation
+  // (1–128 bytes). When set, the generated keystore key carries an X.509
+  // attestation certificate chain rooted in Google's hardware attestation
+  // roots, returned in [KeyCreationResult.attestationCertificateChain].
+  //
+  // Attestation is an explicit security opt-in, so it **hard-fails**
+  // instead of silently degrading:
+  // - Android 6 (API 23) returns [BiometricError.notSupported]
+  //   (`setAttestationChallenge` requires API 24).
+  // - If the device cannot produce an attestation chain at all, key
+  //   creation fails with [BiometricError.notSupported] and no key is left
+  //   behind. If StrongBox key generation fails with a challenge set, the
+  //   plugin retries once without StrongBox (still TEE-backed attestation).
+  // - Empty or >128-byte challenges return [BiometricError.invalidInput].
+  // - **iOS/macOS/Windows**: setting this field makes `createKeys` return
+  //   [BiometricError.notSupported] in-band. This deviates from the
+  //   silent-ignore convention of other config fields deliberately:
+  //   silently ignoring an attestation request would hand back an
+  //   unattested key the caller believes is attested. Use
+  //   [BiometricSignatureApi.getAppAttestation] on Apple platforms.
+  //
+  // Hybrid mode (`signatureType: ecdsa` + `enableDecryption: true`): only
+  // the keystore EC *signing* key is attested; the software-generated
+  // decryption key cannot be.
+  const std::vector<uint8_t>* attestation_challenge() const;
+  void set_attestation_challenge(const std::vector<uint8_t>* value_arg);
+  void set_attestation_challenge(const std::vector<uint8_t>& value_arg);
+
  private:
   static CreateKeysConfig FromEncodableList(const flutter::EncodableList& list);
   flutter::EncodableList ToEncodableList() const;
@@ -670,6 +720,7 @@ class CreateKeysConfig {
   std::optional<std::string> cancel_button_text_;
   std::optional<bool> fail_if_exists_;
   std::optional<bool> require_authentication_;
+  std::optional<std::vector<uint8_t>> attestation_challenge_;
 };
 
 
@@ -899,6 +950,111 @@ class SimplePromptResult {
 };
 
 
+// Result of [BiometricSignatureApi.getAppAttestation] (Apple App Attest).
+//
+// Generated class from Pigeon that represents data sent in messages.
+class AppAttestResult {
+ public:
+  // Constructs an object setting all non-nullable fields.
+  AppAttestResult();
+
+  // Constructs an object setting all fields.
+  explicit AppAttestResult(
+    const std::string* key_id,
+    const std::vector<uint8_t>* attestation_object,
+    const std::string* error,
+    const BiometricError* code);
+
+  // The App Attest key identifier (opaque, base64). Send it to your server
+  // with [attestationObject]; it is also needed to interpret assertions.
+  const std::string* key_id() const;
+  void set_key_id(const std::string_view* value_arg);
+  void set_key_id(std::string_view value_arg);
+
+  // The CBOR attestation object produced by
+  // `DCAppAttestService.attestKey`. Verify server-side per Apple's
+  // "Validating Apps That Connect to Your Server".
+  const std::vector<uint8_t>* attestation_object() const;
+  void set_attestation_object(const std::vector<uint8_t>* value_arg);
+  void set_attestation_object(const std::vector<uint8_t>& value_arg);
+
+  // Error message if the operation failed.
+  const std::string* error() const;
+  void set_error(const std::string_view* value_arg);
+  void set_error(std::string_view value_arg);
+
+  // Standardized error code if the operation failed.
+  //
+  // [BiometricError.notAvailable] means Apple's servers were unreachable —
+  // retry later with the SAME challenge. [BiometricError.notSupported] is
+  // returned on Android, Windows, all Macs, simulators, and iOS < 14.
+  const BiometricError* code() const;
+  void set_code(const BiometricError* value_arg);
+  void set_code(const BiometricError& value_arg);
+
+ private:
+  static AppAttestResult FromEncodableList(const flutter::EncodableList& list);
+  flutter::EncodableList ToEncodableList() const;
+  friend class BiometricSignatureApi;
+  friend class PigeonInternalCodecSerializer;
+  std::optional<std::string> key_id_;
+  std::optional<std::vector<uint8_t>> attestation_object_;
+  std::optional<std::string> error_;
+  std::optional<BiometricError> code_;
+};
+
+
+// Result of [BiometricSignatureApi.getAppAssertion] (Apple App Attest).
+//
+// Generated class from Pigeon that represents data sent in messages.
+class AppAssertionResult {
+ public:
+  // Constructs an object setting all non-nullable fields.
+  AppAssertionResult();
+
+  // Constructs an object setting all fields.
+  explicit AppAssertionResult(
+    const std::string* key_id,
+    const std::vector<uint8_t>* assertion_object,
+    const std::string* error,
+    const BiometricError* code);
+
+  // The App Attest key identifier the assertion was produced with.
+  const std::string* key_id() const;
+  void set_key_id(const std::string_view* value_arg);
+  void set_key_id(std::string_view value_arg);
+
+  // The CBOR assertion object produced by
+  // `DCAppAttestService.generateAssertion`.
+  const std::vector<uint8_t>* assertion_object() const;
+  void set_assertion_object(const std::vector<uint8_t>* value_arg);
+  void set_assertion_object(const std::vector<uint8_t>& value_arg);
+
+  // Error message if the operation failed.
+  const std::string* error() const;
+  void set_error(const std::string_view* value_arg);
+  void set_error(std::string_view value_arg);
+
+  // Standardized error code if the operation failed.
+  //
+  // [BiometricError.keyNotFound] means no attested App Attest key exists
+  // for this alias — call [BiometricSignatureApi.getAppAttestation] first.
+  const BiometricError* code() const;
+  void set_code(const BiometricError* value_arg);
+  void set_code(const BiometricError& value_arg);
+
+ private:
+  static AppAssertionResult FromEncodableList(const flutter::EncodableList& list);
+  flutter::EncodableList ToEncodableList() const;
+  friend class BiometricSignatureApi;
+  friend class PigeonInternalCodecSerializer;
+  std::optional<std::string> key_id_;
+  std::optional<std::vector<uint8_t>> assertion_object_;
+  std::optional<std::string> error_;
+  std::optional<BiometricError> code_;
+};
+
+
 class PigeonInternalCodecSerializer : public flutter::StandardCodecSerializer {
  public:
   PigeonInternalCodecSerializer();
@@ -1046,6 +1202,32 @@ class BiometricSignatureApi {
   // Returns `true` if the device has a screen lock configured (or the
   // platform-specific equivalent described above).
   virtual void IsDeviceLockSet(std::function<void(ErrorOr<bool> reply)> result) = 0;
+  // Whether Apple App Attest is supported here: `true` only on physical
+  // iOS 14+ devices with the App Attest capability configured. Always
+  // `false` on Android, Windows, all Macs (including Mac Catalyst and
+  // iOS-apps-on-Apple-silicon), and simulators.
+  virtual void IsAppAttestSupported(std::function<void(ErrorOr<bool> reply)> result) = 0;
+  // [iOS 14+] Attests the app/device integrity via Apple App Attest.
+  //
+  // [challenge] is the server-issued challenge (non-empty). The plugin
+  // computes SHA-256(challenge) natively as the required clientDataHash.
+  // [keyAlias] namespaces the stored App Attest key id; null = default.
+  // An App Attest key is generated and stored on first use per alias.
+  //
+  // Returns in-band [BiometricError.notSupported] everywhere App Attest is
+  // unavailable, and [BiometricError.notAvailable] when Apple's servers
+  // are unreachable (retry later with the SAME challenge).
+  virtual void GetAppAttestation(
+    const std::vector<uint8_t>& challenge,
+    const std::string* key_alias,
+    std::function<void(ErrorOr<AppAttestResult> reply)> result) = 0;
+  // [iOS 14+] Produces an App Attest assertion with the previously
+  // attested key for [keyAlias]. Returns [BiometricError.keyNotFound] when
+  // no key exists or the key was never successfully attested.
+  virtual void GetAppAssertion(
+    const std::vector<uint8_t>& challenge,
+    const std::string* key_alias,
+    std::function<void(ErrorOr<AppAssertionResult> reply)> result) = 0;
 
   // The codec used by BiometricSignatureApi.
   static const flutter::StandardMessageCodec& GetCodec();

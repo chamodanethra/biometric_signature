@@ -1,3 +1,27 @@
+## [13.1.0] - 2026-08-12
+
+### Added
+* **Hardware Key Attestation.**
+  * **Android Key Attestation**: `CreateKeysConfig.attestationChallenge` (1–128 bytes, API 24+)
+    makes `createKeys` return the keystore X.509 attestation certificate chain in
+    `KeyCreationResult.attestationCertificateChain` (DER, leaf first), rooted in Google's hardware
+    attestation roots; `getKeyInfo` reports the chain for previously attested keys. Attestation is
+    a hard opt-in: failures (API 23, no chain, StrongBox and TEE both failing) surface as in-band
+    `notSupported`/`invalidInput` and never leave an unattested key behind; StrongBox attestation
+    failures retry once in the TEE. Setting the challenge on iOS/macOS/Windows returns
+    `notSupported` instead of silently ignoring it. In hybrid mode only the keystore EC signing
+    key is attested.
+  * **Apple App Attest** (iOS 14+ physical devices): `isAppAttestSupported()`,
+    `getAppAttestation(challenge:, keyAlias:)` → `AppAttestResult{keyId, attestationObject}`, and
+    `getAppAssertion(challenge:, keyAlias:)` → `AppAssertionResult{keyId, assertionObject}`. The
+    plugin hashes the challenge with SHA-256 (the required clientDataHash), stores the App Attest
+    key id per alias in the keychain, mints a fresh key once when a reused stored key is rejected
+    (`DCErrorInvalidKey`), and maps `DCErrorServerUnavailable` to `notAvailable` ("retry with the
+    SAME challenge" — keys are never regenerated on server errors, which would degrade the
+    device's risk metric). Android, Windows, all Macs, and simulators return in-band
+    `notSupported`. `deleteAllKeys()` also clears stored App Attest key ids; `deleteKeys()`
+    deliberately does not (independent lifecycle).
+
 ## [13.0.0] - 2026-07-25
 
 ### Added

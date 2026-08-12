@@ -140,7 +140,8 @@ KeyCreationResult::KeyCreationResult(
   const std::string* decrypting_algorithm,
   const int64_t* decrypting_key_size,
   const bool* is_hybrid_mode,
-  const AuthenticationType* authentication_type)
+  const AuthenticationType* authentication_type,
+  const EncodableList* attestation_certificate_chain)
  : public_key_(public_key ? std::optional<std::string>(*public_key) : std::nullopt),
     public_key_bytes_(public_key_bytes ? std::optional<std::vector<uint8_t>>(*public_key_bytes) : std::nullopt),
     error_(error ? std::optional<std::string>(*error) : std::nullopt),
@@ -151,7 +152,8 @@ KeyCreationResult::KeyCreationResult(
     decrypting_algorithm_(decrypting_algorithm ? std::optional<std::string>(*decrypting_algorithm) : std::nullopt),
     decrypting_key_size_(decrypting_key_size ? std::optional<int64_t>(*decrypting_key_size) : std::nullopt),
     is_hybrid_mode_(is_hybrid_mode ? std::optional<bool>(*is_hybrid_mode) : std::nullopt),
-    authentication_type_(authentication_type ? std::optional<AuthenticationType>(*authentication_type) : std::nullopt) {}
+    authentication_type_(authentication_type ? std::optional<AuthenticationType>(*authentication_type) : std::nullopt),
+    attestation_certificate_chain_(attestation_certificate_chain ? std::optional<EncodableList>(*attestation_certificate_chain) : std::nullopt) {}
 
 const std::string* KeyCreationResult::public_key() const {
   return public_key_ ? &(*public_key_) : nullptr;
@@ -296,9 +298,22 @@ void KeyCreationResult::set_authentication_type(const AuthenticationType& value_
 }
 
 
+const EncodableList* KeyCreationResult::attestation_certificate_chain() const {
+  return attestation_certificate_chain_ ? &(*attestation_certificate_chain_) : nullptr;
+}
+
+void KeyCreationResult::set_attestation_certificate_chain(const EncodableList* value_arg) {
+  attestation_certificate_chain_ = value_arg ? std::optional<EncodableList>(*value_arg) : std::nullopt;
+}
+
+void KeyCreationResult::set_attestation_certificate_chain(const EncodableList& value_arg) {
+  attestation_certificate_chain_ = value_arg;
+}
+
+
 EncodableList KeyCreationResult::ToEncodableList() const {
   EncodableList list;
-  list.reserve(11);
+  list.reserve(12);
   list.push_back(public_key_ ? EncodableValue(*public_key_) : EncodableValue());
   list.push_back(public_key_bytes_ ? EncodableValue(*public_key_bytes_) : EncodableValue());
   list.push_back(error_ ? EncodableValue(*error_) : EncodableValue());
@@ -310,6 +325,7 @@ EncodableList KeyCreationResult::ToEncodableList() const {
   list.push_back(decrypting_key_size_ ? EncodableValue(*decrypting_key_size_) : EncodableValue());
   list.push_back(is_hybrid_mode_ ? EncodableValue(*is_hybrid_mode_) : EncodableValue());
   list.push_back(authentication_type_ ? CustomEncodableValue(*authentication_type_) : EncodableValue());
+  list.push_back(attestation_certificate_chain_ ? EncodableValue(*attestation_certificate_chain_) : EncodableValue());
   return list;
 }
 
@@ -358,6 +374,10 @@ KeyCreationResult KeyCreationResult::FromEncodableList(const EncodableList& list
   auto& encodable_authentication_type = list[10];
   if (!encodable_authentication_type.IsNull()) {
     decoded.set_authentication_type(std::any_cast<const AuthenticationType&>(std::get<CustomEncodableValue>(encodable_authentication_type)));
+  }
+  auto& encodable_attestation_certificate_chain = list[11];
+  if (!encodable_attestation_certificate_chain.IsNull()) {
+    decoded.set_attestation_certificate_chain(std::get<EncodableList>(encodable_attestation_certificate_chain));
   }
   return decoded;
 }
@@ -649,7 +669,8 @@ KeyInfo::KeyInfo(
   const std::string* public_key,
   const std::string* decrypting_public_key,
   const std::string* decrypting_algorithm,
-  const int64_t* decrypting_key_size)
+  const int64_t* decrypting_key_size,
+  const EncodableList* attestation_certificate_chain)
  : exists_(exists ? std::optional<bool>(*exists) : std::nullopt),
     is_valid_(is_valid ? std::optional<bool>(*is_valid) : std::nullopt),
     algorithm_(algorithm ? std::optional<std::string>(*algorithm) : std::nullopt),
@@ -658,7 +679,8 @@ KeyInfo::KeyInfo(
     public_key_(public_key ? std::optional<std::string>(*public_key) : std::nullopt),
     decrypting_public_key_(decrypting_public_key ? std::optional<std::string>(*decrypting_public_key) : std::nullopt),
     decrypting_algorithm_(decrypting_algorithm ? std::optional<std::string>(*decrypting_algorithm) : std::nullopt),
-    decrypting_key_size_(decrypting_key_size ? std::optional<int64_t>(*decrypting_key_size) : std::nullopt) {}
+    decrypting_key_size_(decrypting_key_size ? std::optional<int64_t>(*decrypting_key_size) : std::nullopt),
+    attestation_certificate_chain_(attestation_certificate_chain ? std::optional<EncodableList>(*attestation_certificate_chain) : std::nullopt) {}
 
 const bool* KeyInfo::exists() const {
   return exists_ ? &(*exists_) : nullptr;
@@ -777,9 +799,22 @@ void KeyInfo::set_decrypting_key_size(int64_t value_arg) {
 }
 
 
+const EncodableList* KeyInfo::attestation_certificate_chain() const {
+  return attestation_certificate_chain_ ? &(*attestation_certificate_chain_) : nullptr;
+}
+
+void KeyInfo::set_attestation_certificate_chain(const EncodableList* value_arg) {
+  attestation_certificate_chain_ = value_arg ? std::optional<EncodableList>(*value_arg) : std::nullopt;
+}
+
+void KeyInfo::set_attestation_certificate_chain(const EncodableList& value_arg) {
+  attestation_certificate_chain_ = value_arg;
+}
+
+
 EncodableList KeyInfo::ToEncodableList() const {
   EncodableList list;
-  list.reserve(9);
+  list.reserve(10);
   list.push_back(exists_ ? EncodableValue(*exists_) : EncodableValue());
   list.push_back(is_valid_ ? EncodableValue(*is_valid_) : EncodableValue());
   list.push_back(algorithm_ ? EncodableValue(*algorithm_) : EncodableValue());
@@ -789,6 +824,7 @@ EncodableList KeyInfo::ToEncodableList() const {
   list.push_back(decrypting_public_key_ ? EncodableValue(*decrypting_public_key_) : EncodableValue());
   list.push_back(decrypting_algorithm_ ? EncodableValue(*decrypting_algorithm_) : EncodableValue());
   list.push_back(decrypting_key_size_ ? EncodableValue(*decrypting_key_size_) : EncodableValue());
+  list.push_back(attestation_certificate_chain_ ? EncodableValue(*attestation_certificate_chain_) : EncodableValue());
   return list;
 }
 
@@ -830,6 +866,10 @@ KeyInfo KeyInfo::FromEncodableList(const EncodableList& list) {
   if (!encodable_decrypting_key_size.IsNull()) {
     decoded.set_decrypting_key_size(std::get<int64_t>(encodable_decrypting_key_size));
   }
+  auto& encodable_attestation_certificate_chain = list[9];
+  if (!encodable_attestation_certificate_chain.IsNull()) {
+    decoded.set_attestation_certificate_chain(std::get<EncodableList>(encodable_attestation_certificate_chain));
+  }
   return decoded;
 }
 
@@ -847,7 +887,8 @@ CreateKeysConfig::CreateKeysConfig(
   const std::string* prompt_description,
   const std::string* cancel_button_text,
   const bool* fail_if_exists,
-  const bool* require_authentication)
+  const bool* require_authentication,
+  const std::vector<uint8_t>* attestation_challenge)
  : signature_type_(signature_type ? std::optional<SignatureType>(*signature_type) : std::nullopt),
     enforce_biometric_(enforce_biometric ? std::optional<bool>(*enforce_biometric) : std::nullopt),
     set_invalidated_by_biometric_enrollment_(set_invalidated_by_biometric_enrollment ? std::optional<bool>(*set_invalidated_by_biometric_enrollment) : std::nullopt),
@@ -857,7 +898,8 @@ CreateKeysConfig::CreateKeysConfig(
     prompt_description_(prompt_description ? std::optional<std::string>(*prompt_description) : std::nullopt),
     cancel_button_text_(cancel_button_text ? std::optional<std::string>(*cancel_button_text) : std::nullopt),
     fail_if_exists_(fail_if_exists ? std::optional<bool>(*fail_if_exists) : std::nullopt),
-    require_authentication_(require_authentication ? std::optional<bool>(*require_authentication) : std::nullopt) {}
+    require_authentication_(require_authentication ? std::optional<bool>(*require_authentication) : std::nullopt),
+    attestation_challenge_(attestation_challenge ? std::optional<std::vector<uint8_t>>(*attestation_challenge) : std::nullopt) {}
 
 const SignatureType* CreateKeysConfig::signature_type() const {
   return signature_type_ ? &(*signature_type_) : nullptr;
@@ -989,9 +1031,22 @@ void CreateKeysConfig::set_require_authentication(bool value_arg) {
 }
 
 
+const std::vector<uint8_t>* CreateKeysConfig::attestation_challenge() const {
+  return attestation_challenge_ ? &(*attestation_challenge_) : nullptr;
+}
+
+void CreateKeysConfig::set_attestation_challenge(const std::vector<uint8_t>* value_arg) {
+  attestation_challenge_ = value_arg ? std::optional<std::vector<uint8_t>>(*value_arg) : std::nullopt;
+}
+
+void CreateKeysConfig::set_attestation_challenge(const std::vector<uint8_t>& value_arg) {
+  attestation_challenge_ = value_arg;
+}
+
+
 EncodableList CreateKeysConfig::ToEncodableList() const {
   EncodableList list;
-  list.reserve(10);
+  list.reserve(11);
   list.push_back(signature_type_ ? CustomEncodableValue(*signature_type_) : EncodableValue());
   list.push_back(enforce_biometric_ ? EncodableValue(*enforce_biometric_) : EncodableValue());
   list.push_back(set_invalidated_by_biometric_enrollment_ ? EncodableValue(*set_invalidated_by_biometric_enrollment_) : EncodableValue());
@@ -1002,6 +1057,7 @@ EncodableList CreateKeysConfig::ToEncodableList() const {
   list.push_back(cancel_button_text_ ? EncodableValue(*cancel_button_text_) : EncodableValue());
   list.push_back(fail_if_exists_ ? EncodableValue(*fail_if_exists_) : EncodableValue());
   list.push_back(require_authentication_ ? EncodableValue(*require_authentication_) : EncodableValue());
+  list.push_back(attestation_challenge_ ? EncodableValue(*attestation_challenge_) : EncodableValue());
   return list;
 }
 
@@ -1046,6 +1102,10 @@ CreateKeysConfig CreateKeysConfig::FromEncodableList(const EncodableList& list) 
   auto& encodable_require_authentication = list[9];
   if (!encodable_require_authentication.IsNull()) {
     decoded.set_require_authentication(std::get<bool>(encodable_require_authentication));
+  }
+  auto& encodable_attestation_challenge = list[10];
+  if (!encodable_attestation_challenge.IsNull()) {
+    decoded.set_attestation_challenge(std::get<std::vector<uint8_t>>(encodable_attestation_challenge));
   }
   return decoded;
 }
@@ -1458,6 +1518,200 @@ SimplePromptResult SimplePromptResult::FromEncodableList(const EncodableList& li
   return decoded;
 }
 
+// AppAttestResult
+
+AppAttestResult::AppAttestResult() {}
+
+AppAttestResult::AppAttestResult(
+  const std::string* key_id,
+  const std::vector<uint8_t>* attestation_object,
+  const std::string* error,
+  const BiometricError* code)
+ : key_id_(key_id ? std::optional<std::string>(*key_id) : std::nullopt),
+    attestation_object_(attestation_object ? std::optional<std::vector<uint8_t>>(*attestation_object) : std::nullopt),
+    error_(error ? std::optional<std::string>(*error) : std::nullopt),
+    code_(code ? std::optional<BiometricError>(*code) : std::nullopt) {}
+
+const std::string* AppAttestResult::key_id() const {
+  return key_id_ ? &(*key_id_) : nullptr;
+}
+
+void AppAttestResult::set_key_id(const std::string_view* value_arg) {
+  key_id_ = value_arg ? std::optional<std::string>(*value_arg) : std::nullopt;
+}
+
+void AppAttestResult::set_key_id(std::string_view value_arg) {
+  key_id_ = value_arg;
+}
+
+
+const std::vector<uint8_t>* AppAttestResult::attestation_object() const {
+  return attestation_object_ ? &(*attestation_object_) : nullptr;
+}
+
+void AppAttestResult::set_attestation_object(const std::vector<uint8_t>* value_arg) {
+  attestation_object_ = value_arg ? std::optional<std::vector<uint8_t>>(*value_arg) : std::nullopt;
+}
+
+void AppAttestResult::set_attestation_object(const std::vector<uint8_t>& value_arg) {
+  attestation_object_ = value_arg;
+}
+
+
+const std::string* AppAttestResult::error() const {
+  return error_ ? &(*error_) : nullptr;
+}
+
+void AppAttestResult::set_error(const std::string_view* value_arg) {
+  error_ = value_arg ? std::optional<std::string>(*value_arg) : std::nullopt;
+}
+
+void AppAttestResult::set_error(std::string_view value_arg) {
+  error_ = value_arg;
+}
+
+
+const BiometricError* AppAttestResult::code() const {
+  return code_ ? &(*code_) : nullptr;
+}
+
+void AppAttestResult::set_code(const BiometricError* value_arg) {
+  code_ = value_arg ? std::optional<BiometricError>(*value_arg) : std::nullopt;
+}
+
+void AppAttestResult::set_code(const BiometricError& value_arg) {
+  code_ = value_arg;
+}
+
+
+EncodableList AppAttestResult::ToEncodableList() const {
+  EncodableList list;
+  list.reserve(4);
+  list.push_back(key_id_ ? EncodableValue(*key_id_) : EncodableValue());
+  list.push_back(attestation_object_ ? EncodableValue(*attestation_object_) : EncodableValue());
+  list.push_back(error_ ? EncodableValue(*error_) : EncodableValue());
+  list.push_back(code_ ? CustomEncodableValue(*code_) : EncodableValue());
+  return list;
+}
+
+AppAttestResult AppAttestResult::FromEncodableList(const EncodableList& list) {
+  AppAttestResult decoded;
+  auto& encodable_key_id = list[0];
+  if (!encodable_key_id.IsNull()) {
+    decoded.set_key_id(std::get<std::string>(encodable_key_id));
+  }
+  auto& encodable_attestation_object = list[1];
+  if (!encodable_attestation_object.IsNull()) {
+    decoded.set_attestation_object(std::get<std::vector<uint8_t>>(encodable_attestation_object));
+  }
+  auto& encodable_error = list[2];
+  if (!encodable_error.IsNull()) {
+    decoded.set_error(std::get<std::string>(encodable_error));
+  }
+  auto& encodable_code = list[3];
+  if (!encodable_code.IsNull()) {
+    decoded.set_code(std::any_cast<const BiometricError&>(std::get<CustomEncodableValue>(encodable_code)));
+  }
+  return decoded;
+}
+
+// AppAssertionResult
+
+AppAssertionResult::AppAssertionResult() {}
+
+AppAssertionResult::AppAssertionResult(
+  const std::string* key_id,
+  const std::vector<uint8_t>* assertion_object,
+  const std::string* error,
+  const BiometricError* code)
+ : key_id_(key_id ? std::optional<std::string>(*key_id) : std::nullopt),
+    assertion_object_(assertion_object ? std::optional<std::vector<uint8_t>>(*assertion_object) : std::nullopt),
+    error_(error ? std::optional<std::string>(*error) : std::nullopt),
+    code_(code ? std::optional<BiometricError>(*code) : std::nullopt) {}
+
+const std::string* AppAssertionResult::key_id() const {
+  return key_id_ ? &(*key_id_) : nullptr;
+}
+
+void AppAssertionResult::set_key_id(const std::string_view* value_arg) {
+  key_id_ = value_arg ? std::optional<std::string>(*value_arg) : std::nullopt;
+}
+
+void AppAssertionResult::set_key_id(std::string_view value_arg) {
+  key_id_ = value_arg;
+}
+
+
+const std::vector<uint8_t>* AppAssertionResult::assertion_object() const {
+  return assertion_object_ ? &(*assertion_object_) : nullptr;
+}
+
+void AppAssertionResult::set_assertion_object(const std::vector<uint8_t>* value_arg) {
+  assertion_object_ = value_arg ? std::optional<std::vector<uint8_t>>(*value_arg) : std::nullopt;
+}
+
+void AppAssertionResult::set_assertion_object(const std::vector<uint8_t>& value_arg) {
+  assertion_object_ = value_arg;
+}
+
+
+const std::string* AppAssertionResult::error() const {
+  return error_ ? &(*error_) : nullptr;
+}
+
+void AppAssertionResult::set_error(const std::string_view* value_arg) {
+  error_ = value_arg ? std::optional<std::string>(*value_arg) : std::nullopt;
+}
+
+void AppAssertionResult::set_error(std::string_view value_arg) {
+  error_ = value_arg;
+}
+
+
+const BiometricError* AppAssertionResult::code() const {
+  return code_ ? &(*code_) : nullptr;
+}
+
+void AppAssertionResult::set_code(const BiometricError* value_arg) {
+  code_ = value_arg ? std::optional<BiometricError>(*value_arg) : std::nullopt;
+}
+
+void AppAssertionResult::set_code(const BiometricError& value_arg) {
+  code_ = value_arg;
+}
+
+
+EncodableList AppAssertionResult::ToEncodableList() const {
+  EncodableList list;
+  list.reserve(4);
+  list.push_back(key_id_ ? EncodableValue(*key_id_) : EncodableValue());
+  list.push_back(assertion_object_ ? EncodableValue(*assertion_object_) : EncodableValue());
+  list.push_back(error_ ? EncodableValue(*error_) : EncodableValue());
+  list.push_back(code_ ? CustomEncodableValue(*code_) : EncodableValue());
+  return list;
+}
+
+AppAssertionResult AppAssertionResult::FromEncodableList(const EncodableList& list) {
+  AppAssertionResult decoded;
+  auto& encodable_key_id = list[0];
+  if (!encodable_key_id.IsNull()) {
+    decoded.set_key_id(std::get<std::string>(encodable_key_id));
+  }
+  auto& encodable_assertion_object = list[1];
+  if (!encodable_assertion_object.IsNull()) {
+    decoded.set_assertion_object(std::get<std::vector<uint8_t>>(encodable_assertion_object));
+  }
+  auto& encodable_error = list[2];
+  if (!encodable_error.IsNull()) {
+    decoded.set_error(std::get<std::string>(encodable_error));
+  }
+  auto& encodable_code = list[3];
+  if (!encodable_code.IsNull()) {
+    decoded.set_code(std::any_cast<const BiometricError&>(std::get<CustomEncodableValue>(encodable_code)));
+  }
+  return decoded;
+}
+
 
 PigeonInternalCodecSerializer::PigeonInternalCodecSerializer() {}
 
@@ -1534,6 +1788,12 @@ EncodableValue PigeonInternalCodecSerializer::ReadValueOfType(
       }
     case 146: {
         return CustomEncodableValue(SimplePromptResult::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+      }
+    case 147: {
+        return CustomEncodableValue(AppAttestResult::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+      }
+    case 148: {
+        return CustomEncodableValue(AppAssertionResult::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
       }
     default:
       return flutter::StandardCodecSerializer::ReadValueOfType(type, stream);
@@ -1632,6 +1892,16 @@ void PigeonInternalCodecSerializer::WriteValue(
     if (custom_value->type() == typeid(SimplePromptResult)) {
       stream->WriteByte(146);
       WriteValue(EncodableValue(std::any_cast<SimplePromptResult>(*custom_value).ToEncodableList()), stream);
+      return;
+    }
+    if (custom_value->type() == typeid(AppAttestResult)) {
+      stream->WriteByte(147);
+      WriteValue(EncodableValue(std::any_cast<AppAttestResult>(*custom_value).ToEncodableList()), stream);
+      return;
+    }
+    if (custom_value->type() == typeid(AppAssertionResult)) {
+      stream->WriteByte(148);
+      WriteValue(EncodableValue(std::any_cast<AppAssertionResult>(*custom_value).ToEncodableList()), stream);
       return;
     }
   }
@@ -1974,6 +2244,90 @@ void BiometricSignatureApi::SetUp(
             }
             EncodableList wrapped;
             wrapped.push_back(EncodableValue(std::move(output).TakeValue()));
+            reply(EncodableValue(std::move(wrapped)));
+          });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.isAppAttestSupported" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          api->IsAppAttestSupported([reply](ErrorOr<bool>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
+            }
+            EncodableList wrapped;
+            wrapped.push_back(EncodableValue(std::move(output).TakeValue()));
+            reply(EncodableValue(std::move(wrapped)));
+          });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.getAppAttestation" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_challenge_arg = args.at(0);
+          if (encodable_challenge_arg.IsNull()) {
+            reply(WrapError("challenge_arg unexpectedly null."));
+            return;
+          }
+          const auto& challenge_arg = std::get<std::vector<uint8_t>>(encodable_challenge_arg);
+          const auto& encodable_key_alias_arg = args.at(1);
+          const auto* key_alias_arg = std::get_if<std::string>(&encodable_key_alias_arg);
+          api->GetAppAttestation(challenge_arg, key_alias_arg, [reply](ErrorOr<AppAttestResult>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
+            }
+            EncodableList wrapped;
+            wrapped.push_back(CustomEncodableValue(std::move(output).TakeValue()));
+            reply(EncodableValue(std::move(wrapped)));
+          });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.getAppAssertion" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_challenge_arg = args.at(0);
+          if (encodable_challenge_arg.IsNull()) {
+            reply(WrapError("challenge_arg unexpectedly null."));
+            return;
+          }
+          const auto& challenge_arg = std::get<std::vector<uint8_t>>(encodable_challenge_arg);
+          const auto& encodable_key_alias_arg = args.at(1);
+          const auto* key_alias_arg = std::get_if<std::string>(&encodable_key_alias_arg);
+          api->GetAppAssertion(challenge_arg, key_alias_arg, [reply](ErrorOr<AppAssertionResult>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
+            }
+            EncodableList wrapped;
+            wrapped.push_back(CustomEncodableValue(std::move(output).TakeValue()));
             reply(EncodableValue(std::move(wrapped)));
           });
         } catch (const std::exception& exception) {

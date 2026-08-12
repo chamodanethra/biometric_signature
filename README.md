@@ -258,6 +258,11 @@ you need to add:
 
 to your Info.plist file.
 
+To use [Apple App Attest](#apple-app-attest-ios-14-physical-devices), additionally enable the
+**App Attest** capability for your App ID on the Apple Developer portal and add the
+`com.apple.developer.devicecheck.appattest-environment` entitlement — see the
+[Hardware Key Attestation](#hardware-key-attestation) section.
+
 ### Android Integration
 
 #### Activity Changes
@@ -309,6 +314,9 @@ Replace `com.yourdomain.yourapp` with your actual bundle identifier.
 ```ruby
 platform :osx, '10.15'
 ```
+
+> Note: Apple App Attest is **not available on macOS** — Apple disables it on all Macs, so
+> `isAppAttestSupported()` returns `false` and the App Attest APIs return `notSupported` in-band.
 
 ### Windows Integration
 
@@ -410,6 +418,109 @@ in `decryptingPublicKey`.
 > Keys created before v11.0.0 authorise PKCS#1 v1.5 instead of OAEP. The plugin still falls back to
 > PKCS#1 v1.5 for those, so existing ciphertext keeps working, but new keys should use OAEP.
 
+## Hardware Key Attestation
+
+Attestation lets your server verify *where* a key lives (StrongBox/TEE) and that the app/device
+is genuine — not just that a signature is valid. The two platform mechanisms attest different
+things, so they are exposed as separate, platform-honest APIs:
+
+| Platform | Mechanism | What is attested | API |
+|----------|-----------|------------------|-----|
+| Android 7.0+ | Android Key Attestation | The signing key itself (hardware-backed, challenge-bound) | `CreateKeysConfig.attestationChallenge` |
+| iOS 14+ (physical devices) | Apple App Attest | App + device integrity via a separate Apple-managed key | `getAppAttestation` / `getAppAssertion` |
+| macOS | — | Apple disables App Attest on all Macs | in-band `notSupported` |
+| Windows | — | Not supported | in-band `notSupported` |
+
+### Android Key Attestation
+
+Pass a server-issued challenge (1–128 bytes) when creating keys; the result carries the DER X.509
+attestation certificate chain (leaf first), rooted in Google's hardware attestation roots:
+
+```dart
+final result = await biometricSignature.createKeys(
+  promptMessage: 'Create an attested key',
+  config: CreateKeysConfig(
+    signatureType: SignatureType.ecdsa,
+    attestationChallenge: serverChallenge, // 1–128 bytes from your server
+  ),
+);
+if (result.code == BiometricError.success) {
+  final chain = result.attestationCertificateChain; // DER certs, leaf first
+  // Send the chain (base64-encoded) to your server for verification.
+}
+```
+
+Semantics — attestation is a hard opt-in and never silently degrades:
+
+- Requires Android 7.0 (API 24) with keystore attestation support; failures return in-band
+  `BiometricError.notSupported` and **no key is left behind**.
+- If StrongBox key generation fails with a challenge set, the plugin retries once in the TEE —
+  still hardware attestation; the chain's `attestationSecurityLevel` tells your server which one
+  produced the key.
+- Setting `attestationChallenge` on iOS/macOS/Windows returns `notSupported` in-band. This
+  deliberately deviates from the silent-ignore convention of other config fields: silently
+  ignoring an attestation request would hand back an unattested key the caller believes is
+  attested.
+- In hybrid mode (`ecdsa` + `enableDecryption`) only the keystore EC signing key is attested; the
+  software decryption key cannot be.
+- `getKeyInfo` also returns `attestationCertificateChain` for previously attested keys.
+
+**Server-side verification**: base64-decode the DER certificates, validate the chain up to
+[Google's Hardware Attestation Root certificates](https://developer.android.com/privacy-and-security/security-key-attestation#root_certificate)
+(and check the attestation CRL), parse the leaf's attestation extension (OID
+`1.3.6.1.4.1.11129.2.1.17`), verify its `attestationChallenge` equals the challenge your server
+issued, and inspect `attestationSecurityLevel` (TEE vs StrongBox) and the key's origin. Google's
+[android-key-attestation](https://github.com/google/android-key-attestation) sample library
+implements the full check.
+
+### Apple App Attest (iOS 14+, physical devices)
+
+App Attest attests your **app and device integrity** with a separate Apple-managed Secure Enclave
+key. It cannot attest the plugin's signing keys (no Apple API exists for that), and its
+attestation/assertion objects are verified against Apple's CA — a different server-side flow from
+Android's:
+
+```dart
+if (await biometricSignature.isAppAttestSupported()) {
+  // One-time (per keyAlias): attest and register with your server.
+  final attestation = await biometricSignature.getAppAttestation(
+    challenge: serverChallenge,
+  );
+  if (attestation.code == BiometricError.success) {
+    // Send attestation.keyId + attestation.attestationObject (CBOR) to the
+    // server. Verify per Apple's "Validating Apps That Connect to Your
+    // Server" documentation.
+  }
+
+  // Per-request: accompany sensitive API calls with an assertion.
+  final assertion = await biometricSignature.getAppAssertion(
+    challenge: perRequestChallenge,
+  );
+}
+```
+
+Setup:
+
+1. Enable the **App Attest** capability for your App ID on the Apple Developer portal.
+2. Add the entitlement to your app (e.g. `ios/Runner/Runner.entitlements`):
+
+```xml
+<key>com.apple.developer.devicecheck.appattest-environment</key>
+<string>production</string> <!-- or "development" while testing -->
+```
+
+Behavior:
+
+- The plugin hashes your challenge with SHA-256 (the required `clientDataHash`) and stores the App
+  Attest `keyId` per `keyAlias` in the keychain, reusing one key per alias as Apple recommends.
+- `BiometricError.notAvailable` means Apple's servers were unreachable — **retry later with the
+  SAME challenge**. The plugin deliberately never regenerates the key on server errors: that
+  degrades the device's risk metric with Apple.
+- Simulators, all Macs (including Mac Catalyst and iOS-apps-on-Apple-silicon), Android, and
+  Windows return `notSupported` in-band.
+- `deleteAllKeys()` clears stored App Attest key ids; `deleteKeys()` deliberately does **not** —
+  the App Attest key's lifecycle is independent of signing keys.
+
 ## Class: BiometricSignaturePlugin
 
 This class provides methods to manage and utilize biometric authentication for secure server interactions. It supports both Android and iOS platforms.
@@ -443,6 +554,7 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
 | `promptSubtitle` | Android | none | Subtitle for biometric prompt |
 | `promptDescription` | Android | none | Description for biometric prompt |
 | `cancelButtonText` | Android | `"Cancel"` | Cancel button text |
+| `attestationChallenge` | Android (API 24+) | none | Server challenge (1–128 bytes) for [hardware key attestation](#hardware-key-attestation); returns the X.509 chain in `attestationCertificateChain`. In-band `notSupported` on other platforms |
 
 **On `setInvalidatedByBiometricEnrollment`:** the default is `true` on every platform that
 supports it — a key created without the flag is bound to the biometric set enrolled at

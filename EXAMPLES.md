@@ -105,11 +105,11 @@ A full-featured passwordless authentication system demonstrating the complete li
 - 🧪 Test authentication feature
 
 **Key Concepts**:
-- FIDO2/WebAuthn-style authentication
+- Hardware-backed public-key authentication
 - Challenge-response protocol
 - Server-side signature verification
 - Public key infrastructure
-- Phishing-resistant authentication
+- Replay-resistant authentication with server-issued challenges
 - Error recovery and re-enrollment
 - Biometric lifecycle management
 - Hardware-backed key storage
@@ -252,6 +252,34 @@ if (decryptResult.code == BiometricError.success) {
   print('Decrypted: ${decryptResult.decryptedData}');
 }
 ```
+
+### Hardware Key Attestation (Android) & App Attest (iOS)
+```dart
+// Android: challenge-bound key attestation at creation time.
+final created = await biometric.createKeys(
+  promptMessage: 'Create an attested key',
+  config: CreateKeysConfig(
+    signatureType: SignatureType.ecdsa,
+    attestationChallenge: serverChallenge, // 1–128 bytes from your server
+  ),
+);
+if (created.code == BiometricError.success) {
+  final chain = created.attestationCertificateChain; // DER X.509, leaf first
+}
+
+// iOS 14+ (physical devices): Apple App Attest.
+if (await biometric.isAppAttestSupported()) {
+  final attestation = await biometric.getAppAttestation(
+    challenge: serverChallenge,
+  );
+  // attestation.keyId + attestation.attestationObject → server verification.
+  final assertion = await biometric.getAppAssertion(
+    challenge: perRequestChallenge,
+  );
+}
+```
+See the README's "Hardware Key Attestation" section for server-side
+verification and the required App Attest entitlement.
 
 ### Error Handling
 ```dart

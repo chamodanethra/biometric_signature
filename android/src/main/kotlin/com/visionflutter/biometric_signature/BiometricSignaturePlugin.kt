@@ -1,6 +1,7 @@
 package com.visionflutter.biometric_signature
 
 import android.content.Context
+import android.os.Build
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import androidx.biometric.BiometricPrompt
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -119,6 +120,11 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
 
         pluginScope.launch {
             try {
+                // failIfExists runs FIRST: callers rely on the invariant that
+                // with failIfExists set, any failure other than
+                // keyAlreadyExists implies no pre-existing credential lives
+                // under the alias (they may safely clean the alias up).
+                // Attestation rejections below must not mask an existing key.
                 val failIfExists = config?.failIfExists ?: false
 
                 if (failIfExists) {
@@ -129,6 +135,34 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                                 KeyCreationResult(
                                     code = BiometricError.KEY_ALREADY_EXISTS,
                                     error = "A key with alias '${keyAlias ?: "default"}' already exists"
+                                )
+                            )
+                        )
+                        return@launch
+                    }
+                }
+
+                // Attestation is an explicit security opt-in: invalid requests
+                // hard-fail before any key material is touched.
+                val attestationChallenge = config?.attestationChallenge
+                if (attestationChallenge != null) {
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                        callback(
+                            Result.success(
+                                KeyCreationResult(
+                                    code = BiometricError.NOT_SUPPORTED,
+                                    error = "Key attestation requires Android 7.0 (API 24) or newer"
+                                )
+                            )
+                        )
+                        return@launch
+                    }
+                    if (attestationChallenge.isEmpty() || attestationChallenge.size > 128) {
+                        callback(
+                            Result.success(
+                                KeyCreationResult(
+                                    code = BiometricError.INVALID_INPUT,
+                                    error = "attestationChallenge must be between 1 and 128 bytes"
                                 )
                             )
                         )
@@ -171,7 +205,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                         promptSubtitle,
                         promptDescription,
                         cancelButtonText,
-                        requireAuthentication
+                        requireAuthentication,
+                        attestationChallenge
                     )
 
                     KeyMode.EC_SIGN_ONLY -> createEcSigningKeys(
@@ -186,7 +221,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                         promptSubtitle,
                         promptDescription,
                         cancelButtonText,
-                        requireAuthentication
+                        requireAuthentication,
+                        attestationChallenge
                     )
 
                     KeyMode.HYBRID_EC -> createHybridEcKeys(
@@ -201,11 +237,24 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                         promptSubtitle,
                         promptDescription,
                         cancelButtonText,
-                        requireAuthentication
+                        requireAuthentication,
+                        attestationChallenge
                     )
                 }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: KeyAttestationException) {
+                // Typed at the one call path that can produce it, instead of a
+                // global ProviderException mapping that would reclassify
+                // unrelated keystore errors in the sign/decrypt paths.
+                callback(
+                    Result.success(
+                        KeyCreationResult(
+                            code = BiometricError.NOT_SUPPORTED,
+                            error = e.message
+                        )
+                    )
+                )
             } catch (e: Exception) {
                 callback(
                     Result.success(
@@ -232,7 +281,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         promptSubtitle: String?,
         promptDescription: String?,
         cancelButtonText: String,
-        requireAuthentication: Boolean
+        requireAuthentication: Boolean,
+        attestationChallenge: ByteArray?
     ) {
         var authType: AuthenticationType? = null
         if (enforceBiometric) {
@@ -244,18 +294,24 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             authType = outcome.authenticationType
         }
 
-        val keyPair = withContext(Dispatchers.IO) {
+        val generated = withContext(Dispatchers.IO) {
             keyManager.deleteKeysForAlias(keyAlias)
             keyManager.generateRsaKeyInKeyStore(
                 keyAlias,
                 useDeviceCredentials,
                 invalidateOnEnrollment,
                 enableDecryption,
-                requireAuthentication
+                requireAuthentication,
+                attestationChallenge
             )
         }
 
-        val response = buildKeyResponse(keyPair.public, keyFormat, authenticationType = authType)
+        val response = buildKeyResponse(
+            generated.keyPair.public,
+            keyFormat,
+            authenticationType = authType,
+            attestationCertificateChain = generated.attestationCertChain
+        )
         callback(Result.success(response))
     }
 
@@ -271,7 +327,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         promptSubtitle: String?,
         promptDescription: String?,
         cancelButtonText: String,
-        requireAuthentication: Boolean
+        requireAuthentication: Boolean,
+        attestationChallenge: ByteArray?
     ) {
         var authType: AuthenticationType? = null
         if (enforceBiometric) {
@@ -283,17 +340,23 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             authType = outcome.authenticationType
         }
 
-        val keyPair = withContext(Dispatchers.IO) {
+        val generated = withContext(Dispatchers.IO) {
             keyManager.deleteKeysForAlias(keyAlias)
             keyManager.generateEcKeyInKeyStore(
                 keyAlias,
                 useDeviceCredentials,
                 invalidateOnEnrollment,
-                requireAuthentication
+                requireAuthentication,
+                attestationChallenge
             )
         }
 
-        val response = buildKeyResponse(keyPair.public, keyFormat, authenticationType = authType)
+        val response = buildKeyResponse(
+            generated.keyPair.public,
+            keyFormat,
+            authenticationType = authType,
+            attestationCertificateChain = generated.attestationCertChain
+        )
         callback(Result.success(response))
     }
 
@@ -309,7 +372,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         promptSubtitle: String?,
         promptDescription: String?,
         cancelButtonText: String,
-        requireAuthentication: Boolean
+        requireAuthentication: Boolean,
+        attestationChallenge: ByteArray?
     ) {
         if (enforceBiometric) {
             biometricPromptHelper.checkBiometricAvailability(activity, useDeviceCredentials)
@@ -319,16 +383,19 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             )
         }
 
-        val signingKeyPair = withContext(Dispatchers.IO) {
+        // Only the keystore EC signing key can carry an attestation chain;
+        // the software decryption key generated below cannot be attested.
+        val signingKey = withContext(Dispatchers.IO) {
             keyManager.deleteKeysForAlias(keyAlias)
-            val ecKeyPair = keyManager.generateEcKeyInKeyStore(
+            val generated = keyManager.generateEcKeyInKeyStore(
                 keyAlias,
                 useDeviceCredentials,
                 invalidateOnEnrollment,
-                requireAuthentication
+                requireAuthentication,
+                attestationChallenge
             )
             keyManager.generateMasterKey(keyAlias, useDeviceCredentials, invalidateOnEnrollment, requireAuthentication)
-            ecKeyPair
+            generated
         }
 
         try {
@@ -362,10 +429,11 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             val decryptingPublicKey = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(publicKeyBytes))
 
             val response = buildKeyResponse(
-                publicKey = signingKeyPair.public,
+                publicKey = signingKey.keyPair.public,
                 format = keyFormat,
                 decryptingKey = decryptingPublicKey,
-                authenticationType = wrapAuthType
+                authenticationType = wrapAuthType,
+                attestationCertificateChain = signingKey.attestationCertChain
             )
 
             callback(Result.success(response))
@@ -881,6 +949,16 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                         } else null
                     } else null
 
+                    // Only a chain longer than the single self-signed keystore
+                    // certificate is real attestation. Guarded so a chain
+                    // encoding failure can never collapse the whole result
+                    // into the catch below (exists = false).
+                    val attestationChain = runCatching {
+                        entry.certificateChain
+                            ?.takeIf { it.size > 1 }
+                            ?.map { it.encoded }
+                    }.getOrNull()
+
                     KeyInfo(
                         exists = true,
                         isValid = isValid,
@@ -890,7 +968,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                         publicKey = formattedPublicKey.value,
                         decryptingPublicKey = decryptingInfo?.first,
                         decryptingAlgorithm = decryptingInfo?.second,
-                        decryptingKeySize = decryptingInfo?.third
+                        decryptingKeySize = decryptingInfo?.third,
+                        attestationCertificateChain = attestationChain
                     )
                 }
                 callback(Result.success(keyInfo))
@@ -1017,11 +1096,48 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         callback(Result.success(keyguardManager.isDeviceSecure))
     }
 
+    override fun isAppAttestSupported(callback: (Result<Boolean>) -> Unit) {
+        callback(Result.success(false))
+    }
+
+    override fun getAppAttestation(
+        challenge: ByteArray,
+        keyAlias: String?,
+        callback: (Result<AppAttestResult>) -> Unit
+    ) {
+        callback(
+            Result.success(
+                AppAttestResult(
+                    code = BiometricError.NOT_SUPPORTED,
+                    error = "App Attest is not supported on Android. Use " +
+                        "CreateKeysConfig.attestationChallenge for Android Key Attestation."
+                )
+            )
+        )
+    }
+
+    override fun getAppAssertion(
+        challenge: ByteArray,
+        keyAlias: String?,
+        callback: (Result<AppAssertionResult>) -> Unit
+    ) {
+        callback(
+            Result.success(
+                AppAssertionResult(
+                    code = BiometricError.NOT_SUPPORTED,
+                    error = "App Attest is not supported on Android. Use " +
+                        "CreateKeysConfig.attestationChallenge for Android Key Attestation."
+                )
+            )
+        )
+    }
+
     private fun buildKeyResponse(
         publicKey: PublicKey,
         format: KeyFormat,
         decryptingKey: PublicKey? = null,
-        authenticationType: AuthenticationType? = null
+        authenticationType: AuthenticationType? = null,
+        attestationCertificateChain: List<ByteArray>? = null
     ): KeyCreationResult {
         val formatted = FormatUtils.formatOutput(publicKey.encoded, format)
         val keySize = (publicKey as? java.security.interfaces.RSAKey)?.modulus?.bitLength()
@@ -1048,7 +1164,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             decryptingAlgorithm = decryptingAlgorithm,
             decryptingKeySize = decryptingKeySize,
             isHybridMode = decryptingKey != null,
-            authenticationType = authenticationType
+            authenticationType = authenticationType,
+            attestationCertificateChain = attestationCertificateChain
         )
     }
 

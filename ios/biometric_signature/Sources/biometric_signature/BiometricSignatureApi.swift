@@ -333,6 +333,11 @@ struct KeyCreationResult: Hashable {
   /// See [AuthenticationType] for how inference is performed when the
   /// platform does not report the method directly.
   var authenticationType: AuthenticationType? = nil
+  /// [Android] DER-encoded X.509 attestation certificate chain, leaf
+  /// (the attestation certificate for the new key) first, root last. Only
+  /// populated when [CreateKeysConfig.attestationChallenge] was set and
+  /// attestation succeeded; null otherwise and on all other platforms.
+  var attestationCertificateChain: [FlutterStandardTypedData?]? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -348,6 +353,7 @@ struct KeyCreationResult: Hashable {
     let decryptingKeySize: Int64? = nilOrValue(pigeonVar_list[8])
     let isHybridMode: Bool? = nilOrValue(pigeonVar_list[9])
     let authenticationType: AuthenticationType? = nilOrValue(pigeonVar_list[10])
+    let attestationCertificateChain: [FlutterStandardTypedData?]? = nilOrValue(pigeonVar_list[11])
 
     return KeyCreationResult(
       publicKey: publicKey,
@@ -360,7 +366,8 @@ struct KeyCreationResult: Hashable {
       decryptingAlgorithm: decryptingAlgorithm,
       decryptingKeySize: decryptingKeySize,
       isHybridMode: isHybridMode,
-      authenticationType: authenticationType
+      authenticationType: authenticationType,
+      attestationCertificateChain: attestationCertificateChain
     )
   }
   func toList() -> [Any?] {
@@ -376,6 +383,7 @@ struct KeyCreationResult: Hashable {
       decryptingKeySize,
       isHybridMode,
       authenticationType,
+      attestationCertificateChain,
     ]
   }
   static func == (lhs: KeyCreationResult, rhs: KeyCreationResult) -> Bool {
@@ -508,6 +516,12 @@ struct KeyInfo: Hashable {
   var decryptingAlgorithm: String? = nil
   /// Key size of the decryption key in bits (hybrid mode only).
   var decryptingKeySize: Int64? = nil
+  /// [Android] DER-encoded X.509 attestation certificate chain of the
+  /// signing key, leaf first. Only populated when the key was created with
+  /// [CreateKeysConfig.attestationChallenge] (chain length > 1); a plain
+  /// self-signed keystore certificate is not reported here. Null on all
+  /// other platforms.
+  var attestationCertificateChain: [FlutterStandardTypedData?]? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -521,6 +535,7 @@ struct KeyInfo: Hashable {
     let decryptingPublicKey: String? = nilOrValue(pigeonVar_list[6])
     let decryptingAlgorithm: String? = nilOrValue(pigeonVar_list[7])
     let decryptingKeySize: Int64? = nilOrValue(pigeonVar_list[8])
+    let attestationCertificateChain: [FlutterStandardTypedData?]? = nilOrValue(pigeonVar_list[9])
 
     return KeyInfo(
       exists: exists,
@@ -531,7 +546,8 @@ struct KeyInfo: Hashable {
       publicKey: publicKey,
       decryptingPublicKey: decryptingPublicKey,
       decryptingAlgorithm: decryptingAlgorithm,
-      decryptingKeySize: decryptingKeySize
+      decryptingKeySize: decryptingKeySize,
+      attestationCertificateChain: attestationCertificateChain
     )
   }
   func toList() -> [Any?] {
@@ -545,6 +561,7 @@ struct KeyInfo: Hashable {
       decryptingPublicKey,
       decryptingAlgorithm,
       decryptingKeySize,
+      attestationCertificateChain,
     ]
   }
   static func == (lhs: KeyInfo, rhs: KeyInfo) -> Bool {
@@ -627,6 +644,31 @@ struct CreateKeysConfig: Hashable {
   /// ("something you have") only; it does not verify user presence and cannot
   /// satisfy inherence-based SCA requirements.
   var requireAuthentication: Bool? = nil
+  /// [Android] Server-issued challenge for hardware key attestation
+  /// (1–128 bytes). When set, the generated keystore key carries an X.509
+  /// attestation certificate chain rooted in Google's hardware attestation
+  /// roots, returned in [KeyCreationResult.attestationCertificateChain].
+  ///
+  /// Attestation is an explicit security opt-in, so it **hard-fails**
+  /// instead of silently degrading:
+  /// - Android 6 (API 23) returns [BiometricError.notSupported]
+  ///   (`setAttestationChallenge` requires API 24).
+  /// - If the device cannot produce an attestation chain at all, key
+  ///   creation fails with [BiometricError.notSupported] and no key is left
+  ///   behind. If StrongBox key generation fails with a challenge set, the
+  ///   plugin retries once without StrongBox (still TEE-backed attestation).
+  /// - Empty or >128-byte challenges return [BiometricError.invalidInput].
+  /// - **iOS/macOS/Windows**: setting this field makes `createKeys` return
+  ///   [BiometricError.notSupported] in-band. This deviates from the
+  ///   silent-ignore convention of other config fields deliberately:
+  ///   silently ignoring an attestation request would hand back an
+  ///   unattested key the caller believes is attested. Use
+  ///   [BiometricSignatureApi.getAppAttestation] on Apple platforms.
+  ///
+  /// Hybrid mode (`signatureType: ecdsa` + `enableDecryption: true`): only
+  /// the keystore EC *signing* key is attested; the software-generated
+  /// decryption key cannot be.
+  var attestationChallenge: FlutterStandardTypedData? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -641,6 +683,7 @@ struct CreateKeysConfig: Hashable {
     let cancelButtonText: String? = nilOrValue(pigeonVar_list[7])
     let failIfExists: Bool? = nilOrValue(pigeonVar_list[8])
     let requireAuthentication: Bool? = nilOrValue(pigeonVar_list[9])
+    let attestationChallenge: FlutterStandardTypedData? = nilOrValue(pigeonVar_list[10])
 
     return CreateKeysConfig(
       signatureType: signatureType,
@@ -652,7 +695,8 @@ struct CreateKeysConfig: Hashable {
       promptDescription: promptDescription,
       cancelButtonText: cancelButtonText,
       failIfExists: failIfExists,
-      requireAuthentication: requireAuthentication
+      requireAuthentication: requireAuthentication,
+      attestationChallenge: attestationChallenge
     )
   }
   func toList() -> [Any?] {
@@ -667,6 +711,7 @@ struct CreateKeysConfig: Hashable {
       cancelButtonText,
       failIfExists,
       requireAuthentication,
+      attestationChallenge,
     ]
   }
   static func == (lhs: CreateKeysConfig, rhs: CreateKeysConfig) -> Bool {
@@ -884,6 +929,103 @@ struct SimplePromptResult: Hashable {
   }
 }
 
+/// Result of [BiometricSignatureApi.getAppAttestation] (Apple App Attest).
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct AppAttestResult: Hashable {
+  /// The App Attest key identifier (opaque, base64). Send it to your server
+  /// with [attestationObject]; it is also needed to interpret assertions.
+  var keyId: String? = nil
+  /// The CBOR attestation object produced by
+  /// `DCAppAttestService.attestKey`. Verify server-side per Apple's
+  /// "Validating Apps That Connect to Your Server".
+  var attestationObject: FlutterStandardTypedData? = nil
+  /// Error message if the operation failed.
+  var error: String? = nil
+  /// Standardized error code if the operation failed.
+  ///
+  /// [BiometricError.notAvailable] means Apple's servers were unreachable —
+  /// retry later with the SAME challenge. [BiometricError.notSupported] is
+  /// returned on Android, Windows, all Macs, simulators, and iOS < 14.
+  var code: BiometricError? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> AppAttestResult? {
+    let keyId: String? = nilOrValue(pigeonVar_list[0])
+    let attestationObject: FlutterStandardTypedData? = nilOrValue(pigeonVar_list[1])
+    let error: String? = nilOrValue(pigeonVar_list[2])
+    let code: BiometricError? = nilOrValue(pigeonVar_list[3])
+
+    return AppAttestResult(
+      keyId: keyId,
+      attestationObject: attestationObject,
+      error: error,
+      code: code
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      keyId,
+      attestationObject,
+      error,
+      code,
+    ]
+  }
+  static func == (lhs: AppAttestResult, rhs: AppAttestResult) -> Bool {
+    return deepEqualsBiometricSignatureApi(lhs.toList(), rhs.toList())  }
+  func hash(into hasher: inout Hasher) {
+    deepHashBiometricSignatureApi(value: toList(), hasher: &hasher)
+  }
+}
+
+/// Result of [BiometricSignatureApi.getAppAssertion] (Apple App Attest).
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct AppAssertionResult: Hashable {
+  /// The App Attest key identifier the assertion was produced with.
+  var keyId: String? = nil
+  /// The CBOR assertion object produced by
+  /// `DCAppAttestService.generateAssertion`.
+  var assertionObject: FlutterStandardTypedData? = nil
+  /// Error message if the operation failed.
+  var error: String? = nil
+  /// Standardized error code if the operation failed.
+  ///
+  /// [BiometricError.keyNotFound] means no attested App Attest key exists
+  /// for this alias — call [BiometricSignatureApi.getAppAttestation] first.
+  var code: BiometricError? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> AppAssertionResult? {
+    let keyId: String? = nilOrValue(pigeonVar_list[0])
+    let assertionObject: FlutterStandardTypedData? = nilOrValue(pigeonVar_list[1])
+    let error: String? = nilOrValue(pigeonVar_list[2])
+    let code: BiometricError? = nilOrValue(pigeonVar_list[3])
+
+    return AppAssertionResult(
+      keyId: keyId,
+      assertionObject: assertionObject,
+      error: error,
+      code: code
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      keyId,
+      assertionObject,
+      error,
+      code,
+    ]
+  }
+  static func == (lhs: AppAssertionResult, rhs: AppAssertionResult) -> Bool {
+    return deepEqualsBiometricSignatureApi(lhs.toList(), rhs.toList())  }
+  func hash(into hasher: inout Hasher) {
+    deepHashBiometricSignatureApi(value: toList(), hasher: &hasher)
+  }
+}
+
 private class BiometricSignatureApiPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
@@ -955,6 +1097,10 @@ private class BiometricSignatureApiPigeonCodecReader: FlutterStandardReader {
       return SimplePromptConfig.fromList(self.readValue() as! [Any?])
     case 146:
       return SimplePromptResult.fromList(self.readValue() as! [Any?])
+    case 147:
+      return AppAttestResult.fromList(self.readValue() as! [Any?])
+    case 148:
+      return AppAssertionResult.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -1016,6 +1162,12 @@ private class BiometricSignatureApiPigeonCodecWriter: FlutterStandardWriter {
       super.writeValue(value.toList())
     } else if let value = value as? SimplePromptResult {
       super.writeByte(146)
+      super.writeValue(value.toList())
+    } else if let value = value as? AppAttestResult {
+      super.writeByte(147)
+      super.writeValue(value.toList())
+    } else if let value = value as? AppAssertionResult {
+      super.writeByte(148)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -1130,6 +1282,26 @@ protocol BiometricSignatureApi {
   /// Returns `true` if the device has a screen lock configured (or the
   /// platform-specific equivalent described above).
   func isDeviceLockSet(completion: @escaping (Result<Bool, Error>) -> Void)
+  /// Whether Apple App Attest is supported here: `true` only on physical
+  /// iOS 14+ devices with the App Attest capability configured. Always
+  /// `false` on Android, Windows, all Macs (including Mac Catalyst and
+  /// iOS-apps-on-Apple-silicon), and simulators.
+  func isAppAttestSupported(completion: @escaping (Result<Bool, Error>) -> Void)
+  /// [iOS 14+] Attests the app/device integrity via Apple App Attest.
+  ///
+  /// [challenge] is the server-issued challenge (non-empty). The plugin
+  /// computes SHA-256(challenge) natively as the required clientDataHash.
+  /// [keyAlias] namespaces the stored App Attest key id; null = default.
+  /// An App Attest key is generated and stored on first use per alias.
+  ///
+  /// Returns in-band [BiometricError.notSupported] everywhere App Attest is
+  /// unavailable, and [BiometricError.notAvailable] when Apple's servers
+  /// are unreachable (retry later with the SAME challenge).
+  func getAppAttestation(challenge: FlutterStandardTypedData, keyAlias: String?, completion: @escaping (Result<AppAttestResult, Error>) -> Void)
+  /// [iOS 14+] Produces an App Attest assertion with the previously
+  /// attested key for [keyAlias]. Returns [BiometricError.keyNotFound] when
+  /// no key exists or the key was never successfully attested.
+  func getAppAssertion(challenge: FlutterStandardTypedData, keyAlias: String?, completion: @escaping (Result<AppAssertionResult, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -1401,6 +1573,74 @@ class BiometricSignatureApiSetup {
       }
     } else {
       isDeviceLockSetChannel.setMessageHandler(nil)
+    }
+    /// Whether Apple App Attest is supported here: `true` only on physical
+    /// iOS 14+ devices with the App Attest capability configured. Always
+    /// `false` on Android, Windows, all Macs (including Mac Catalyst and
+    /// iOS-apps-on-Apple-silicon), and simulators.
+    let isAppAttestSupportedChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.isAppAttestSupported\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      isAppAttestSupportedChannel.setMessageHandler { _, reply in
+        api.isAppAttestSupported { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      isAppAttestSupportedChannel.setMessageHandler(nil)
+    }
+    /// [iOS 14+] Attests the app/device integrity via Apple App Attest.
+    ///
+    /// [challenge] is the server-issued challenge (non-empty). The plugin
+    /// computes SHA-256(challenge) natively as the required clientDataHash.
+    /// [keyAlias] namespaces the stored App Attest key id; null = default.
+    /// An App Attest key is generated and stored on first use per alias.
+    ///
+    /// Returns in-band [BiometricError.notSupported] everywhere App Attest is
+    /// unavailable, and [BiometricError.notAvailable] when Apple's servers
+    /// are unreachable (retry later with the SAME challenge).
+    let getAppAttestationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.getAppAttestation\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      getAppAttestationChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let challengeArg = args[0] as! FlutterStandardTypedData
+        let keyAliasArg: String? = nilOrValue(args[1])
+        api.getAppAttestation(challenge: challengeArg, keyAlias: keyAliasArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      getAppAttestationChannel.setMessageHandler(nil)
+    }
+    /// [iOS 14+] Produces an App Attest assertion with the previously
+    /// attested key for [keyAlias]. Returns [BiometricError.keyNotFound] when
+    /// no key exists or the key was never successfully attested.
+    let getAppAssertionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.getAppAssertion\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      getAppAssertionChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let challengeArg = args[0] as! FlutterStandardTypedData
+        let keyAliasArg: String? = nilOrValue(args[1])
+        api.getAppAssertion(challenge: challengeArg, keyAlias: keyAliasArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      getAppAssertionChannel.setMessageHandler(nil)
     }
   }
 }
