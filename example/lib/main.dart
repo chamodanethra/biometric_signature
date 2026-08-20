@@ -140,8 +140,11 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
       if (result.code == BiometricError.success) {
         setState(() => signatureResult = result);
       } else {
+        // failedAttempts is what separates a lockout the user just triggered
+        // from one they walked into, so it is worth seeing on the error too.
         setState(
-          () => errorMessage = 'Error: ${result.code} - ${result.error}',
+          () => errorMessage = 'Error: ${result.code} - ${result.error}'
+              '\nFailed attempts: ${result.failedAttempts}',
         );
       }
     } catch (e) {
@@ -1003,6 +1006,11 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
             ),
             if (signatureResult!.publicKey != null)
               _buildResult('Signer Public Key', signatureResult!.publicKey),
+            if (signatureResult!.failedAttempts != null)
+              _buildResult(
+                'Failed Attempts',
+                signatureResult!.failedAttempts.toString(),
+              ),
           ],
 
           if (decryptResult != null)

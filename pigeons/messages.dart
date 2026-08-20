@@ -194,6 +194,20 @@ class SignatureResult {
   /// See [AuthenticationType] for how inference is performed when the
   /// platform does not report the method directly.
   AuthenticationType? authenticationType;
+
+  /// Individual biometric mismatches the platform reported while this prompt
+  /// was open.
+  ///
+  /// Android only, from `BiometricPrompt.AuthenticationCallback
+  /// .onAuthenticationFailed`. `null` where the platform does not expose
+  /// per-attempt results, which is every Apple platform: iOS handles its own
+  /// retries inside the system dialog and reports only the final outcome.
+  ///
+  /// A [BiometricError.lockedOut] carrying `0` means the platform was already
+  /// inside its lockout window and no biometric was read, as opposed to a
+  /// lockout the user just exhausted their attempts on. Callers that meter
+  /// failures need that distinction; the two are otherwise identical.
+  int? failedAttempts;
 }
 
 class DecryptResult {
