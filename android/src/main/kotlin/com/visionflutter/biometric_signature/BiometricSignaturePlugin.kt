@@ -466,6 +466,9 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         }
 
         pluginScope.launch {
+            //Declared outside the try so the failure path can still report the
+            //mismatches that were counted before the prompt threw.
+            var resultFailedAttempts = 0
             try {
                 val mode =
                     keyManager.inferKeyModeFromKeystore(keyAlias) ?: throw SecurityException("Signing key not found")
@@ -551,6 +554,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                             }
                         }
                         resultAuthType = successOutcome.authenticationType
+                        resultFailedAttempts += successOutcome.failedAttempts
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -564,7 +568,10 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
 
                 val publicKey = cryptoOperations.getSigningPublicKey(keyAlias)
                 val response =
-                    buildSignatureResponse(signatureBytes, publicKey, signatureFormat, keyFormat, resultAuthType)
+                    buildSignatureResponse(
+                        signatureBytes, publicKey, signatureFormat, keyFormat, resultAuthType,
+                        resultFailedAttempts
+                    )
                 callback(Result.success(response))
 
             } catch (e: CancellationException) {
@@ -574,7 +581,10 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                     Result.success(
                         SignatureResult(
                             code = ErrorMapper.mapToBiometricError(e),
-                            error = ErrorMapper.safeErrorMessage(e)
+                            error = ErrorMapper.safeErrorMessage(e),
+                            failedAttempts =
+                                (resultFailedAttempts + ((e as? BiometricPromptException)?.failedAttempts ?: 0))
+                                    .toLong()
                         )
                     )
                 )
@@ -1057,7 +1067,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         publicKey: PublicKey,
         format: SignatureFormat,
         keyFormat: KeyFormat,
-        authenticationType: AuthenticationType
+        authenticationType: AuthenticationType,
+        failedAttempts: Int? = null
     ): SignatureResult {
         val sigString = when (format) {
             SignatureFormat.BASE64, SignatureFormat.RAW -> android.util.Base64.encodeToString(
@@ -1079,7 +1090,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             code = BiometricError.SUCCESS,
             algorithm = publicKey.algorithm,
             keySize = keySize?.toLong(),
-            authenticationType = authenticationType
+            authenticationType = authenticationType,
+            failedAttempts = failedAttempts?.toLong()
         )
     }
 }

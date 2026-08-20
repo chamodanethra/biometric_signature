@@ -21,9 +21,21 @@ import kotlin.coroutines.resumeWithException
 sealed interface AuthenticationOutcome {
     data class Success(
         val cryptoObject: BiometricPrompt.CryptoObject?,
-        val authenticationType: AuthenticationType
+        val authenticationType: AuthenticationType,
+        /// Individual biometric mismatches observed before this prompt resolved.
+        val failedAttempts: Int = 0
     ) : AuthenticationOutcome
 }
+
+/// Carries the raw BiometricPrompt error code alongside the number of individual
+/// mismatches seen before it fired. A LOCKED_OUT with zero mismatches means the
+/// platform was already in its lockout window and no biometric was read, which
+/// callers cannot otherwise distinguish from a lockout the user just triggered.
+class BiometricPromptException(
+    message: String,
+    val errorCode: Int,
+    val failedAttempts: Int
+) : SecurityException(message, Throwable(errorCode.toString()))
 
 class BiometricPromptHelper(private val appContext: Context) {
 
@@ -139,12 +151,17 @@ class BiometricPromptHelper(private val appContext: Context) {
         cryptoObject: BiometricPrompt.CryptoObject?
     ): AuthenticationOutcome.Success = suspendCancellableCoroutine { cont ->
         val authenticators = getAuthenticators(allowDeviceCredentials)
+        //onAuthenticationFailed is not terminal and fires once per mismatch, so
+        //it is accumulated here and reported with whichever outcome ends the
+        //prompt, rather than resolving the coroutine on the first mismatch.
+        var failedAttempts = 0
         val callback = object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 if (cont.isActive) cont.resume(
                     AuthenticationOutcome.Success(
                         cryptoObject = result.cryptoObject,
-                        authenticationType = mapAuthenticationType(result.authenticationType)
+                        authenticationType = mapAuthenticationType(result.authenticationType),
+                        failedAttempts = failedAttempts
                     )
                 )
             }
@@ -152,15 +169,18 @@ class BiometricPromptHelper(private val appContext: Context) {
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                 if (cont.isActive) {
                     cont.resumeWithException(
-                        SecurityException(
+                        BiometricPromptException(
                             "$errString [src=prompt cred=$allowDeviceCredentials]",
-                            Throwable(errorCode.toString())
+                            errorCode,
+                            failedAttempts
                         )
                     )
                 }
             }
 
-            override fun onAuthenticationFailed() { /* Retry */ }
+            override fun onAuthenticationFailed() {
+                failedAttempts++
+            }
         }
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
