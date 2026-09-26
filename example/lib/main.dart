@@ -43,6 +43,7 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
   // Settings
   bool useEc = false;
   bool enableDecryption = false;
+  bool _attestKey = false;
   KeyFormat _publicKeyFormat = KeyFormat.pem;
   KeyFormat _signatureKeyFormat = KeyFormat.base64;
   SignatureFormat _signatureFormat = SignatureFormat.base64;
@@ -85,6 +86,16 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
     setState(() => errorMessage = null);
 
     try {
+      // Key attestation (Android only): in a real app this single-use
+      // challenge comes from your server, which later verifies the chain.
+      Uint8List? challenge;
+      if (_attestKey && Platform.isAndroid) {
+        final random = Random.secure();
+        challenge = Uint8List.fromList(
+          List<int>.generate(32, (_) => random.nextInt(256)),
+        );
+      }
+
       final result = await _biometricSignature.createKeys(
         keyFormat: _publicKeyFormat,
         promptMessage: 'Authenticate to create keys',
@@ -94,10 +105,31 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
           setInvalidatedByBiometricEnrollment: true,
           enforceBiometric: true,
           enableDecryption: enableDecryption,
+          attestationChallenge: challenge,
         ),
       );
 
       if (result.code == BiometricError.success) {
+        final chain = result.attestationCertificateChain;
+        if (challenge != null && chain != null) {
+          // Logged so the chain can be copied to a server-side verifier. PEM
+          // keeps every log line short (Android truncates long log lines).
+          debugPrint(
+            'attestation challenge: '
+            '${challenge.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}',
+          );
+          for (var i = 0; i < chain.length; i++) {
+            final b64 = base64Encode(chain[i]);
+            final lines = [
+              for (var o = 0; o < b64.length; o += 64)
+                b64.substring(o, min(o + 64, b64.length)),
+            ];
+            debugPrint(
+              'attestation cert[$i]:\n-----BEGIN CERTIFICATE-----\n'
+              '${lines.join('\n')}\n-----END CERTIFICATE-----',
+            );
+          }
+        }
         setState(() => keyResult = result);
       } else {
         setState(
@@ -573,6 +605,18 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
                       ],
                     ],
                   ),
+                  // Key attestation is Android-only; other platforms return
+                  // notSupported when a challenge is passed.
+                  if (Platform.isAndroid)
+                    Row(
+                      children: [
+                        const Text('Key Attestation'),
+                        Switch(
+                          value: _attestKey,
+                          onChanged: (v) => setState(() => _attestKey = v),
+                        ),
+                      ],
+                    ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -646,6 +690,19 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
                           style: const TextStyle(fontSize: 10),
                         ),
                     ],
+                    if (keyResult!.attestationCertificateChain != null) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Attestation Chain:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        '${keyResult!.attestationCertificateChain!.length} certs, '
+                        'leaf ${keyResult!.attestationCertificateChain!.first.length} bytes '
+                        '(logged as PEM)',
+                        style: const TextStyle(fontSize: 10),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     TextButton.icon(
                       icon: const Icon(Icons.delete, size: 16),
@@ -703,6 +760,11 @@ class _ExampleAppBodyState extends State<ExampleAppBody> {
                       _buildKeyInfoRow(
                         'Hybrid Mode',
                         _keyInfo!.isHybridMode! ? 'Yes' : 'No',
+                      ),
+                    if (_keyInfo!.attestationCertificateChain != null)
+                      _buildKeyInfoRow(
+                        'Attestation',
+                        '${_keyInfo!.attestationCertificateChain!.length} certs',
                       ),
                     if (_keyInfo!.publicKey != null) ...[
                       const SizedBox(height: 8),

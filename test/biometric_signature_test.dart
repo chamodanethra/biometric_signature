@@ -23,6 +23,15 @@ class MockBiometricSignaturePlatform
   final List<String?> deletedAliases = [];
   bool deleteAllKeysCalled = false;
 
+  // Key attestation: aliases created with a challenge, and the chain the mock
+  // keystore reports for them.
+  final Set<String> _attestedAliases = {};
+  final List<Uint8List> attestationChain = [
+    Uint8List.fromList([0x30, 0x82, 0x01, 0x01]),
+    Uint8List.fromList([0x30, 0x82, 0x02, 0x02]),
+  ];
+  CreateKeysConfig? lastCreateKeysConfig;
+
   void setAuthAvailableResult(BiometricAvailability result) {
     _authAvailableResult = result;
   }
@@ -62,6 +71,8 @@ class MockBiometricSignaturePlatform
       keySize: 2048,
       isHybridMode: false,
       publicKey: 'test_public_key_$effectiveAlias',
+      attestationCertificateChain:
+          _attestedAliases.contains(effectiveAlias) ? attestationChain : null,
     );
   }
 
@@ -74,6 +85,7 @@ class MockBiometricSignaturePlatform
   ) async {
     if (_shouldThrowError) throw Exception('Key creation failed');
 
+    lastCreateKeysConfig = config;
     final effectiveAlias = keyAlias ?? 'biometric_key';
     final failIfExists = config?.failIfExists ?? false;
 
@@ -85,6 +97,12 @@ class MockBiometricSignaturePlatform
     }
 
     _createdAliases.add(effectiveAlias);
+    final attested = config?.attestationChallenge != null;
+    if (attested) {
+      _attestedAliases.add(effectiveAlias);
+    } else {
+      _attestedAliases.remove(effectiveAlias);
+    }
 
     final isEc =
         (config?.signatureType ?? _signatureType) == SignatureType.ecdsa;
@@ -93,6 +111,7 @@ class MockBiometricSignaturePlatform
       code: BiometricError.success,
       algorithm: isEc ? 'EC' : 'RSA',
       keySize: isEc ? 256 : 2048,
+      attestationCertificateChain: attested ? attestationChain : null,
     );
   }
 
@@ -142,6 +161,7 @@ class MockBiometricSignaturePlatform
   Future<bool> deleteKeys(String? keyAlias) {
     deletedAliases.add(keyAlias);
     _createdAliases.remove(keyAlias ?? 'biometric_key');
+    _attestedAliases.remove(keyAlias ?? 'biometric_key');
     return Future.value(true);
   }
 
@@ -149,6 +169,7 @@ class MockBiometricSignaturePlatform
   Future<bool> deleteAllKeys() {
     deleteAllKeysCalled = true;
     _createdAliases.clear();
+    _attestedAliases.clear();
     return Future.value(true);
   }
 
@@ -191,6 +212,9 @@ class MockBiometricSignaturePlatform
 }
 
 void main() {
+  // The Pigeon wire-format tests below talk to a mock binary messenger.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   final BiometricSignaturePlatform initialPlatform =
       BiometricSignaturePlatform.instance;
 
@@ -723,6 +747,131 @@ void main() {
         keyAlias: 'nonexistent',
       );
       expect(result, true);
+    });
+  });
+
+  group('key attestation', () {
+    late BiometricSignature biometricSignature;
+    late MockBiometricSignaturePlatform fakePlatform;
+    final challenge = Uint8List.fromList(List<int>.generate(32, (i) => i));
+
+    setUp(() {
+      biometricSignature = BiometricSignature();
+      fakePlatform = MockBiometricSignaturePlatform();
+      BiometricSignaturePlatform.instance = fakePlatform;
+    });
+
+    test('createKeys passes the challenge through and returns the chain',
+        () async {
+      final result = await biometricSignature.createKeys(
+        config: CreateKeysConfig(
+          signatureType: SignatureType.ecdsa,
+          attestationChallenge: challenge,
+        ),
+      );
+
+      expect(
+        fakePlatform.lastCreateKeysConfig?.attestationChallenge,
+        challenge,
+      );
+      expect(result.code, BiometricError.success);
+      expect(result.attestationCertificateChain, fakePlatform.attestationChain);
+    });
+
+    test('createKeys without a challenge returns no chain', () async {
+      final result = await biometricSignature.createKeys();
+
+      expect(fakePlatform.lastCreateKeysConfig?.attestationChallenge, isNull);
+      expect(result.attestationCertificateChain, isNull);
+    });
+
+    test('getKeyInfo reports the chain only for attested keys', () async {
+      await biometricSignature.createKeys(
+        keyAlias: 'attested',
+        config: CreateKeysConfig(attestationChallenge: challenge),
+      );
+      await biometricSignature.createKeys(keyAlias: 'plain');
+
+      final attested = await biometricSignature.getKeyInfo(
+        keyAlias: 'attested',
+      );
+      final plain = await biometricSignature.getKeyInfo(keyAlias: 'plain');
+
+      expect(
+        attested.attestationCertificateChain,
+        fakePlatform.attestationChain,
+      );
+      expect(plain.attestationCertificateChain, isNull);
+    });
+  });
+
+  // Exercises the real Pigeon codec and channel plumbing (not the mock
+  // platform), so a field missing from the generated classes or encoded at
+  // the wrong position fails here.
+  group('Pigeon wire format', () {
+    const codec = BiometricSignatureApi.pigeonChannelCodec;
+    const channelPrefix =
+        'dev.flutter.pigeon.biometric_signature.BiometricSignatureApi';
+    final challenge = Uint8List.fromList(
+      List<int>.generate(128, (i) => 255 - i),
+    );
+    final chain = [
+      Uint8List.fromList([0x30, 0x82, 0x01, 0x0a]),
+      Uint8List.fromList([0x30, 0x82, 0x02, 0x0b]),
+      Uint8List.fromList([0x30, 0x82, 0x03, 0x0c]),
+    ];
+
+    TestDefaultBinaryMessenger messenger() =>
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+
+    setUp(() {
+      // Earlier tests leave a mock platform installed.
+      BiometricSignaturePlatform.instance = initialPlatform;
+    });
+
+    tearDown(() {
+      messenger().setMockMessageHandler('$channelPrefix.createKeys', null);
+      messenger().setMockMessageHandler('$channelPrefix.getKeyInfo', null);
+    });
+
+    test('createKeys sends attestationChallenge and decodes the chain',
+        () async {
+      CreateKeysConfig? sentConfig;
+      messenger().setMockMessageHandler('$channelPrefix.createKeys', (
+        ByteData? message,
+      ) async {
+        final args = codec.decodeMessage(message)! as List<Object?>;
+        sentConfig = args[1] as CreateKeysConfig?;
+        return codec.encodeMessage(<Object?>[
+          KeyCreationResult(
+            code: BiometricError.success,
+            attestationCertificateChain: chain,
+          ),
+        ]);
+      });
+
+      final result = await BiometricSignature().createKeys(
+        config: CreateKeysConfig(attestationChallenge: challenge),
+      );
+
+      expect(sentConfig?.attestationChallenge, challenge);
+      expect(result.code, BiometricError.success);
+      expect(result.attestationCertificateChain, chain);
+    });
+
+    test('getKeyInfo decodes the chain', () async {
+      messenger().setMockMessageHandler('$channelPrefix.getKeyInfo', (
+        ByteData? message,
+      ) async {
+        return codec.encodeMessage(<Object?>[
+          KeyInfo(exists: true, attestationCertificateChain: chain),
+        ]);
+      });
+
+      final info = await BiometricSignature().getKeyInfo();
+
+      expect(info.exists, isTrue);
+      expect(info.attestationCertificateChain, chain);
     });
   });
 }

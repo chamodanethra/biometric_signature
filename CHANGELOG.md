@@ -1,26 +1,16 @@
-## [13.1.0] - 2026-08-12
+## [13.1.0] - 2026-09-26
 
 ### Added
-* **Hardware Key Attestation.**
-  * **Android Key Attestation**: `CreateKeysConfig.attestationChallenge` (1–128 bytes, API 24+)
-    makes `createKeys` return the keystore X.509 attestation certificate chain in
-    `KeyCreationResult.attestationCertificateChain` (DER, leaf first), rooted in Google's hardware
-    attestation roots; `getKeyInfo` reports the chain for previously attested keys. Attestation is
-    a hard opt-in: failures (API 23, no chain, StrongBox and TEE both failing) surface as in-band
-    `notSupported`/`invalidInput` and never leave an unattested key behind; StrongBox attestation
-    failures retry once in the TEE. Setting the challenge on iOS/macOS/Windows returns
-    `notSupported` instead of silently ignoring it. In hybrid mode only the keystore EC signing
-    key is attested.
-  * **Apple App Attest** (iOS 14+ physical devices): `isAppAttestSupported()`,
-    `getAppAttestation(challenge:, keyAlias:)` → `AppAttestResult{keyId, attestationObject}`, and
-    `getAppAssertion(challenge:, keyAlias:)` → `AppAssertionResult{keyId, assertionObject}`. The
-    plugin hashes the challenge with SHA-256 (the required clientDataHash), stores the App Attest
-    key id per alias in the keychain, mints a fresh key once when a reused stored key is rejected
-    (`DCErrorInvalidKey`), and maps `DCErrorServerUnavailable` to `notAvailable` ("retry with the
-    SAME challenge" — keys are never regenerated on server errors, which would degrade the
-    device's risk metric). Android, Windows, all Macs, and simulators return in-band
-    `notSupported`. `deleteAllKeys()` also clears stored App Attest key ids; `deleteKeys()`
-    deliberately does not (independent lifecycle).
+* **Android hardware key attestation.** Fixes [#69](https://github.com/chamodanethra/biometric_signature/issues/69).
+  * New `CreateKeysConfig.attestationChallenge` (`Uint8List`, 1–128 bytes, Android 7.0+). When set, `createKeys` passes it to `KeyGenParameterSpec.Builder.setAttestationChallenge`, and returns the keystore's X.509 attestation chain for the new signing key in the new `KeyCreationResult.attestationCertificateChain` (`List<Uint8List>`, DER, leaf first). The plugin doesn't parse the chain; verify it on your server — see the README's "Hardware Key Attestation" section.
+  * `getKeyInfo` returns the same chain in the new `KeyInfo.attestationCertificateChain` for keys created with a challenge. The chain is recognised by the key attestation extension (OID `1.3.6.1.4.1.11129.2.1.17`) on its leaf; unattested keys report `null`.
+  * Attestation is an explicit opt-in, so `createKeys` fails instead of returning an unattested key:
+    * `invalidInput` for an empty or over-128-byte challenge, and `notSupported` on Android 6 (API 23). Both are checked before any existing key is touched.
+    * `notSupported` when the keystore can't attest the key, and `notAvailable` for a transient keystore failure (e.g. attestation keys not provisioned yet — retry later with a fresh challenge). The transient case is detected on Android 13+; older versions report `notSupported`. As with any key-creation failure, the existing key under the alias has already been deleted by then; use `failIfExists` or a fresh alias to keep it.
+    * If StrongBox key generation fails, the plugin retries once in the TEE. The chain's `attestationSecurityLevel` shows which one produced the key.
+  * In hybrid mode (`ecdsa` + `enableDecryption`) only the keystore EC signing key is attested; the software decryption key cannot be.
+  * **iOS/macOS/Windows**: setting `attestationChallenge` returns `notSupported` without touching existing keys, instead of being ignored like other platform-specific fields — ignoring it would hand back an unattested key the caller believes is attested. Apple has no public API to attest an individual Secure Enclave key, and Windows attestation is not implemented.
+  * No new `BiometricError` values.
 
 ## [13.0.0] - 2026-07-25
 

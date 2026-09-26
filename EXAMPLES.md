@@ -253,6 +253,25 @@ if (decryptResult.code == BiometricError.success) {
 }
 ```
 
+### Hardware Key Attestation (Android)
+```dart
+// serverChallenge: random, single-use, at most 128 bytes, issued by your server.
+final created = await biometric.createKeys(
+  promptMessage: 'Create an attested key',
+  config: CreateKeysConfig(
+    signatureType: SignatureType.ecdsa,
+    attestationChallenge: Platform.isAndroid ? serverChallenge : null,
+  ),
+);
+
+if (created.code == BiometricError.success) {
+  // DER X.509 certificates, leaf first; send them to your server to verify.
+  final chain = created.attestationCertificateChain;
+}
+```
+See the README's "Hardware Key Attestation" section for error codes and
+server-side verification.
+
 ### Error Handling
 ```dart
 final result = await biometric.createSignature(
