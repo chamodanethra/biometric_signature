@@ -12,6 +12,9 @@
   * **iOS/macOS/Windows**: setting `attestationChallenge` returns `notSupported` without touching existing keys, instead of being ignored like other platform-specific fields — ignoring it would hand back an unattested key the caller believes is attested. Apple has no public API to attest an individual Secure Enclave key, and Windows attestation is not implemented.
   * No new `BiometricError` values.
 
+### Fixed
+* **Android: a failed hybrid-mode `createKeys` could leave a signing-only key behind.** If the AES master key failed to generate after the EC signing key was created (`ecdsa` + `enableDecryption`), `createKeys` returned an error but left the EC key under the alias, so `getKeyInfo` reported a non-hybrid EC key there (with an attestation chain, if a challenge was set). The partially created keys are now deleted before the error is returned, as they already were for failures later in key creation, and also if the Flutter engine detaches while the keys are being generated.
+
 ## [13.0.0] - 2026-07-25
 
 ### Added

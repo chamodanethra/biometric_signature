@@ -382,22 +382,25 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             )
         }
 
-        // Only the keystore EC signing key can carry an attestation chain;
-        // the software decryption key generated below cannot be attested.
-        val signingKey = withContext(Dispatchers.IO) {
-            keyManager.deleteKeysForAlias(keyAlias)
-            val generated = keyManager.generateEcKeyInKeyStore(
-                keyAlias,
-                useDeviceCredentials,
-                invalidateOnEnrollment,
-                requireAuthentication,
-                attestationChallenge
-            )
-            keyManager.generateMasterKey(keyAlias, useDeviceCredentials, invalidateOnEnrollment, requireAuthentication)
-            generated
-        }
-
+        // Key generation sits inside the try so a generateMasterKey failure, or a
+        // cancellation withContext throws after its block created both keys, is
+        // cleaned up too instead of leaving a signing-only EC key under the alias.
         try {
+            // Only the keystore EC signing key can carry an attestation chain;
+            // the software decryption key generated below cannot be attested.
+            val signingKey = withContext(Dispatchers.IO) {
+                keyManager.deleteKeysForAlias(keyAlias)
+                val generated = keyManager.generateEcKeyInKeyStore(
+                    keyAlias,
+                    useDeviceCredentials,
+                    invalidateOnEnrollment,
+                    requireAuthentication,
+                    attestationChallenge
+                )
+                keyManager.generateMasterKey(keyAlias, useDeviceCredentials, invalidateOnEnrollment, requireAuthentication)
+                generated
+            }
+
             val cipherForWrap = withContext(Dispatchers.IO) { cryptoOperations.getCipherForEncryption(keyAlias) }
 
             val authenticatedCipher: Cipher
