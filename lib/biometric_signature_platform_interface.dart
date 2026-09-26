@@ -111,29 +111,6 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
   Future<bool> isDeviceLockSet() {
     throw UnimplementedError('isDeviceLockSet() has not been implemented.');
   }
-
-  /// Whether Apple App Attest is supported (physical iOS 14+ devices only).
-  Future<bool> isAppAttestSupported() {
-    throw UnimplementedError(
-      'isAppAttestSupported() has not been implemented.',
-    );
-  }
-
-  /// Attests app/device integrity via Apple App Attest.
-  Future<AppAttestResult> getAppAttestation(
-    Uint8List challenge,
-    String? keyAlias,
-  ) {
-    throw UnimplementedError('getAppAttestation() has not been implemented.');
-  }
-
-  /// Produces an App Attest assertion with a previously attested key.
-  Future<AppAssertionResult> getAppAssertion(
-    Uint8List challenge,
-    String? keyAlias,
-  ) {
-    throw UnimplementedError('getAppAssertion() has not been implemented.');
-  }
 }
 
 class _PigeonBiometricSignature extends BiometricSignaturePlatform {
@@ -239,26 +216,5 @@ class _PigeonBiometricSignature extends BiometricSignaturePlatform {
   @override
   Future<bool> isDeviceLockSet() {
     return _api.isDeviceLockSet();
-  }
-
-  @override
-  Future<bool> isAppAttestSupported() {
-    return _api.isAppAttestSupported();
-  }
-
-  @override
-  Future<AppAttestResult> getAppAttestation(
-    Uint8List challenge,
-    String? keyAlias,
-  ) {
-    return _api.getAppAttestation(challenge, keyAlias);
-  }
-
-  @override
-  Future<AppAssertionResult> getAppAssertion(
-    Uint8List challenge,
-    String? keyAlias,
-  ) {
-    return _api.getAppAssertion(challenge, keyAlias);
   }
 }

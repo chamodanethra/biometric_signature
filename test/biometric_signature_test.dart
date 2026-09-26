@@ -188,45 +188,6 @@ class MockBiometricSignaturePlatform
     // TODO: implement isDeviceLockSet
     throw UnimplementedError();
   }
-
-  // === App Attest (Apple-only feature; mock records pass-through) ===
-
-  bool appAttestSupported = false;
-  Uint8List? lastAppAttestChallenge;
-  String? lastAppAttestAlias;
-  AppAttestResult? nextAppAttestResult;
-  AppAssertionResult? nextAppAssertionResult;
-
-  @override
-  Future<bool> isAppAttestSupported() async => appAttestSupported;
-
-  @override
-  Future<AppAttestResult> getAppAttestation(
-    Uint8List challenge,
-    String? keyAlias,
-  ) async {
-    lastAppAttestChallenge = challenge;
-    lastAppAttestAlias = keyAlias;
-    return nextAppAttestResult ??
-        AppAttestResult(
-          code: BiometricError.notSupported,
-          error: 'App Attest is not supported on this platform',
-        );
-  }
-
-  @override
-  Future<AppAssertionResult> getAppAssertion(
-    Uint8List challenge,
-    String? keyAlias,
-  ) async {
-    lastAppAttestChallenge = challenge;
-    lastAppAttestAlias = keyAlias;
-    return nextAppAssertionResult ??
-        AppAssertionResult(
-          code: BiometricError.keyNotFound,
-          error: 'No App Attest key exists for this alias',
-        );
-  }
 }
 
 void main() {
@@ -762,75 +723,6 @@ void main() {
         keyAlias: 'nonexistent',
       );
       expect(result, true);
-    });
-  });
-
-  group('App Attest', () {
-    late BiometricSignature biometricSignature;
-    late MockBiometricSignaturePlatform fakePlatform;
-
-    setUp(() {
-      biometricSignature = BiometricSignature();
-      fakePlatform = MockBiometricSignaturePlatform();
-      BiometricSignaturePlatform.instance = fakePlatform;
-    });
-
-    test('isAppAttestSupported forwards the platform value', () async {
-      expect(await biometricSignature.isAppAttestSupported(), false);
-      fakePlatform.appAttestSupported = true;
-      expect(await biometricSignature.isAppAttestSupported(), true);
-    });
-
-    test('getAppAttestation passes challenge and alias through', () async {
-      final challenge = Uint8List.fromList(List.generate(32, (i) => i));
-      fakePlatform.nextAppAttestResult = AppAttestResult(
-        keyId: 'key-id-1',
-        attestationObject: Uint8List.fromList([1, 2, 3]),
-        code: BiometricError.success,
-      );
-
-      final result = await biometricSignature.getAppAttestation(
-        challenge: challenge,
-        keyAlias: 'attest-alias',
-      );
-
-      expect(fakePlatform.lastAppAttestChallenge, challenge);
-      expect(fakePlatform.lastAppAttestAlias, 'attest-alias');
-      expect(result.code, BiometricError.success);
-      expect(result.keyId, 'key-id-1');
-      expect(result.attestationObject, [1, 2, 3]);
-    });
-
-    test('getAppAttestation surfaces in-band notSupported', () async {
-      final result = await biometricSignature.getAppAttestation(
-        challenge: Uint8List.fromList([1, 2, 3]),
-      );
-      expect(fakePlatform.lastAppAttestAlias, isNull);
-      expect(result.code, BiometricError.notSupported);
-      expect(result.keyId, isNull);
-      expect(result.attestationObject, isNull);
-    });
-
-    test('getAppAssertion passes through and surfaces keyNotFound', () async {
-      final challenge = Uint8List.fromList([9, 8, 7]);
-      final missing = await biometricSignature.getAppAssertion(
-        challenge: challenge,
-        keyAlias: 'attest-alias',
-      );
-      expect(fakePlatform.lastAppAttestChallenge, challenge);
-      expect(fakePlatform.lastAppAttestAlias, 'attest-alias');
-      expect(missing.code, BiometricError.keyNotFound);
-
-      fakePlatform.nextAppAssertionResult = AppAssertionResult(
-        keyId: 'key-id-1',
-        assertionObject: Uint8List.fromList([4, 5, 6]),
-        code: BiometricError.success,
-      );
-      final result = await biometricSignature.getAppAssertion(
-        challenge: challenge,
-      );
-      expect(result.code, BiometricError.success);
-      expect(result.assertionObject, [4, 5, 6]);
     });
   });
 }

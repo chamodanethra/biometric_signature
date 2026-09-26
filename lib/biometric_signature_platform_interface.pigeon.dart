@@ -312,11 +312,13 @@ class KeyCreationResult {
   /// platform does not report the method directly.
   AuthenticationType? authenticationType;
 
-  /// [Android] DER-encoded X.509 attestation certificate chain, leaf
-  /// (the attestation certificate for the new key) first, root last. Only
-  /// populated when [CreateKeysConfig.attestationChallenge] was set and
-  /// attestation succeeded; null otherwise and on all other platforms.
-  List<Uint8List?>? attestationCertificateChain;
+  /// [Android] DER-encoded X.509 key attestation certificate chain of the new
+  /// signing key, leaf (the attestation certificate) first, root last.
+  ///
+  /// Set only when [CreateKeysConfig.attestationChallenge] was provided and
+  /// key creation succeeded; null otherwise and on all other platforms. The
+  /// plugin does not parse or verify the chain — send it to your server.
+  List<Uint8List>? attestationCertificateChain;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -354,7 +356,7 @@ class KeyCreationResult {
       isHybridMode: result[9] as bool?,
       authenticationType: result[10] as AuthenticationType?,
       attestationCertificateChain:
-          (result[11] as List<Object?>?)?.cast<Uint8List?>(),
+          (result[11] as List<Object?>?)?.cast<Uint8List>(),
     );
   }
 
@@ -560,12 +562,14 @@ class KeyInfo {
   /// Key size of the decryption key in bits (hybrid mode only).
   int? decryptingKeySize;
 
-  /// [Android] DER-encoded X.509 attestation certificate chain of the
-  /// signing key, leaf first. Only populated when the key was created with
-  /// [CreateKeysConfig.attestationChallenge] (chain length > 1); a plain
-  /// self-signed keystore certificate is not reported here. Null on all
-  /// other platforms.
-  List<Uint8List?>? attestationCertificateChain;
+  /// [Android] DER-encoded X.509 key attestation certificate chain of the
+  /// signing key, leaf first.
+  ///
+  /// Present only for keys created with [CreateKeysConfig.attestationChallenge]
+  /// (the leaf carries the key attestation extension, OID
+  /// 1.3.6.1.4.1.11129.2.1.17). Null for unattested keys and on all other
+  /// platforms.
+  List<Uint8List>? attestationCertificateChain;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -599,7 +603,7 @@ class KeyInfo {
       decryptingAlgorithm: result[7] as String?,
       decryptingKeySize: result[8] as int?,
       attestationCertificateChain:
-          (result[9] as List<Object?>?)?.cast<Uint8List?>(),
+          (result[9] as List<Object?>?)?.cast<Uint8List>(),
     );
   }
 
@@ -715,30 +719,44 @@ class CreateKeysConfig {
   /// satisfy inherence-based SCA requirements.
   bool? requireAuthentication;
 
-  /// [Android] Server-issued challenge for hardware key attestation
-  /// (1–128 bytes). When set, the generated keystore key carries an X.509
-  /// attestation certificate chain rooted in Google's hardware attestation
-  /// roots, returned in [KeyCreationResult.attestationCertificateChain].
+  /// [Android] Server-issued, single-use challenge (1–128 bytes) for hardware
+  /// key attestation. Requires Android 7.0 (API 24) or newer.
   ///
-  /// Attestation is an explicit security opt-in, so it **hard-fails**
-  /// instead of silently degrading:
-  /// - Android 6 (API 23) returns [BiometricError.notSupported]
-  ///   (`setAttestationChallenge` requires API 24).
-  /// - If the device cannot produce an attestation chain at all, key
-  ///   creation fails with [BiometricError.notSupported] and no key is left
-  ///   behind. If StrongBox key generation fails with a challenge set, the
-  ///   plugin retries once without StrongBox (still TEE-backed attestation).
-  /// - Empty or >128-byte challenges return [BiometricError.invalidInput].
-  /// - **iOS/macOS/Windows**: setting this field makes `createKeys` return
-  ///   [BiometricError.notSupported] in-band. This deviates from the
-  ///   silent-ignore convention of other config fields deliberately:
-  ///   silently ignoring an attestation request would hand back an
-  ///   unattested key the caller believes is attested. Use
-  ///   [BiometricSignatureApi.getAppAttestation] on Apple platforms.
+  /// When set, the keystore embeds the challenge in an X.509 attestation
+  /// certificate for the new signing key, and `createKeys` returns the chain
+  /// in [KeyCreationResult.attestationCertificateChain] so your server can
+  /// verify that the key was generated in secure hardware (TEE or StrongBox).
+  /// The plugin neither parses nor verifies the chain.
   ///
-  /// Hybrid mode (`signatureType: ecdsa` + `enableDecryption: true`): only
-  /// the keystore EC *signing* key is attested; the software-generated
-  /// decryption key cannot be.
+  /// Attestation is an explicit opt-in, so it fails instead of silently
+  /// returning an unattested key:
+  /// - [BiometricError.invalidInput]: the challenge is empty or longer than
+  ///   128 bytes.
+  /// - [BiometricError.notSupported]: Android 6 (API 23), or the device's
+  ///   keystore cannot attest the key.
+  /// - [BiometricError.notAvailable]: the keystore reported a transient
+  ///   failure (e.g. attestation keys are not provisioned yet). Retry later
+  ///   with a fresh challenge. Detected on Android 13+; older versions report
+  ///   [BiometricError.notSupported] instead.
+  ///
+  /// The input checks (and [failIfExists]) run before anything is deleted. A
+  /// failure during key generation happens after the existing key under the
+  /// same alias was removed — as with any `createKeys` failure — and never
+  /// leaves an unattested key behind. Use [failIfExists] or a fresh alias to
+  /// protect an existing key.
+  ///
+  /// If StrongBox key generation fails, the plugin retries once in the TEE;
+  /// the chain's `attestationSecurityLevel` tells your server which one
+  /// produced the key. In hybrid mode (`signatureType: ecdsa` +
+  /// `enableDecryption: true`) only the keystore EC *signing* key is attested;
+  /// the software-generated decryption key cannot be.
+  ///
+  /// **iOS/macOS/Windows**: setting this field makes `createKeys` return
+  /// [BiometricError.notSupported] without touching existing keys. This
+  /// deliberately departs from how other platform-specific fields are
+  /// ignored: ignoring it would hand back an unattested key the caller
+  /// believes is attested. Apple has no public API to attest an individual
+  /// Secure Enclave key, and Windows attestation is not implemented.
   Uint8List? attestationChallenge;
 
   List<Object?> _toList() {
@@ -1076,139 +1094,6 @@ class SimplePromptResult {
   int get hashCode => Object.hashAll(_toList());
 }
 
-/// Result of [BiometricSignatureApi.getAppAttestation] (Apple App Attest).
-class AppAttestResult {
-  AppAttestResult({
-    this.keyId,
-    this.attestationObject,
-    this.error,
-    this.code,
-  });
-
-  /// The App Attest key identifier (opaque, base64). Send it to your server
-  /// with [attestationObject]; it is also needed to interpret assertions.
-  String? keyId;
-
-  /// The CBOR attestation object produced by
-  /// `DCAppAttestService.attestKey`. Verify server-side per Apple's
-  /// "Validating Apps That Connect to Your Server".
-  Uint8List? attestationObject;
-
-  /// Error message if the operation failed.
-  String? error;
-
-  /// Standardized error code if the operation failed.
-  ///
-  /// [BiometricError.notAvailable] means Apple's servers were unreachable —
-  /// retry later with the SAME challenge. [BiometricError.notSupported] is
-  /// returned on Android, Windows, all Macs, simulators, and iOS < 14.
-  BiometricError? code;
-
-  List<Object?> _toList() {
-    return <Object?>[
-      keyId,
-      attestationObject,
-      error,
-      code,
-    ];
-  }
-
-  Object encode() {
-    return _toList();
-  }
-
-  static AppAttestResult decode(Object result) {
-    result as List<Object?>;
-    return AppAttestResult(
-      keyId: result[0] as String?,
-      attestationObject: result[1] as Uint8List?,
-      error: result[2] as String?,
-      code: result[3] as BiometricError?,
-    );
-  }
-
-  @override
-  // ignore: avoid_equals_and_hash_code_on_mutable_classes
-  bool operator ==(Object other) {
-    if (other is! AppAttestResult || other.runtimeType != runtimeType) {
-      return false;
-    }
-    if (identical(this, other)) {
-      return true;
-    }
-    return _deepEquals(encode(), other.encode());
-  }
-
-  @override
-  // ignore: avoid_equals_and_hash_code_on_mutable_classes
-  int get hashCode => Object.hashAll(_toList());
-}
-
-/// Result of [BiometricSignatureApi.getAppAssertion] (Apple App Attest).
-class AppAssertionResult {
-  AppAssertionResult({
-    this.keyId,
-    this.assertionObject,
-    this.error,
-    this.code,
-  });
-
-  /// The App Attest key identifier the assertion was produced with.
-  String? keyId;
-
-  /// The CBOR assertion object produced by
-  /// `DCAppAttestService.generateAssertion`.
-  Uint8List? assertionObject;
-
-  /// Error message if the operation failed.
-  String? error;
-
-  /// Standardized error code if the operation failed.
-  ///
-  /// [BiometricError.keyNotFound] means no attested App Attest key exists
-  /// for this alias — call [BiometricSignatureApi.getAppAttestation] first.
-  BiometricError? code;
-
-  List<Object?> _toList() {
-    return <Object?>[
-      keyId,
-      assertionObject,
-      error,
-      code,
-    ];
-  }
-
-  Object encode() {
-    return _toList();
-  }
-
-  static AppAssertionResult decode(Object result) {
-    result as List<Object?>;
-    return AppAssertionResult(
-      keyId: result[0] as String?,
-      assertionObject: result[1] as Uint8List?,
-      error: result[2] as String?,
-      code: result[3] as BiometricError?,
-    );
-  }
-
-  @override
-  // ignore: avoid_equals_and_hash_code_on_mutable_classes
-  bool operator ==(Object other) {
-    if (other is! AppAssertionResult || other.runtimeType != runtimeType) {
-      return false;
-    }
-    if (identical(this, other)) {
-      return true;
-    }
-    return _deepEquals(encode(), other.encode());
-  }
-
-  @override
-  // ignore: avoid_equals_and_hash_code_on_mutable_classes
-  int get hashCode => Object.hashAll(_toList());
-}
-
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -1270,12 +1155,6 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is SimplePromptResult) {
       buffer.putUint8(146);
       writeValue(buffer, value.encode());
-    } else if (value is AppAttestResult) {
-      buffer.putUint8(147);
-      writeValue(buffer, value.encode());
-    } else if (value is AppAssertionResult) {
-      buffer.putUint8(148);
-      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -1328,10 +1207,6 @@ class _PigeonCodec extends StandardMessageCodec {
         return SimplePromptConfig.decode(readValue(buffer)!);
       case 146:
         return SimplePromptResult.decode(readValue(buffer)!);
-      case 147:
-        return AppAttestResult.decode(readValue(buffer)!);
-      case 148:
-        return AppAssertionResult.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -1774,117 +1649,6 @@ class BiometricSignatureApi {
       );
     } else {
       return (pigeonVar_replyList[0] as bool?)!;
-    }
-  }
-
-  /// Whether Apple App Attest is supported here: `true` only on physical
-  /// iOS 14+ devices with the App Attest capability configured. Always
-  /// `false` on Android, Windows, all Macs (including Mac Catalyst and
-  /// iOS-apps-on-Apple-silicon), and simulators.
-  Future<bool> isAppAttestSupported() async {
-    final String pigeonVar_channelName =
-        'dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.isAppAttestSupported$pigeonVar_messageChannelSuffix';
-    final BasicMessageChannel<Object?> pigeonVar_channel =
-        BasicMessageChannel<Object?>(
-      pigeonVar_channelName,
-      pigeonChannelCodec,
-      binaryMessenger: pigeonVar_binaryMessenger,
-    );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
-    final List<Object?>? pigeonVar_replyList =
-        await pigeonVar_sendFuture as List<Object?>?;
-    if (pigeonVar_replyList == null) {
-      throw _createConnectionError(pigeonVar_channelName);
-    } else if (pigeonVar_replyList.length > 1) {
-      throw PlatformException(
-        code: pigeonVar_replyList[0]! as String,
-        message: pigeonVar_replyList[1] as String?,
-        details: pigeonVar_replyList[2],
-      );
-    } else if (pigeonVar_replyList[0] == null) {
-      throw PlatformException(
-        code: 'null-error',
-        message: 'Host platform returned null value for non-null return value.',
-      );
-    } else {
-      return (pigeonVar_replyList[0] as bool?)!;
-    }
-  }
-
-  /// [iOS 14+] Attests the app/device integrity via Apple App Attest.
-  ///
-  /// [challenge] is the server-issued challenge (non-empty). The plugin
-  /// computes SHA-256(challenge) natively as the required clientDataHash.
-  /// [keyAlias] namespaces the stored App Attest key id; null = default.
-  /// An App Attest key is generated and stored on first use per alias.
-  ///
-  /// Returns in-band [BiometricError.notSupported] everywhere App Attest is
-  /// unavailable, and [BiometricError.notAvailable] when Apple's servers
-  /// are unreachable (retry later with the SAME challenge).
-  Future<AppAttestResult> getAppAttestation(
-      Uint8List challenge, String? keyAlias) async {
-    final String pigeonVar_channelName =
-        'dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.getAppAttestation$pigeonVar_messageChannelSuffix';
-    final BasicMessageChannel<Object?> pigeonVar_channel =
-        BasicMessageChannel<Object?>(
-      pigeonVar_channelName,
-      pigeonChannelCodec,
-      binaryMessenger: pigeonVar_binaryMessenger,
-    );
-    final Future<Object?> pigeonVar_sendFuture =
-        pigeonVar_channel.send(<Object?>[challenge, keyAlias]);
-    final List<Object?>? pigeonVar_replyList =
-        await pigeonVar_sendFuture as List<Object?>?;
-    if (pigeonVar_replyList == null) {
-      throw _createConnectionError(pigeonVar_channelName);
-    } else if (pigeonVar_replyList.length > 1) {
-      throw PlatformException(
-        code: pigeonVar_replyList[0]! as String,
-        message: pigeonVar_replyList[1] as String?,
-        details: pigeonVar_replyList[2],
-      );
-    } else if (pigeonVar_replyList[0] == null) {
-      throw PlatformException(
-        code: 'null-error',
-        message: 'Host platform returned null value for non-null return value.',
-      );
-    } else {
-      return (pigeonVar_replyList[0] as AppAttestResult?)!;
-    }
-  }
-
-  /// [iOS 14+] Produces an App Attest assertion with the previously
-  /// attested key for [keyAlias]. Returns [BiometricError.keyNotFound] when
-  /// no key exists or the key was never successfully attested.
-  Future<AppAssertionResult> getAppAssertion(
-      Uint8List challenge, String? keyAlias) async {
-    final String pigeonVar_channelName =
-        'dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.getAppAssertion$pigeonVar_messageChannelSuffix';
-    final BasicMessageChannel<Object?> pigeonVar_channel =
-        BasicMessageChannel<Object?>(
-      pigeonVar_channelName,
-      pigeonChannelCodec,
-      binaryMessenger: pigeonVar_binaryMessenger,
-    );
-    final Future<Object?> pigeonVar_sendFuture =
-        pigeonVar_channel.send(<Object?>[challenge, keyAlias]);
-    final List<Object?>? pigeonVar_replyList =
-        await pigeonVar_sendFuture as List<Object?>?;
-    if (pigeonVar_replyList == null) {
-      throw _createConnectionError(pigeonVar_channelName);
-    } else if (pigeonVar_replyList.length > 1) {
-      throw PlatformException(
-        code: pigeonVar_replyList[0]! as String,
-        message: pigeonVar_replyList[1] as String?,
-        details: pigeonVar_replyList[2],
-      );
-    } else if (pigeonVar_replyList[0] == null) {
-      throw PlatformException(
-        code: 'null-error',
-        message: 'Host platform returned null value for non-null return value.',
-      );
-    } else {
-      return (pigeonVar_replyList[0] as AppAssertionResult?)!;
     }
   }
 }

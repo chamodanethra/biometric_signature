@@ -80,17 +80,6 @@ class BiometricSignaturePlugin : public flutter::Plugin,
   void IsDeviceLockSet(
       std::function<void(ErrorOr<bool> reply)> result) override;
 
-  void IsAppAttestSupported(
-      std::function<void(ErrorOr<bool> reply)> result) override;
-
-  void GetAppAttestation(
-      const std::vector<uint8_t> &challenge, const std::string *key_alias,
-      std::function<void(ErrorOr<AppAttestResult> reply)> result) override;
-
-  void GetAppAssertion(
-      const std::vector<uint8_t> &challenge, const std::string *key_alias,
-      std::function<void(ErrorOr<AppAssertionResult> reply)> result) override;
-
  private:
   void CreateSignatureInternal(
       const std::vector<uint8_t>& payload_bytes,

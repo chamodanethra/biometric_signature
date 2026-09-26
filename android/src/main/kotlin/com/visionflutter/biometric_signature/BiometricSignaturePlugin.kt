@@ -1096,42 +1096,6 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         callback(Result.success(keyguardManager.isDeviceSecure))
     }
 
-    override fun isAppAttestSupported(callback: (Result<Boolean>) -> Unit) {
-        callback(Result.success(false))
-    }
-
-    override fun getAppAttestation(
-        challenge: ByteArray,
-        keyAlias: String?,
-        callback: (Result<AppAttestResult>) -> Unit
-    ) {
-        callback(
-            Result.success(
-                AppAttestResult(
-                    code = BiometricError.NOT_SUPPORTED,
-                    error = "App Attest is not supported on Android. Use " +
-                        "CreateKeysConfig.attestationChallenge for Android Key Attestation."
-                )
-            )
-        )
-    }
-
-    override fun getAppAssertion(
-        challenge: ByteArray,
-        keyAlias: String?,
-        callback: (Result<AppAssertionResult>) -> Unit
-    ) {
-        callback(
-            Result.success(
-                AppAssertionResult(
-                    code = BiometricError.NOT_SUPPORTED,
-                    error = "App Attest is not supported on Android. Use " +
-                        "CreateKeysConfig.attestationChallenge for Android Key Attestation."
-                )
-            )
-        )
-    }
-
     private fun buildKeyResponse(
         publicKey: PublicKey,
         format: KeyFormat,

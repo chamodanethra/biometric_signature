@@ -5,8 +5,6 @@ import Cocoa
 import Flutter
 import UIKit
 #endif
-import CryptoKit
-import DeviceCheck
 import LocalAuthentication
 import Security
 
@@ -336,69 +334,6 @@ private enum RequireAuthenticationSetting {
     }
 }
 
-// MARK: - App Attest Key ID Storage
-//
-// DCAppAttestService.generateKey returns an opaque keyId that is the ONLY
-// handle to the Apple-managed App Attest key (the key itself lives in the
-// Secure Enclave and is not addressable as a SecKey). Persist the keyId per
-// alias so attestations and assertions reuse one key, as Apple recommends —
-// regenerating App Attest keys unnecessarily degrades the device's risk
-// metric on Apple's servers.
-private enum AppAttestKeyIdSetting {
-    static let prefix = "com.visionflutter.biometric.appAttestKeyId"
-
-    private static func service(_ keyAlias: String?) -> String {
-        "\(prefix).\(keyAlias ?? "default")"
-    }
-
-    static func save(_ keyAlias: String?, keyId: String) {
-        let service = service(keyAlias)
-        guard let data = keyId.data(using: .utf8) else { return }
-        let base: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: service,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        ]
-        let attrs: [String: Any] = [kSecValueData as String: data]
-        let status = SecItemUpdate(base as CFDictionary, attrs as CFDictionary)
-        if status == errSecItemNotFound {
-            var add = base
-            add[kSecValueData as String] = data
-            _ = SecItemAdd(add as CFDictionary, nil)
-        }
-    }
-
-    static func read(_ keyAlias: String?) -> String? {
-        let service = service(keyAlias)
-        let q: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: service,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var out: CFTypeRef?
-        let s = SecItemCopyMatching(q as CFDictionary, &out)
-        if s == errSecSuccess, let d = out as? Data {
-            return String(data: d, encoding: .utf8)
-        }
-        return nil
-    }
-
-    @discardableResult
-    static func delete(_ keyAlias: String?) -> Bool {
-        let service = service(keyAlias)
-        let q: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: service
-        ]
-        let s = SecItemDelete(q as CFDictionary)
-        return s == errSecSuccess || s == errSecItemNotFound
-    }
-}
-
 public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatureApi {
 
     public static func register(with registrar: FlutterPluginRegistrar) {
@@ -455,10 +390,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         promptMessage: String?,
         completion: @escaping (Result<KeyCreationResult, Error>) -> Void
     ) {
-        // failIfExists runs FIRST: callers rely on the invariant that with
-        // failIfExists set, any failure other than keyAlreadyExists implies
-        // no pre-existing credential lives under the alias. The attestation
-        // rejection below must not mask an existing key.
+        // Check failIfExists
         let failIfExists = config?.failIfExists ?? false
         if failIfExists && hasEcKey(keyAlias) {
             completion(.success(KeyCreationResult(
@@ -469,12 +401,13 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             return
         }
 
-        // Attestation is an explicit security claim: silently ignoring the
-        // Android-only challenge would hand back an unattested key the
-        // caller believes is attested, so it hard-fails in-band here.
+        // Key attestation is Android-only: Apple has no public API to attest an
+        // individual Secure Enclave key. Silently ignoring the challenge would
+        // hand back an unattested key the caller believes is attested, so this
+        // fails in-band before any existing key is touched.
         if config?.attestationChallenge != nil {
             completion(.success(KeyCreationResult(
-                error: "attestationChallenge is Android-only; use getAppAttestation() for Apple App Attest",
+                error: "Key attestation (attestationChallenge) is only supported on Android",
                 code: .notSupported
             )))
             return
@@ -777,15 +710,6 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         deleteGenericPasswords(withServicePrefix: DeviceCredentialsSetting.prefix, requireMatchingAccount: false)
         deleteGenericPasswords(withServicePrefix: RequireAuthenticationSetting.prefix, requireMatchingAccount: false)
 
-        // App Attest key ids are deliberately NOT removed by `deleteKeys` /
-        // `deleteExistingKeys` — the App Attest key attests the app/device,
-        // not a signing key, and `createKeys` calls `deleteExistingKeys` on
-        // every invocation; rotating the App Attest key that often would
-        // degrade the device's risk metric on Apple's servers. Only this
-        // nuclear option clears the stored ids (the enclave-side keys are
-        // unreachable afterwards; fresh ones are minted on next use).
-        deleteGenericPasswords(withServicePrefix: AppAttestKeyIdSetting.prefix, requireMatchingAccount: false)
-
         completion(.success(true))
     }
 
@@ -937,152 +861,6 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         }
     }
 
-    // MARK: - App Attest
-
-    func isAppAttestSupported(completion: @escaping (Result<Bool, Error>) -> Void) {
-        if #available(iOS 14.0, macOS 11.0, *) {
-            // Per Apple's DeviceCheck header, `isSupported` is false on ALL
-            // Macs (including Mac Catalyst and iOS-apps-on-Apple-silicon)
-            // and on simulators — no extra platform check is needed.
-            completion(.success(DCAppAttestService.shared.isSupported))
-        } else {
-            completion(.success(false))
-        }
-    }
-
-    func getAppAttestation(
-        challenge: FlutterStandardTypedData,
-        keyAlias: String?,
-        completion: @escaping (Result<AppAttestResult, Error>) -> Void
-    ) {
-        guard #available(iOS 14.0, macOS 11.0, *) else {
-            completion(.success(AppAttestResult(
-                error: "App Attest requires iOS 14 or newer",
-                code: .notSupported
-            )))
-            return
-        }
-        let service = DCAppAttestService.shared
-        guard service.isSupported else {
-            completion(.success(AppAttestResult(
-                error: "App Attest is not supported here (simulator, Mac, or missing App Attest entitlement)",
-                code: .notSupported
-            )))
-            return
-        }
-        guard !challenge.data.isEmpty else {
-            completion(.success(AppAttestResult(
-                error: "challenge must not be empty",
-                code: .invalidInput
-            )))
-            return
-        }
-        let clientDataHash = sha256Data(challenge.data)
-
-        func attest(keyId: String, isReusedStoredKey: Bool) {
-            service.attestKey(keyId, clientDataHash: clientDataHash) { attestation, error in
-                if let attestation = attestation {
-                    completion(.success(AppAttestResult(
-                        keyId: keyId,
-                        attestationObject: FlutterStandardTypedData(bytes: attestation),
-                        code: .success
-                    )))
-                    return
-                }
-                let nsError = ((error ?? NSError(domain: DCErrorDomain, code: 0)) as NSError)
-                // invalidKey (3) on a REUSED stored id means the stored key
-                // was consumed or rejected — mint a fresh key once and retry.
-                // NEVER regenerate on serverUnavailable (4): Apple requires a
-                // retry with the SAME key and challenge, and regenerating
-                // degrades the device's risk metric.
-                if nsError.domain == DCErrorDomain, nsError.code == 3, isReusedStoredKey {
-                    generateAndAttest()
-                    return
-                }
-                let mapped = self.mapDCError(nsError)
-                completion(.success(AppAttestResult(
-                    keyId: keyId,
-                    error: mapped.message,
-                    code: mapped.code
-                )))
-            }
-        }
-
-        func generateAndAttest() {
-            service.generateKey { keyId, error in
-                guard let keyId = keyId else {
-                    let mapped = self.mapDCError((error ?? NSError(domain: DCErrorDomain, code: 0)) as NSError)
-                    completion(.success(AppAttestResult(error: mapped.message, code: mapped.code)))
-                    return
-                }
-                AppAttestKeyIdSetting.save(keyAlias, keyId: keyId)
-                attest(keyId: keyId, isReusedStoredKey: false)
-            }
-        }
-
-        if let storedKeyId = AppAttestKeyIdSetting.read(keyAlias) {
-            attest(keyId: storedKeyId, isReusedStoredKey: true)
-        } else {
-            generateAndAttest()
-        }
-    }
-
-    func getAppAssertion(
-        challenge: FlutterStandardTypedData,
-        keyAlias: String?,
-        completion: @escaping (Result<AppAssertionResult, Error>) -> Void
-    ) {
-        guard #available(iOS 14.0, macOS 11.0, *) else {
-            completion(.success(AppAssertionResult(
-                error: "App Attest requires iOS 14 or newer",
-                code: .notSupported
-            )))
-            return
-        }
-        let service = DCAppAttestService.shared
-        guard service.isSupported else {
-            completion(.success(AppAssertionResult(
-                error: "App Attest is not supported here (simulator, Mac, or missing App Attest entitlement)",
-                code: .notSupported
-            )))
-            return
-        }
-        guard !challenge.data.isEmpty else {
-            completion(.success(AppAssertionResult(
-                error: "challenge must not be empty",
-                code: .invalidInput
-            )))
-            return
-        }
-        guard let keyId = AppAttestKeyIdSetting.read(keyAlias) else {
-            completion(.success(AppAssertionResult(
-                error: "No App Attest key exists for this alias. Call getAppAttestation first.",
-                code: .keyNotFound
-            )))
-            return
-        }
-        service.generateAssertion(keyId, clientDataHash: sha256Data(challenge.data)) { assertion, error in
-            if let assertion = assertion {
-                completion(.success(AppAssertionResult(
-                    keyId: keyId,
-                    assertionObject: FlutterStandardTypedData(bytes: assertion),
-                    code: .success
-                )))
-                return
-            }
-            let mapped = self.mapDCError((error ?? NSError(domain: DCErrorDomain, code: 0)) as NSError)
-            completion(.success(AppAssertionResult(
-                keyId: keyId,
-                error: mapped.message,
-                code: mapped.code
-            )))
-        }
-    }
-
-    private func sha256Data(_ data: Data) -> Data {
-        Data(SHA256.hash(data: data))
-    }
-
     private func mapLAError(_ error: NSError?) -> BiometricError {
         guard let error = error else { return .unknown }
 
@@ -1138,31 +916,6 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
                 return mapLAError(NSError(domain: LAErrorDomain, code: Int(status), userInfo: nil))
             }
             return .unknown
-        }
-    }
-
-    /// Maps DCErrorDomain codes (0 unknownSystemFailure, 1 featureUnsupported,
-    /// 2 invalidInput, 3 invalidKey, 4 serverUnavailable) to in-band results.
-    /// Raw codes are used deliberately: `DCError.Code` carries the same
-    /// iOS 14 availability as the service and would force wider guards.
-    private func mapDCError(_ error: NSError) -> (code: BiometricError, message: String) {
-        guard error.domain == DCErrorDomain else {
-            return (.unknown, "App Attest failed: \(error.localizedDescription)")
-        }
-        switch error.code {
-        case 1:
-            return (.notSupported, "App Attest is not supported on this device")
-        case 2:
-            return (.invalidInput, "Invalid input for App Attest: \(error.localizedDescription)")
-        case 3:
-            return (.keyNotFound, "The App Attest key is invalid or was never attested")
-        case 4:
-            return (
-                .notAvailable,
-                "Apple's App Attest servers are unreachable. Retry later with the SAME challenge."
-            )
-        default:
-            return (.unknown, "App Attest failed: \(error.localizedDescription)")
         }
     }
 
