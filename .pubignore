@@ -3,7 +3,7 @@
 # but don't need to be included in the published package on pub.dev
 
 banking_app/
-document_signer/
+secure_vault/
 passwordless_login/
 assets/
 test/
