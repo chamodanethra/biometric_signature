@@ -1,8 +1,7 @@
 import 'dart:convert';
 
+import 'package:examples_shared/server.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-import 'key_value_store.dart';
 
 /// A [KeyValueStore] backed by `SharedPreferences`, namespaced by [prefix]
 /// (e.g. `server.` for the mock server and `client.` for the app), so

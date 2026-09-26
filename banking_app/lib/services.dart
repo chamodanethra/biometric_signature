@@ -13,6 +13,7 @@ import 'client/key_setup.dart';
 import 'client/session.dart';
 import 'server/bank_server.dart';
 import 'server/models.dart';
+import 'shared_prefs_store.dart';
 
 /// Everything the screens need.
 class AppServices {

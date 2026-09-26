@@ -13,5 +13,4 @@ export 'src/server/challenge_store.dart';
 export 'src/server/clock.dart';
 export 'src/server/key_value_store.dart';
 export 'src/server/observable.dart';
-export 'src/server/shared_prefs_store.dart';
 export 'src/server/transport.dart';

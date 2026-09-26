@@ -15,6 +15,7 @@ dependencies:
     path: ../
   examples_shared:
     path: ../example/packages/examples_shared
+  shared_preferences: ^2.3.0
 
 dev_dependencies:
   flutter_test:

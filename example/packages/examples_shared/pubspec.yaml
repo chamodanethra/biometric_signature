@@ -17,7 +17,6 @@ dependencies:
   biometric_signature:
     path: ../../../
   pointycastle: ^4.0.0
-  shared_preferences: ^2.3.0
 
 dev_dependencies:
   flutter_test:

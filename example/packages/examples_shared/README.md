@@ -14,7 +14,7 @@ exists to show what a real server has to verify.
 |---|---|---|
 | `package:examples_shared/crypto.dart` | no | Public-key normalization (base64 / PEM / hex → SPKI DER), DER reader/encoder, canonical JSON, signature verification (RSA PKCS#1 v1.5, ECDSA, never throws), RSA-OAEP with separate MGF1 digest, Android and Apple ECIES, `EncryptionTarget` (which scheme a device key needs), envelope encryption. |
 | `package:examples_shared/attestation.dart` | no | X.509 parsing, Android key attestation `KeyDescription`, chain validation up to Google's roots (trusted by public-key hash), `AttestationVerifier` → `AttestationReport`. |
-| `package:examples_shared/server.dart` | `shared_preferences` only | `MockTransport` (JSON round trip, latency, wire log, fault injection), `ChallengeStore`, `ReplayCache`, `KeyValueStore` (in-memory / `SharedPreferences`), `AuditLog`, `Clock`. |
+| `package:examples_shared/server.dart` | none | `MockTransport` (JSON round trip, latency, wire log, fault injection), `ChallengeStore`, `ReplayCache`, `KeyValueStore` (in-memory; the scenario apps add a `SharedPreferences` one, so the published `example/` doesn't pull in that plugin), `AuditLog`, `Clock`. |
 | `package:examples_shared/ui.dart` | yes | Theme and `StatusColors`, widgets (`AttestationReportView`, `WireLogView`, `ErrorBanner`, `DevConsoleScaffold`, …), `currentDevicePlatform()` and `PlatformCapabilities`, `guidanceFor(BiometricError)`, `probeKey`. |
 | `package:examples_shared/testing.dart` | yes | `SoftwareBiometricPlatform` (a fake plugin platform with real crypto), synthetic attestation chains, a certificate builder. |
 

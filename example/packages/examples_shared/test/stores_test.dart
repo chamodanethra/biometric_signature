@@ -1,6 +1,5 @@
 import 'package:examples_shared/server.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -29,18 +28,6 @@ void main() {
   }
 
   test('InMemoryKeyValueStore', () => exercise(InMemoryKeyValueStore()));
-
-  test('SharedPrefsKeyValueStore is namespaced by prefix', () async {
-    SharedPreferences.setMockInitialValues({'other': 'keep'});
-    final server = SharedPrefsKeyValueStore('server.');
-    final client = SharedPrefsKeyValueStore('client.');
-    await client.write('session', {'token': 't'});
-    await exercise(server);
-    expect(await client.readMap('session'), {'token': 't'});
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString('other'), 'keep');
-    expect(prefs.getString('client.session'), isNotNull);
-  });
 
   test('AuditLog records, persists and reloads', () async {
     final store = InMemoryKeyValueStore();

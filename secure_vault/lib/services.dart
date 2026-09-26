@@ -6,6 +6,7 @@ import 'client/provisioning_client.dart';
 import 'client/vault_repository.dart';
 import 'server/in_transit_tamper.dart';
 import 'server/provisioning_server.dart';
+import 'shared_prefs_store.dart';
 
 /// Wires the plugin, the in-process provisioning server, the mock network
 /// and the device-side storage together.

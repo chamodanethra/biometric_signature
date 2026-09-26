@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'client/accounts.dart';
 import 'client/auth_client.dart';
 import 'server/auth_server.dart';
+import 'shared_prefs_store.dart';
 
 /// Everything the app wires together: the plugin, the in-process mock
 /// server behind its transport, and the client.
