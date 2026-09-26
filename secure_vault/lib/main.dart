@@ -1,33 +1,11 @@
-import 'package:document_signer_example/screens/home_screen.dart';
 import 'package:flutter/material.dart';
 
+import 'app.dart';
+import 'services.dart';
+
+/// Secure Vault: secrets sealed to a hardware-backed key, revealed only by
+/// biometric decryption. See README.md for the walkthrough.
 void main() {
-  runApp(const DocumentSignerApp());
-}
-
-class DocumentSignerApp extends StatelessWidget {
-  const DocumentSignerApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Document Signer',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-        appBarTheme: const AppBarTheme(centerTitle: true, elevation: 0),
-        cardTheme: CardTheme(
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-      home: const HomeScreen(),
-    );
-  }
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(SecureVaultApp(services: AppServices.device()));
 }

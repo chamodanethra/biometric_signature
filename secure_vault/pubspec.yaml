@@ -1,20 +1,20 @@
-name: document_signer_example
-description: Document signing app example with biometric authentication
-publish_to: 'none'
+name: secure_vault_example
+description: "Secure Vault example: secrets sealed to a hardware-backed key, revealed only by biometric decryption"
+publish_to: none
 
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.5.0 <4.0.0'
+  flutter: '>=3.24.5'
 
 dependencies:
   flutter:
     sdk: flutter
   biometric_signature:
     path: ../
-  intl: ^0.19.0
-  shared_preferences: ^2.2.2
-  crypto: ^3.0.3
+  examples_shared:
+    path: ../example/packages/examples_shared
 
 dev_dependencies:
   flutter_test:
@@ -23,4 +23,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
