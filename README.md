@@ -483,14 +483,20 @@ At a minimum:
    alongside the older RSA root.
 2. Reject certificates listed as revoked or suspended at
    `https://android.googleapis.com/attestation/status`.
-3. Parse the leaf's key description extension (OID `1.3.6.1.4.1.11129.2.1.17`) and require its
-   `attestationChallenge` to equal the challenge you issued. Accept each challenge only once.
-4. Require `attestationSecurityLevel` to be `TrustedEnvironment` or `StrongBox`. Reject
-   `Software`: emulators and devices without hardware attestation produce software-rooted chains.
-5. Require the leaf certificate's public key to match the public key returned by `createKeys`.
-6. Optionally check `attestationApplicationId` (package name and signing-certificate digest),
-   `rootOfTrust` (verified boot state, locked bootloader) and the key's authorizations, e.g. that
-   user authentication is required.
+3. Traverse the validated chain from the trusted root toward the leaf and select the first
+   certificate containing the key description extension (OID `1.3.6.1.4.1.11129.2.1.17`). Reject
+   the chain if none exists. Do not assume this certificate is the leaf: an attacker can append
+   certificates with fabricated attestation extensions. Parse only the selected certificate's
+   extension and require its `attestationChallenge` to equal the challenge you issued. Accept
+   each challenge only once.
+4. In that same extension, require `attestationSecurityLevel` to be `TrustedEnvironment` or
+   `StrongBox`. Reject `Software`: emulators and devices without hardware attestation produce
+   software-rooted chains.
+5. Require the selected attestation certificate's public key to match the public key returned
+   by `createKeys`; reject a mismatch instead of using a later certificate's public key.
+6. In the selected certificate's extension, optionally check `attestationApplicationId` (package
+   name and signing-certificate digest), `rootOfTrust` (verified boot state, locked bootloader)
+   and the key's authorizations, e.g. that user authentication is required.
 
 ## Class: BiometricSignaturePlugin
 
