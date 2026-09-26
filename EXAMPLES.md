@@ -105,11 +105,11 @@ A full-featured passwordless authentication system demonstrating the complete li
 - 🧪 Test authentication feature
 
 **Key Concepts**:
-- FIDO2/WebAuthn-style authentication
+- Hardware-backed public-key authentication
 - Challenge-response protocol
 - Server-side signature verification
 - Public key infrastructure
-- Phishing-resistant authentication
+- Replay-resistant authentication with server-issued challenges
 - Error recovery and re-enrollment
 - Biometric lifecycle management
 - Hardware-backed key storage
