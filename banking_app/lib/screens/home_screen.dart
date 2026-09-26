@@ -1,305 +1,246 @@
-import 'package:banking_app_example/models/account.dart';
-import 'package:banking_app_example/screens/history_screen.dart';
-import 'package:banking_app_example/screens/transfer_screen.dart';
-import 'package:banking_app_example/services/biometric_service.dart';
-import 'package:banking_app_example/services/transaction_service.dart';
-import 'package:banking_app_example/widgets/account_card.dart';
+import 'package:examples_shared/ui.dart';
 import 'package:flutter/material.dart';
 
-class HomeScreen extends StatefulWidget {
+import '../app.dart';
+import '../client/bank_client.dart';
+import '../client/session.dart';
+import '../money.dart';
+import '../widgets/bank_widgets.dart';
+import 'request_log_screen.dart';
+import 'reverify_screen.dart';
+import 'security_screen.dart';
+import 'transfer_screen.dart';
+
+/// Accounts and recent activity, fetched with silently signed requests.
+class HomeScreen extends StatelessWidget {
+  /// Creates the screen.
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  final BiometricService _biometricService = BiometricService();
-  final TransactionService _transactionService = TransactionService();
-
-  List<Account> _accounts = [];
-  bool _isLoading = true;
-  bool _isInitialized = false;
-  String? _biometricType;
-
-  @override
-  void initState() {
-    super.initState();
-    _initialize();
-  }
-
-  Future<void> _initialize() async {
-    setState(() => _isLoading = true);
-
-    try {
-      // Check biometric availability
-      final availability = await _biometricService.checkAvailability();
-
-      if (!availability.isAvailable) {
-        _showError('Biometric authentication is not available on this device');
-        return;
-      }
-
-      setState(() => _biometricType = availability.displayName);
-
-      // Check if keys exist
-      final hasKeys = await _biometricService.hasKeys();
-
-      if (!hasKeys) {
-        await _setupBiometrics();
-      }
-
-      // Load accounts
-      await _loadAccounts();
-
-      setState(() {
-        _isInitialized = true;
-        _isLoading = false;
-      });
-    } catch (e) {
-      _showError('Initialization failed: $e');
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _setupBiometrics() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Setup Biometric Authentication'),
-        content: const Text(
-          'This app uses biometric authentication to securely sign transactions. '
-          'Your biometric data never leaves your device.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Setup'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) {
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-      return;
-    }
-
-    try {
-      await _biometricService.initializeKeys();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Biometric authentication setup successful!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      _showError('Setup failed: $e');
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-    }
-  }
-
-  Future<void> _loadAccounts() async {
-    final accounts = await _transactionService.getAccounts();
-    setState(() => _accounts = accounts);
-  }
-
-  void _showError(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Secure Banking'),
-        actions: [
-          if (_biometricType != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Center(
-                child: Row(
-                  children: [
-                    Icon(
-                      _biometricType!.contains('Face')
-                          ? Icons.face
-                          : Icons.fingerprint,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(_biometricType!, style: const TextStyle(fontSize: 14)),
-                  ],
-                ),
-              ),
+    final services = AppScope.of(context);
+    final session = services.session;
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        session,
+        services.transport.asListenable,
+        services.client.faults.asListenable,
+      ]),
+      builder: (context, _) {
+        final snapshot = session.snapshot;
+        return BankScaffold(
+          title: 'Step-up Banking',
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.receipt_long),
+              tooltip: 'Signed request log',
+              onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const RequestLogScreen())),
             ),
-          PopupMenuButton<String>(
-            onSelected: (value) async {
-              if (value == 'reset') {
-                await _resetDemo();
-              } else if (value == 'history') {
-                _navigateToHistory();
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'history',
-                child: Row(
-                  children: [
-                    Icon(Icons.history),
-                    SizedBox(width: 8),
-                    Text('Transaction History'),
-                  ],
+            IconButton(
+              icon: const Icon(Icons.shield_outlined),
+              tooltip: 'Keys & security',
+              onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SecurityScreen())),
+            ),
+          ],
+          floatingActionButton: snapshot == null
+              ? null
+              : FloatingActionButton.extended(
+                  key: const ValueKey('new-transfer'),
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const TransferScreen())),
+                  icon: const Icon(Icons.send),
+                  label: const Text('Transfer'),
                 ),
-              ),
-              const PopupMenuItem(
-                value: 'reset',
-                child: Row(
-                  children: [
-                    Icon(Icons.refresh),
-                    SizedBox(width: 8),
-                    Text('Reset Demo'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : !_isInitialized
-              ? const Center(
-                  child: Text('Biometric authentication not available'))
-              : RefreshIndicator(
-                  onRefresh: _loadAccounts,
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      const Text(
-                        'My Accounts',
+          body: RefreshIndicator(
+            onRefresh: session.refresh,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: pagePadding(context),
+              children: [
+                ..._banners(context, session),
+                _greeting(context, session),
+                gap,
+                if (snapshot == null)
+                  _loadCard(context, session)
+                else ...[
+                  for (final a in snapshot.accounts)
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.account_balance_wallet),
+                        title: Text(a.name),
+                        subtitle: Text('${a.id} · ${maskAccount(a.id)}'),
+                        trailing: Text(
+                          formatCents(a.balanceCents),
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                    ),
+                  gap,
+                  Text('Recent activity',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  for (final p in snapshot.recent)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: p.tier == null
+                          ? const Icon(Icons.swap_horiz)
+                          : TierChip(p.tier!),
+                      title: Text(p.description),
+                      subtitle: Text('${formatDateTime(p.time)} · '
+                          '${p.accountId}${p.txnId == null ? '' : ' · ${p.txnId}'}'),
+                      trailing: Text(
+                        formatCents(p.amountCents, signed: true),
                         style: TextStyle(
-                            fontSize: 24, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 16),
-                      ..._accounts.map(
-                        (account) => Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: AccountCard(account: account),
+                          color: p.amountCents < 0
+                              ? null
+                              : context.statusColors.success,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Row(
-                                children: [
-                                  Icon(Icons.security, color: Colors.green),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Secured by Biometrics',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'All transactions are cryptographically signed using your device\'s secure hardware. '
-                                'Your private key never leaves your device.',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-      floatingActionButton: _isInitialized
-          ? FloatingActionButton.extended(
-              onPressed: _navigateToTransfer,
-              icon: const Icon(Icons.send),
-              label: const Text('Transfer'),
-            )
-          : null,
-    );
-  }
-
-  void _navigateToTransfer() async {
-    final result = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TransferScreen(accounts: _accounts),
-      ),
-    );
-
-    if (result == true) {
-      await _loadAccounts();
-    }
-  }
-
-  void _navigateToHistory() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => HistoryScreen(accounts: _accounts),
-      ),
-    );
-  }
-
-  Future<void> _resetDemo() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reset Demo'),
-        content: const Text(
-          'This will reset all accounts and transactions to default values. '
-          'Biometric keys will remain intact.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+                    ),
+                ],
+              ],
+            ),
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Reset'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      await _transactionService.resetData();
-      await _loadAccounts();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Demo data reset successfully')),
         );
-      }
+      },
+    );
+  }
+
+  Widget _greeting(BuildContext context, BankSession session) {
+    final theme = Theme.of(context);
+    final snapshot = session.snapshot;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Hi, ${session.enrollment?.customerName.split(' ').first ?? ''}',
+            style: theme.textTheme.headlineSmall),
+        Text(
+          snapshot == null
+              ? 'Accounts not loaded yet.'
+              : 'Updated ${formatTime(snapshot.fetchedAt)} with a request '
+                  'signed silently by device_binding. Pull to refresh.',
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+
+  Widget _loadCard(BuildContext context, BankSession session) {
+    return SectionCard(
+      title: 'Load your accounts',
+      subtitle: session.silentKeysPrompt
+          ? 'Windows Hello will ask you to confirm the signed request.'
+          : 'The request is signed silently by device_binding.',
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: session.refreshing
+            ? const CircularProgressIndicator()
+            : FilledButton.icon(
+                key: const ValueKey('load-accounts'),
+                onPressed: session.refresh,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Load accounts'),
+              ),
+      ),
+    );
+  }
+
+  List<Widget> _banners(BuildContext context, BankSession session) {
+    final services = AppScope.of(context);
+    final snapshot = session.snapshot;
+    final registration = session.lastRegistration;
+    final error = session.refreshError;
+    final banners = <Widget>[
+      if (registration != null)
+        SectionCard(
+          title: 'Keys registered',
+          subtitle: 'What the bank verified',
+          trailing: IconButton(
+            icon: const Icon(Icons.close),
+            tooltip: 'Dismiss',
+            onPressed: session.dismissRegistration,
+          ),
+          child: ChecksView(registration.checks),
+        ),
+      if (session.approvalsLocked)
+        CapabilityBanner(
+          key: const ValueKey('reverify-banner'),
+          kind: StatusKind.danger,
+          icon: Icons.lock_outline,
+          title: 'Approvals locked',
+          message: '${session.approvalsLockedReason} Tier A transfers still '
+              'work with the silent device key. Re-verify to register a new '
+              'approval key.',
+          action: FilledButton.tonal(
+            key: const ValueKey('open-reverify'),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => ReverifyScreen(
+                    reason: switch (session.approvalKeyHealth?.status) {
+                      KeyHealthStatus.invalidated => 'keyInvalidated',
+                      KeyHealthStatus.missing => 'keyNotFound',
+                      _ => 'approval key mismatch',
+                    },
+                    explanation: session.approvalsLockedReason!))),
+            child: const Text('Re-verify'),
+          ),
+        ),
+      if (session.silentKeysPrompt)
+        const CapabilityBanner(
+          kind: StatusKind.warning,
+          title: 'Windows Hello prompts for every request',
+          message: 'Windows Hello prompts even for the device-binding key, '
+              'so background request signing prompts every time. '
+              'Auto-refresh is off; pull to refresh.',
+        ),
+      if (snapshot != null)
+        ...() {
+          final policy = snapshot.policy;
+          final decision =
+              policy.evaluate(policy.tierBLimitCents + 1, snapshot.device);
+          if (decision.allowed) return const <Widget>[];
+          return [
+            CapabilityBanner(
+              title: 'Capped at tier B',
+              message: decision.reason!,
+            ),
+          ];
+        }(),
+      if (error != null)
+        error.kind == BankErrorKind.signing
+            ? ErrorBanner(
+                guidance: guidanceFor(error.code),
+                rawMessage: error.message,
+                actionLabel: 'Retry',
+                onAction: session.refresh,
+              )
+            : CapabilityBanner(
+                kind: StatusKind.danger,
+                title: error.kind == BankErrorKind.network
+                    ? 'The bank could not be reached'
+                    : 'The bank rejected the request',
+                message: error.message,
+                action: FilledButton.tonal(
+                    onPressed: session.refresh, child: const Text('Retry')),
+              ),
+    ];
+    final faults = [
+      for (final f in services.transport.pendingFaults) f.label,
+      if (services.client.faults.alterAmountAfterApproval)
+        'compromised app: change the amount after the next approval',
+    ];
+    if (faults.isNotEmpty) {
+      banners.add(CapabilityBanner(
+        kind: StatusKind.warning,
+        icon: Icons.bug_report_outlined,
+        title: 'Faults armed (server console)',
+        message: faults.join('\n'),
+      ));
     }
+    return [
+      for (final b in banners) ...[b, gap],
+    ];
   }
 }
