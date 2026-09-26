@@ -22,6 +22,11 @@
   * A key created with `useDeviceCredentials: true` uses `.userPresence`, which the device passcode can always satisfy, so an enrollment change never invalidates it. It was nevertheless recorded as invalidatable and reported `isValid: false` after one. Such keys are no longer recorded or reported as invalidatable.
   * Biometric lockout, and keys created before v8.1.0 (always `.biometryAny` or `.userPresence`), no longer report `isValid: false`.
 
+* **README: the ECIES section said no per-platform branch was needed.** It is: Android derives a 16-byte AES key and a 12-byte GCM IV from the shared secret with empty shared info, while Apple's `eciesEncryptionStandardX963SHA256AESGCM` uses the ephemeral public key as shared info, derives only the key, and uses a 16-byte zero IV. A payload encrypted for one platform fails on the other. "Encrypting a payload" now gives both, and notes that `decrypt` returns UTF-8 text.
+
+### Examples
+* The example apps are rebuilt around what the plugin does beyond a biometric prompt; see [EXAMPLES.md](https://github.com/chamodanethra/biometric_signature/blob/main/EXAMPLES.md). `example/` is now an API Explorer covering every method, option, format and error code, and the scenario apps (`passwordless_login`, `banking_app`, and `secure_vault`, formerly `document_signer`) verify signatures and Android attestation chains in an in-process mock server instead of only checking that a signature is non-empty.
+
 ## [13.0.0] - 2026-07-25
 
 ### Added
