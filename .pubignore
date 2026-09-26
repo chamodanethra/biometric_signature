@@ -4,6 +4,9 @@
 
 banking_app/
 secure_vault/
+# Shared example package: lib/ ships (example/ depends on it); its tests
+# (matched by test/ below) and generator scripts do not.
+example/packages/examples_shared/tool/
 passwordless_login/
 assets/
 test/

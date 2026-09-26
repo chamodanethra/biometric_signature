@@ -1,0 +1,16 @@
+{
+  "ecies" : {
+    "algorithm" : "eciesEncryptionStandardX963SHA256AESGCM",
+    "payload" : "BKO7CUARtoQst+NWNzndYOiRlYH0ov5UlXnFGGHZJq1Kmx4hKQTS9mDSPE\/vKZv2d78\/y1JPYou2rPnQztdKemlpqDQ8i+LIm4VOVJozMkA0PAURXHpZsUCxOMZG\/\/pkeBL6UJwyQWxh7zKAl33cixrX5OvuPvnXagJd2omFYG3HfsSeb9k=",
+    "plaintext" : "Sealed for the Secure Enclave: ECIES test vector 🔐",
+    "privateKeyX963" : "0458955491def8e0a5fd1006c7d752c860d7f8343b2983c1572af6b3bec328b051ebcf6bab6cad73f6095b5977cadc579ac0c68f0541ff4c8b57d23e21cfcc0412e996bf3b593f277d4cc2eb64b5fb5c7773b2e2343707bf85949f7cdb9f2402a8",
+    "publicKeyX963" : "0458955491def8e0a5fd1006c7d752c860d7f8343b2983c1572af6b3bec328b051ebcf6bab6cad73f6095b5977cadc579ac0c68f0541ff4c8b57d23e21cfcc0412"
+  },
+  "generator" : "tool\/gen_apple_vectors.swift",
+  "rsaOaep" : {
+    "algorithm" : "rsaEncryptionOAEPSHA256",
+    "payload" : "Fgm7qt\/\/ATd0TN21V48NtYYkezAiiZ5BbADUZOKgAp49NJvHbc4BG45xnXzi899b+gOYn1SHfa9F5x1REUo19mRzfuuNXb0RpOkLXHZoSCla0QYZ3cRDN2MDNHMyrUtnVdLIez5WXzq4g++NwL9o\/mmL3qPBeyYLGCOYI7zXstECucXVWY+9XPHbMT5Vljz3un3n8aY51+s19JHTKhKI7+jqN4fR8T3\/6WV85QaQkJTHT54s+jwIn\/HNZ6+CwtDcbzRBzYiIzieLhG3hLMxKTKMfllfDxJhFf8g\/GyWEK\/9n1XtJgRpHT5ZGSTDsOBk1W3xtViXMLwEHJq+6etKdvg==",
+    "plaintext" : "RSA-OAEP SHA-256 \/ MGF1-SHA-256 test vector",
+    "privateKeyPkcs1" : "MIIEogIBAAKCAQEAvSa9FLx5\/TJXGsJAO7Df+UUFQu7+3gfucC3FGHrr9qCUd4mwzRbG8W58FfLViHhz1t\/nqN+8EyFtFgLPO9XgtSyD\/eHCD03BnfONjC5bin\/aU8Y0NuJybrxkMuoUneVVCOdSbBNDoLFUTr9G\/b5FT5ZlUVCO7ErhtXKpHGA+iM3eMcUvCxKyR0+D5dXRpSiFwumkghZcrWoTFGjNnDmJbDfzj+r09n1ADygmA+Gy\/p8rdHasNMcbK+STr8rK4JbuxoQHR2uVcteJku6zdzHKBIyY\/VCe0VizJy5tqjKku3j+SF2Gv\/d1frh+hBimobFYuu0\/iOzmKXvBHSCGClaT\/QIDAQABAoIBAG0s5egJHZQyMSqFwlNxtOUInI\/UqJD5HPvsvx1xHa89YlRYyg6mPe\/uaHq2rd9WPu5gUDMd6E1WdsNEnd6YhVmtNwYb\/0mcBMwpXqLxwu5++0JtXYfsTkZyQJdOmtXEH7\/C3MT6nYcrs1C8gLpGz3Svhw1XJRdn5T040DlLp+yHgNjlZhHwGfY26zzXDUkSqnuLc4TC3BAEDkgszX5n2pgbCA6++z59zdzgjCQiuTK7rHMiqvzcPWttrz0E\/vcpiNgb8ZxIiK2apewJ3fUXVjgMfuv5wMZJdRpkpZMCBuPVd3K81BWd1iGu36O18u4poA8\/C6UW1xnt4jgAPst\/leECgYEA3B0J\/61XX8t80N4hVpsxFwZUFR4j4FNyyqxRBtor4jDHZT7ONMAD3mnNdDlaYQKqVpXiH41t8CzJqjuQ3bx+\/uu\/o13IywO8cYmjXLiJBpGXhyJTHVQxC\/1wkSE5umCdXYV1FPysMhqg\/6+c6dSf7q7qF6EPGMt5kk\/7++cTP4kCgYEA2\/1r9o5iGtuzgRDvIpCHMa1ukIFx4Ziq3gR+JWpv29Eu7BBaNTxgDfIcNySiUGyvn8\/2GrQCURgHmWv32Nm6Jpf\/uWSw73c2FiS7VjXc2GD4hzlAmGIyoKIenK9AvAZF\/Ir6bV\/Zw7\/hpJ3bjm2nZcAV15RdJB3Wdni4StkwP9UCgYBO6R43iiZD0oi5vJjJGrP7pCoqs\/Z6qpABtssJoNeQrJofYue8I4Z\/iwC8BP+wvarhhbReSW67ZuMZY2dpBvWkYFIAuFOO7JT3QzfMut9s+m8PZC\/V2OQIf2CGtxmiBpcD+x9hWcBF6iQD5ipj7fU0NYL426W05uV7na8hvNK6uQKBgALQHL9MVsjNImB2HPiuLGxgMVe7r\/8YeqbYG9zSnZeL9zOhieXAXeIPxHiYCVNJ8Hz0pcr1nkn3KrG1hbfKIO05aFWwieql9ZUW5yZVDfveUY85FjBcoRUYvZd3TjaZRe\/Svx0C6r\/sBjCarCIIGOneKOlWxlId544gQQsD9+\/5AoGAdF3vW175osIOAO9OknxuWjyXq9qB9Dka+n5lIdF+nSovs3xniFWzzMkXhIUJJ9hWuU3RxO6LebBWq8Qy9fAnO58sRJAQVhUCa0vM5kBqOVVSbLE5dH59qoXvn0abnHwDcSaNUb6m0G9VlwZ4TWW2RpqLcIReI6rejhquXk+wpZM="
+  }
+}
