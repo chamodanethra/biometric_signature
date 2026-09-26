@@ -404,9 +404,9 @@ RSA-2048 with a SHA-256 OAEP digest leaves 190 bytes of plaintext capacity; wrap
 rather than the payload itself if you need more.
 
 For EC keys the payload is encrypted with ECIES (`eciesEncryptionStandardX963SHA256AESGCM`) on all
-platforms, so no per-platform branch is needed. iOS/macOS keys created with `SignatureType.rsa` use
-the hybrid architecture and still decrypt RSA-OAEP payloads — encrypt against the RSA key returned
-in `decryptingPublicKey`.
+platforms, so no per-platform branch is needed. iOS/macOS keys created with `SignatureType.rsa` sign
+and decrypt with the same RSA key (the Secure Enclave key only wraps it), so encrypt RSA-OAEP
+payloads against the RSA key returned in `publicKey`; `getKeyInfo` returns the same key.
 
 > Keys created before v11.0.0 authorise PKCS#1 v1.5 instead of OAEP. The plugin still falls back to
 > PKCS#1 v1.5 for those, so existing ciphertext keeps working, but new keys should use OAEP.
@@ -537,15 +537,18 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
 **On `setInvalidatedByBiometricEnrollment`:** the default is `true` on every platform that
 supports it — a key created without the flag is bound to the biometric set enrolled at
 creation time, and enrolling or removing a fingerprint/face permanently invalidates it. Your
-app must then create a new key and re-enroll its public key with the server; use
-`getKeyInfo(checkValidity: true)` to detect this before signing. Pass `false` to opt out and
-keep keys usable across enrollment changes.
+app must then create a new key and re-enroll its public key with the server. Signing or
+decrypting with an invalidated key returns `keyInvalidated` without showing a prompt, and
+`getKeyInfo(checkValidity: true)` detects it ahead of time. Pass `false` to opt out and keep
+keys usable across enrollment changes.
 
 It maps to `KeyGenParameterSpec.Builder.setInvalidatedByBiometricEnrollment(...)` on Android
 (API 23 has no such setter, so keys there are always invalidated) and selects
 `.biometryCurrentSet` vs `.biometryAny` on the Secure Enclave key for iOS/macOS. It is ignored
 on Windows, and ignored when `requireAuthentication` is `false` — a key with no
-user-authentication constraint is not tied to the enrolled biometric set.
+user-authentication constraint is not tied to the enrolled biometric set. On iOS/macOS it is
+also ignored when `useDeviceCredentials` is `true`: that key uses `.userPresence`, which the
+device passcode can always satisfy, so an enrollment change doesn't invalidate it.
 
 ```dart
 final result = await biometricSignature.createKeys(

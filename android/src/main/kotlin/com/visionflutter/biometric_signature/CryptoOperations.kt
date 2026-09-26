@@ -63,7 +63,7 @@ class CryptoOperations(
         val keyStore = KeyStore.getInstance(Constants.KEYSTORE_PROVIDER).apply { load(null) }
         val alias = Constants.biometricKeyAlias(keyAlias)
         val entry = keyStore.getEntry(alias, null) as? KeyStore.PrivateKeyEntry
-            ?: throw IllegalStateException("Signing key not found")
+            ?: throw KeyNotFoundException("Signing key not found")
 
         val algorithm = when (mode) {
             KeyMode.RSA -> "SHA256withRSA"
@@ -79,7 +79,7 @@ class CryptoOperations(
         val keyStore = KeyStore.getInstance(Constants.KEYSTORE_PROVIDER).apply { load(null) }
         val alias = Constants.biometricKeyAlias(keyAlias)
         val entry = keyStore.getEntry(alias, null) as? KeyStore.PrivateKeyEntry
-            ?: throw IllegalStateException("Signing key not found")
+            ?: throw KeyNotFoundException("Signing key not found")
         return entry.certificate.publicKey
     }
 
@@ -91,7 +91,7 @@ class CryptoOperations(
     ): String {
         val wrappedFilename = Constants.ecWrappedFilename(keyAlias)
         val wrapped = fileIO.readFileIfExists(wrappedFilename)
-            ?: throw IllegalStateException("Encrypted EC key not found")
+            ?: throw KeyNotFoundException("Encrypted EC key not found")
         if (wrapped.size < Constants.GCM_IV_SIZE + 1) throw IllegalStateException("Malformed wrapped blob")
 
         val encryptedKey = wrapped.copyOfRange(Constants.GCM_IV_SIZE, wrapped.size)
