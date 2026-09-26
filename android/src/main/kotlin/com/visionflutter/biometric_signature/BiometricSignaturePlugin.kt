@@ -120,11 +120,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
 
         pluginScope.launch {
             try {
-                // failIfExists runs FIRST: callers rely on the invariant that
-                // with failIfExists set, any failure other than
-                // keyAlreadyExists implies no pre-existing credential lives
-                // under the alias (they may safely clean the alias up).
-                // Attestation rejections below must not mask an existing key.
+                // Checked before the attestation pre-checks below so an existing
+                // key reports keyAlreadyExists rather than an attestation error.
                 val failIfExists = config?.failIfExists ?: false
 
                 if (failIfExists) {
@@ -247,10 +244,12 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 // Typed at the one call path that can produce it, instead of a
                 // global ProviderException mapping that would reclassify
                 // unrelated keystore errors in the sign/decrypt paths.
+                // Transient failures (e.g. attestation keys not provisioned yet)
+                // are retryable, so they must not read as "never supported".
                 callback(
                     Result.success(
                         KeyCreationResult(
-                            code = BiometricError.NOT_SUPPORTED,
+                            code = if (e.isTransient) BiometricError.NOT_AVAILABLE else BiometricError.NOT_SUPPORTED,
                             error = e.message
                         )
                     )
@@ -949,15 +948,11 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                         } else null
                     } else null
 
-                    // Only a chain longer than the single self-signed keystore
-                    // certificate is real attestation. Guarded so a chain
-                    // encoding failure can never collapse the whole result
-                    // into the catch below (exists = false).
-                    val attestationChain = runCatching {
-                        entry.certificateChain
-                            ?.takeIf { it.size > 1 }
-                            ?.map { it.encoded }
-                    }.getOrNull()
+                    // Null for unattested keys (a single self-signed keystore
+                    // certificate). attestationChainOf never throws, so a chain
+                    // encoding failure can't collapse the whole result into the
+                    // catch below (exists = false).
+                    val attestationChain = keyManager.attestationChainOf(entry.certificateChain)
 
                     KeyInfo(
                         exists = true,

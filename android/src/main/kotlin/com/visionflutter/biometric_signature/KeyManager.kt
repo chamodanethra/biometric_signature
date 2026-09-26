@@ -11,16 +11,25 @@ import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.ProviderException
+import java.security.cert.Certificate
+import java.security.cert.X509Certificate
 import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.RSAKeyGenParameterSpec
-import java.util.concurrent.CancellationException
 import javax.crypto.KeyGenerator
 
-/** Attestation was requested but the device could not produce an attested key. */
-class KeyAttestationException(message: String, cause: Throwable? = null) :
-    Exception(message, cause)
+/**
+ * Attestation was requested but the device could not produce an attested key.
+ *
+ * [isTransient] is true when the keystore reported that retrying later is likely
+ * to succeed (e.g. remotely provisioned attestation keys are not available yet).
+ */
+class KeyAttestationException(
+    message: String,
+    cause: Throwable? = null,
+    val isTransient: Boolean = false
+) : Exception(message, cause)
 
 /** A generated keystore key plus its attestation chain (null when attestation was not requested). */
 data class GeneratedKey(
@@ -111,11 +120,12 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
      * With a challenge, failures are handled deliberately because attestation
      * is an explicit opt-in that must not silently degrade: StrongBox devices
      * can fail attestation-chain generation (StrongBoxUnavailableException,
-     * ProviderException "Failed to generate attestation certificate chain")
-     * at generateKeyPair() time, where the builder-level try/catch helpers
-     * cannot see them. A single TEE retry keeps the attestation
-     * hardware-backed; a final failure removes any partial keystore entry so
-     * an unattested key never shadows the alias.
+     * ProviderException) at generateKeyPair() time, where the builder-level
+     * try/catch helpers cannot see them. A single TEE retry keeps the
+     * attestation hardware-backed; it is skipped when StrongBox was never
+     * requested, since it would only repeat the same (slow) TEE attempt. A
+     * final failure removes any partial keystore entry so an unattested key
+     * never shadows the alias.
      */
     private fun generateKeyPairWithOptionalAttestation(
         keyAlgorithm: String,
@@ -123,62 +133,120 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
         attestationChallenge: ByteArray?,
         specFor: (useStrongBox: Boolean) -> KeyGenParameterSpec
     ): GeneratedKey {
-        fun attempt(useStrongBox: Boolean): KeyPair {
+        fun generate(spec: KeyGenParameterSpec): KeyPair {
             val kpg = KeyPairGenerator.getInstance(keyAlgorithm, Constants.KEYSTORE_PROVIDER)
-            kpg.initialize(specFor(useStrongBox))
+            kpg.initialize(spec)
             return kpg.generateKeyPair()
         }
 
-        fun deleteEntryQuietly() {
-            runCatching {
-                KeyStore.getInstance(Constants.KEYSTORE_PROVIDER)
-                    .apply { load(null) }
-                    .deleteEntry(alias)
-            }
-        }
-
+        val spec = specFor(true)
         if (attestationChallenge == null) {
-            return GeneratedKey(attempt(useStrongBox = true), null)
+            return GeneratedKey(generate(spec), null)
         }
 
         val keyPair = try {
-            attempt(useStrongBox = true)
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (strongBoxFailure: Exception) {
-            deleteEntryQuietly()
+            generate(spec)
+        } catch (firstFailure: Exception) {
+            deleteEntryQuietly(alias)
+            if (!isStrongBoxBacked(spec)) throw attestationFailure(firstFailure)
             try {
-                attempt(useStrongBox = false)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
+                generate(specFor(false))
             } catch (teeFailure: Exception) {
-                deleteEntryQuietly()
-                if (teeFailure is ProviderException) {
-                    // Keystore/attestation provider failure ("Failed to
-                    // generate attestation certificate chain",
-                    // StrongBoxUnavailableException, ...).
-                    throw KeyAttestationException(
-                        "Failed to generate a hardware-attested key: ${teeFailure.message}",
-                        teeFailure
-                    )
-                }
-                // Not an attestation-provider failure (e.g. an invalid
-                // parameter): let the generic error mapping classify it the
-                // same way it would without a challenge, instead of
-                // mislabelling it notSupported.
-                throw teeFailure
+                deleteEntryQuietly(alias)
+                throw attestationFailure(teeFailure)
             }
         }
 
-        val keyStore = KeyStore.getInstance(Constants.KEYSTORE_PROVIDER).apply { load(null) }
-        val certificates = keyStore.getCertificateChain(alias)
-        if (certificates == null || certificates.size < 2) {
-            // A single self-signed certificate is not an attestation chain —
-            // never hand back an unattested key the caller believes is attested.
-            deleteEntryQuietly()
-            throw KeyAttestationException("Keystore returned no attestation certificate chain")
+        val chain = runCatching {
+            val keyStore = KeyStore.getInstance(Constants.KEYSTORE_PROVIDER).apply { load(null) }
+            attestationChainOf(keyStore.getCertificateChain(alias))
+        }.getOrNull()
+        if (chain == null) {
+            // Never hand back an unattested key the caller believes is attested.
+            deleteEntryQuietly(alias)
+            throw KeyAttestationException("Keystore returned no key attestation certificate chain")
         }
-        return GeneratedKey(keyPair, certificates.map { it.encoded })
+        return GeneratedKey(keyPair, chain)
+    }
+
+    /**
+     * The DER-encoded chain (leaf first) if [certificates] is a key attestation
+     * chain: at least two certificates, with the Android key attestation
+     * extension on the leaf. An unattested key's single self-signed keystore
+     * certificate yields null. Never throws.
+     */
+    fun attestationChainOf(certificates: Array<out Certificate>?): List<ByteArray>? {
+        if (certificates == null || certificates.size < 2) return null
+        val leaf = certificates[0] as? X509Certificate ?: return null
+        return try {
+            if (leaf.getExtensionValue(Constants.KEY_ATTESTATION_EXTENSION_OID) == null) null
+            else certificates.map { it.encoded }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun isStrongBoxBacked(spec: KeyGenParameterSpec): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && spec.isStrongBoxBacked
+
+    private fun deleteEntryQuietly(alias: String) {
+        runCatching {
+            KeyStore.getInstance(Constants.KEYSTORE_PROVIDER)
+                .apply { load(null) }
+                .deleteEntry(alias)
+        }
+    }
+
+    /**
+     * Classifies a key-generation failure that happened with a challenge set.
+     *
+     * Keystore failures surface as ProviderException (StrongBoxUnavailableException
+     * included) wrapping an android.security.KeyStoreException, and become a
+     * [KeyAttestationException]. Its message carries the whole cause chain
+     * because the useful text — e.g. the remote key provisioning status — sits on
+     * inner causes. Anything else (e.g. an invalid parameter) is returned
+     * unchanged, so the generic error mapping classifies it exactly as it would
+     * without a challenge.
+     */
+    private fun attestationFailure(e: Exception): Exception {
+        if (e !is ProviderException) return e
+        val causes = causeChain(e)
+        val detail = causes.mapNotNull { it.message?.takeIf(String::isNotBlank) }
+            .distinct()
+            .joinToString(" -> ")
+        return if (isTransientKeystoreFailure(causes)) {
+            KeyAttestationException(
+                "Key attestation is temporarily unavailable, retry later ($detail)",
+                e,
+                isTransient = true
+            )
+        } else {
+            KeyAttestationException("Key attestation failed ($detail)", e)
+        }
+    }
+
+    private fun causeChain(e: Throwable): List<Throwable> {
+        val chain = mutableListOf<Throwable>()
+        var current: Throwable? = e
+        while (current != null && current !in chain) {
+            chain.add(current)
+            current = current.cause
+        }
+        return chain
+    }
+
+    /**
+     * Whether the keystore marked the failure transient, i.e. retrying later is
+     * likely to succeed (attestation keys still being provisioned, secure
+     * hardware busy, ...). The flag is public API from Android 13 (API 33);
+     * earlier versions don't expose it, so their failures count as permanent.
+     */
+    private fun isTransientKeystoreFailure(causes: List<Throwable>): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        for (cause in causes) {
+            if (cause is android.security.KeyStoreException && cause.isTransientFailure) return true
+        }
+        return false
     }
 
     /**
