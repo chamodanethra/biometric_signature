@@ -1,19 +1,23 @@
 name: passwordless_login_example
-description: Passwordless authentication example using biometric signatures
+description: >-
+  Attested device binding with biometric_signature: a per-account hardware
+  key, Android key attestation verified by a mock server, and replay-resistant
+  challenge-response sign-in. Demo code, not production code.
 publish_to: 'none'
 
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.5.0 <4.0.0'
+  flutter: '>=3.24.5'
 
 dependencies:
   flutter:
     sdk: flutter
   biometric_signature:
     path: ../
-  shared_preferences: ^2.2.2
-  crypto: ^3.0.3
+  examples_shared:
+    path: ../example/packages/examples_shared
 
 dev_dependencies:
   flutter_test:
@@ -22,4 +26,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-

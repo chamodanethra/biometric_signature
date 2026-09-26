@@ -1,8 +1,20 @@
+import 'package:examples_shared/ui.dart';
 import 'package:flutter/material.dart';
-import 'package:passwordless_login_example/screens/home_screen.dart';
-import 'package:passwordless_login_example/services/auth_service.dart';
 
+import '../app_scope.dart';
+import '../client/aliases.dart';
+import '../client/auth_client.dart';
+import '../client/outcome.dart';
+import '../server/models.dart';
+import '../widgets/app_scaffold.dart';
+import '../widgets/key_options_card.dart';
+import '../widgets/outcome_view.dart';
+import 'attestation_report_screen.dart';
+import 'preflight_screen.dart';
+
+/// Creates an account: server challenge → attested key → verification.
 class RegisterScreen extends StatefulWidget {
+  /// Creates the screen.
   const RegisterScreen({super.key});
 
   @override
@@ -10,345 +22,173 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final AuthService _authService = AuthService();
-  final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController();
-  final _emailController = TextEditingController();
-  bool _isLoading = false;
-  bool _allowDeviceCredentials = false;
-  bool _keyInvalidatedOnEnrollmentChange = true;
+  final _username = TextEditingController();
+  final String _alias = newAccountAlias();
+  KeyOptions _options = const KeyOptions();
+  bool _busy = false;
+  String? _step;
+  String? _usernameError;
+  AuthOutcome<Registration>? _outcome;
 
   @override
   void dispose() {
-    _usernameController.dispose();
-    _emailController.dispose();
+    _username.dispose();
     super.dispose();
   }
 
-  Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
+  Future<void> _register({bool replaceExistingKey = false}) async {
+    final name = normalizeUsername(_username.text);
+    final problem = usernameProblem(name);
+    setState(() => _usernameError = problem);
+    if (problem != null) return;
+    await _run(() => AppScope.of(context).client.register(
+          username: name,
+          alias: _alias,
+          options: _options,
+          replaceExistingKey: replaceExistingKey,
+          onProgress: _progress,
+        ));
+  }
 
-    setState(() => _isLoading = true);
+  Future<void> _retryUpload() => _run(
+      () => AppScope.of(context).client.retryUpload(onProgress: _progress));
 
-    try {
-      final username = _usernameController.text.trim();
-      final email = _emailController.text.trim();
-
-      // Check biometric availability first
-      final availability = await _authService.getBiometricStatus();
-      if (!(availability.canAuthenticate ?? false)) {
-        _showError(
-          'Biometric authentication is not available on this device${availability.reason != null ? ': ${availability.reason}' : ''}',
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      if (!(availability.hasEnrolledBiometrics ?? false)) {
-        _showError(
-          'No biometrics are enrolled. Please enroll fingerprint or face in device settings.',
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      // Check username availability
-      final isAvailable = await _authService.isUsernameAvailable(username);
-      if (!isAvailable) {
-        throw Exception('Username already taken');
-      }
-
-      // Show biometric consent
-      final confirmed = await _showBiometricConsent();
-      if (!confirmed) {
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      // Register user (this will trigger biometric enrollment)
-      await _authService.register(
-        username: username,
-        email: email,
-        allowDeviceCredentials: _allowDeviceCredentials,
-        keyInvalidatedOnEnrollmentChange: _keyInvalidatedOnEnrollmentChange,
-      );
-
-      // Auto-login after registration
-      final challenge = await _authService.requestChallenge(username);
-      await _authService.authenticate(
-        username: username,
-        challengeId: challenge.challengeId,
-      );
-
-      if (mounted) {
-        // Success - navigate to home
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-          (route) => false,
-        );
-      }
-    } on Exception catch (e) {
-      _showError(e.toString().replaceFirst('Exception: ', ''));
-      setState(() => _isLoading = false);
-    } catch (e) {
-      _showError(e.toString());
-      setState(() => _isLoading = false);
+  Future<void> _unlockThenRegister() async {
+    final unlocked =
+        await AppScope.of(context).client.unlockWithDeviceCredential();
+    if (!mounted) return;
+    if (unlocked is Success) {
+      await _register();
+    } else {
+      setState(() => _outcome = unlocked.castFailure());
     }
   }
 
-  Future<bool> _showBiometricConsent() async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Enable Biometric Login'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'To complete registration, we need to set up biometric authentication.',
-              ),
-              const SizedBox(height: 16),
-              const Text('This will:'),
-              const SizedBox(height: 8),
-              const Row(
-                children: [
-                  Icon(Icons.check, size: 16, color: Colors.green),
-                  SizedBox(width: 8),
-                  Expanded(child: Text('Generate secure keys on your device')),
-                ],
-              ),
-              const SizedBox(height: 4),
-              const Row(
-                children: [
-                  Icon(Icons.check, size: 16, color: Colors.green),
-                  SizedBox(width: 8),
-                  Expanded(child: Text('Never send biometric data to server')),
-                ],
-              ),
-              const SizedBox(height: 4),
-              const Row(
-                children: [
-                  Icon(Icons.check, size: 16, color: Colors.green),
-                  SizedBox(width: 8),
-                  Expanded(child: Text('Enable passwordless login')),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-              const Text(
-                'Configuration:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(
-                    _allowDeviceCredentials ? Icons.check_circle : Icons.cancel,
-                    size: 16,
-                    color: _allowDeviceCredentials ? Colors.green : Colors.grey,
-                  ),
-                  const SizedBox(width: 8),
-                  const Expanded(child: Text('Device credential fallback')),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(
-                    _keyInvalidatedOnEnrollmentChange
-                        ? Icons.check_circle
-                        : Icons.cancel,
-                    size: 16,
-                    color: _keyInvalidatedOnEnrollmentChange
-                        ? Colors.green
-                        : Colors.grey,
-                  ),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text('Invalidate on biometric changes'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
-    );
-
-    return result ?? false;
+  void _progress(String step) {
+    if (mounted) setState(() => _step = step);
   }
 
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
-    );
+  Future<void> _run(
+      Future<AuthOutcome<Registration>> Function() operation) async {
+    setState(() {
+      _busy = true;
+      _outcome = null;
+      _step = null;
+    });
+    final outcome = await operation();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _outcome = outcome;
+    });
+    if (outcome case Success(:final value)) {
+      await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+        builder: (_) =>
+            AttestationReportScreen(report: value.report, registration: value),
+      ));
+    }
   }
+
+  void _openPreflight() => Navigator.of(context)
+      .push(MaterialPageRoute<void>(builder: (_) => const PreflightScreen()));
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Create Account')),
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(24),
+    final services = AppScope.of(context);
+    final caps = services.capabilities;
+    final outcome = _outcome;
+    return AppScaffold(
+      title: 'Create account',
+      body: PageList(children: [
+        ...platformBanners(context,
+            onOpenConsole: () => openServerConsole(context)),
+        SectionCard(
+          title: 'Account',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Register',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              TextField(
+                key: const Key('username'),
+                controller: _username,
+                enabled: !_busy,
+                autocorrect: false,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _busy ? null : _register(),
+                decoration: InputDecoration(
+                  labelText: 'Username',
+                  helperText: 'Lower-case letters, digits, . _ -',
+                  errorText: _usernameError,
+                  prefixIcon: const Icon(Icons.person_outline),
+                ),
               ),
               const SizedBox(height: 8),
-              Text(
-                'Create a passwordless account',
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 32),
-              TextFormField(
-                controller: _usernameController,
-                decoration: const InputDecoration(
-                  labelText: 'Username',
-                  prefixIcon: Icon(Icons.person),
-                ),
-                enabled: !_isLoading,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Username is required';
-                  }
-                  if (value.length < 3) {
-                    return 'Username must be at least 3 characters';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  prefixIcon: Icon(Icons.email),
-                ),
-                keyboardType: TextInputType.emailAddress,
-                enabled: !_isLoading,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Email is required';
-                  }
-                  if (!value.contains('@')) {
-                    return 'Please enter a valid email';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-              Card(
-                color: Colors.blue.withOpacity(0.05),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Security Options',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      SwitchListTile(
-                        value: _allowDeviceCredentials,
-                        onChanged: _isLoading
-                            ? null
-                            : (v) =>
-                                setState(() => _allowDeviceCredentials = v),
-                        title: const Text('Allow Device Credentials'),
-                        subtitle: const Text(
-                          'Allow using PIN/pattern/passcode as fallback',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      const SizedBox(height: 8),
-                      SwitchListTile(
-                        value: _keyInvalidatedOnEnrollmentChange,
-                        onChanged: _isLoading
-                            ? null
-                            : (v) => setState(
-                                  () => _keyInvalidatedOnEnrollmentChange = v,
-                                ),
-                        title: const Text('Invalidate on Biometric Changes'),
-                        subtitle: const Text(
-                          'Require re-enrollment if new biometrics are added (recommended)',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _register,
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Register', style: TextStyle(fontSize: 16)),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.info_outline, size: 20, color: Colors.green),
-                        SizedBox(width: 8),
-                        Text(
-                          'No Password Required',
-                          style: TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'You\'ll use your fingerprint or face to login. '
-                      'It\'s more secure and convenient than passwords.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                    ),
-                  ],
-                ),
+              KeyValueRow(
+                label: 'Key alias on this device',
+                value: _alias,
+                monospace: true,
+                copyable: false,
               ),
             ],
           ),
         ),
-      ),
+        KeyOptionsCard(
+          options: _options,
+          platform: services.platform,
+          enabled: !_busy,
+          onChanged: (o) => setState(() => _options = o),
+        ),
+        SectionCard(
+          title: 'What happens',
+          child: Explainer(
+            '1. The server issues a single-use 32-byte challenge bound to '
+            'your username (POST /register/begin).\n'
+            '2. createKeys makes a key under $_alias with signatureType: '
+            'ecdsa, failIfExists: true and enforceBiometric: true'
+            '${caps.supportsAttestation ? ', passing the challenge as attestationChallenge' : ''}. '
+            '${services.platform.isApple ? 'On Apple it lives in the Secure Enclave. ' : ''}'
+            '${services.platform == DevicePlatform.windows ? 'Windows Hello makes an RSA-2048 key. ' : ''}\n'
+            '3. The server checks the certificate chain up to Google’s roots, '
+            'the challenge, the public key, the app package and the security '
+            'level, then assigns a trust tier (POST /register/finish).\n'
+            '4. You get a one-time recovery code for re-binding later.',
+          ),
+        ),
+        if (_busy)
+          Row(children: [
+            const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(_step ?? 'Working…')),
+          ]),
+        if (outcome != null)
+          OutcomeView(
+            outcome: outcome,
+            onRetry: switch (outcome) {
+              Retryable(retry: RetryKind.reupload) => _retryUpload,
+              _ => _register,
+            },
+            onReplaceKey: () => _register(replaceExistingKey: true),
+            onPreflight: _openPreflight,
+            onUnlock: _unlockThenRegister,
+            onViewReport: switch (outcome) {
+              Rejected(:final report?) => () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => AttestationReportScreen(
+                          report: report, rejected: true),
+                    ),
+                  ),
+              _ => null,
+            },
+          ),
+        FilledButton.icon(
+          key: const Key('register-submit'),
+          onPressed: _busy ? null : _register,
+          icon: const Icon(Icons.fingerprint),
+          label: const Text('Create account'),
+        ),
+      ]),
     );
   }
 }
