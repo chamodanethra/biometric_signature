@@ -96,8 +96,8 @@ nothing to reveal. You can still use **Seal a secret for another vault**.
 
 Error codes handled: `keyInvalidated` (crypto-shredding), `keyNotFound` (key
 lost), `keyAlreadyExists` (register or replace), `passcodeNotSet`,
-`notEnrolled`, `notAvailable` (Windows), `userCanceled` and `unknown` (with a
-key health check). Every other code gets the shared `guidanceFor` message.
+`notEnrolled`, `notAvailable` (Windows), `userCanceled`, and `unknown` and
+`invalidInput` (both with a key health check). Every other code gets the shared `guidanceFor` message.
 
 Prompt texts: `promptSubtitle`, `promptDescription`, `cancelButtonText` and
 `allowDeviceCredentials` apply on Android only. iOS and macOS show only

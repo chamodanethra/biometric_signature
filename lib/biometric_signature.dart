@@ -114,8 +114,9 @@ class BiometricSignature {
   ///
   /// Note: Not supported on Windows.
   ///
-  /// [payload] is the encrypted data. An empty or whitespace-only payload
-  /// returns [BiometricError.invalidInput] without showing a prompt.
+  /// [payload] is the encrypted data. A payload that is empty, whitespace-only
+  /// or can't be decoded as [payloadFormat] returns
+  /// [BiometricError.invalidInput] without showing a prompt.
   /// [keyAlias] specifies which key to decrypt with. Defaults to the default alias.
   /// [payloadFormat] specifies the format of the encrypted data.
   /// [config] contains platform-specific options. See [DecryptConfig].

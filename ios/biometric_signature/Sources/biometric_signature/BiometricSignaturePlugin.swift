@@ -385,6 +385,64 @@ private enum RsaPublicKeyStore {
     }
 }
 
+// MARK: - RSA Padding Setting Storage
+//
+// Until v11.0.0 the plugin decrypted RSA with PKCS#1 v1.5; since then it
+// decrypts RSA-OAEP. It still falls back to PKCS#1 v1.5, but only for keys old
+// enough to have PKCS#1 v1.5 ciphertext (see `mayHoldPkcs1Ciphertext`). Keys
+// created from 13.1.0 record here that they are OAEP-only.
+private enum RsaPaddingSetting {
+    static let prefix = "com.visionflutter.biometric.rsaPadding"
+    private static let oaepOnly = Data("oaep".utf8)
+
+    private static func service(_ keyAlias: String?) -> String {
+        "\(prefix).\(keyAlias ?? "default")"
+    }
+
+    static func saveOaepOnly(_ keyAlias: String?) {
+        let service = service(keyAlias)
+        let base: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: service,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+        let attrs: [String: Any] = [kSecValueData as String: oaepOnly]
+        let status = SecItemUpdate(base as CFDictionary, attrs as CFDictionary)
+        if status == errSecItemNotFound {
+            var add = base
+            add[kSecValueData as String] = oaepOnly
+            _ = SecItemAdd(add as CFDictionary, nil)
+        }
+    }
+
+    static func isOaepOnly(_ keyAlias: String?) -> Bool {
+        let service = service(keyAlias)
+        let q: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: service,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var out: CFTypeRef?
+        let s = SecItemCopyMatching(q as CFDictionary, &out)
+        return s == errSecSuccess && (out as? Data) == oaepOnly
+    }
+
+    @discardableResult
+    static func delete(_ keyAlias: String?) -> Bool {
+        let service = service(keyAlias)
+        let q: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: service
+        ]
+        let s = SecItemDelete(q as CFDictionary)
+        return s == errSecSuccess || s == errSecItemNotFound
+    }
+}
+
 public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatureApi {
 
     private static let keyInvalidatedMessage =
@@ -660,6 +718,12 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         // Migration always produces a `.biometryAny` key, so it is interactive
         // regardless of any record left behind by a previous key on this alias.
         RequireAuthenticationSetting.save(nil, requiresAuthentication: true)
+        // The migrated key is a v2.x key, whose ciphertext may be PKCS#1 v1.5.
+        // Clear records a later, since-deleted key may have left on this alias
+        // (`deleteAllKeys` didn't sweep them before v13), so that
+        // `mayHoldPkcs1Ciphertext` doesn't mistake it for a newer key.
+        DeviceCredentialsSetting.delete(nil)
+        RsaPaddingSetting.delete(nil)
 
         let unencryptedKeyTag = Constants.biometricKeyAlias(nil)
         let unencryptedKeyTagData = unencryptedKeyTag.data(using: .utf8)!
@@ -738,6 +802,13 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             completion(.success(DecryptResult(decryptedData: nil, error: "Payload is required", code: .invalidInput)))
             return
         }
+        // Decode it up front too, so malformed input is reported before any key
+        // access or prompt. `.ignoreUnknownCharacters` can decode junk such as
+        // "...." to nothing, which is no ciphertext either.
+        guard let ciphertext = parsePayload(payload, format: payloadFormat), !ciphertext.isEmpty else {
+            completion(.success(DecryptResult(decryptedData: nil, error: "Invalid payload", code: .invalidInput)))
+            return
+        }
 
         let prompt = promptMessage ?? "Authenticate"
         let authType = resolveAuthenticationType(keyAlias: keyAlias)
@@ -749,14 +820,14 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
 
 #if os(macOS)
         if hasRsaKey(keyAlias) {
-             performRsaDecryption(keyAlias: keyAlias, payload: payload, payloadFormat: payloadFormat, prompt: prompt, authenticationType: authType, completion: completion)
+             performRsaDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, authenticationType: authType, completion: completion)
         } else {
-             performEcDecryption(keyAlias: keyAlias, payload: payload, payloadFormat: payloadFormat, prompt: prompt, authenticationType: authType, completion: completion)
+             performEcDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, authenticationType: authType, completion: completion)
         }
 #else
         if hasRsaKey(keyAlias) {
             // Already on the v10+ hybrid path: a wrapped RSA blob exists.
-            performRsaDecryption(keyAlias: keyAlias, payload: payload, payloadFormat: payloadFormat, prompt: prompt, authenticationType: authType, completion: completion)
+            performRsaDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, authenticationType: authType, completion: completion)
         } else if keyAlias == nil
                     && !hasEcKey(nil)
                     && hasLegacyUnwrappedRsaKeyForMigration() {
@@ -766,7 +837,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             migrateToSecureEnclave(prompt: prompt) { result in
                 switch result {
                 case .success:
-                    self.performRsaDecryption(keyAlias: keyAlias, payload: payload, payloadFormat: payloadFormat, prompt: prompt, authenticationType: authType, completion: completion)
+                    self.performRsaDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, authenticationType: authType, completion: completion)
                 case .failure(let error):
                     let msg = (error as? PigeonError)?.message ?? (error as NSError).localizedDescription
                     completion(.success(DecryptResult(decryptedData: nil, error: "Migration Error: \(msg)", code: .unknown)))
@@ -774,7 +845,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             }
         } else {
             // Default: EC key (created via v10+ createKeys with signatureType=ecdsa).
-            performEcDecryption(keyAlias: keyAlias, payload: payload, payloadFormat: payloadFormat, prompt: prompt, authenticationType: authType, completion: completion)
+            performEcDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, authenticationType: authType, completion: completion)
         }
 #endif
     }
@@ -798,6 +869,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         deleteGenericPasswords(withServicePrefix: DeviceCredentialsSetting.prefix, requireMatchingAccount: false)
         deleteGenericPasswords(withServicePrefix: RequireAuthenticationSetting.prefix, requireMatchingAccount: false)
         deleteGenericPasswords(withServicePrefix: RsaPublicKeyStore.prefix, requireMatchingAccount: false)
+        deleteGenericPasswords(withServicePrefix: RsaPaddingSetting.prefix, requireMatchingAccount: false)
 
         completion(.success(true))
     }
@@ -1180,6 +1252,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
              return
         }
         RsaPublicKeyStore.save(keyAlias, publicKey: rsaPublicKey)
+        RsaPaddingSetting.saveOaepOnly(keyAlias)
 
         let rsaData = SecKeyCopyExternalRepresentation(rsaPublicKey, &error) as Data?
         let rsaTypedData = rsaData != nil ? FlutterStandardTypedData(bytes: rsaData!) : nil
@@ -1301,7 +1374,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         )))
     }
 
-    private func performRsaDecryption(keyAlias: String?, payload: String, payloadFormat: PayloadFormat, prompt: String, authenticationType: AuthenticationType, completion: @escaping (Result<DecryptResult, Error>) -> Void) {
+    private func performRsaDecryption(keyAlias: String?, ciphertext: Data, prompt: String, authenticationType: AuthenticationType, completion: @escaping (Result<DecryptResult, Error>) -> Void) {
         let keyResult = unwrapRsaKey(keyAlias: keyAlias, prompt: prompt)
         guard let rsaPrivateKey = keyResult.key else {
                let failure = refineFailure(keyResult.error, "Failed to access/unwrap RSA key", keyAlias: keyAlias)
@@ -1309,24 +1382,18 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
                return
         }
 
-        var error: Unmanaged<CFError>?
-        guard let encryptedData = parsePayload(payload, format: payloadFormat) else {
-             completion(.success(DecryptResult(decryptedData: nil, error: "Invalid payload", code: .invalidInput)))
-             return
-        }
-
         var oaepError: Unmanaged<CFError>?
         let decryptedData: Data
-        if let oaepResult = SecKeyCreateDecryptedData(rsaPrivateKey, .rsaEncryptionOAEPSHA256, encryptedData as CFData, &oaepError) as Data? {
+        if let oaepResult = SecKeyCreateDecryptedData(rsaPrivateKey, .rsaEncryptionOAEPSHA256, ciphertext as CFData, &oaepError) as Data? {
             decryptedData = oaepResult
-        } else if let pkcs1Result = SecKeyCreateDecryptedData(rsaPrivateKey, .rsaEncryptionPKCS1, encryptedData as CFData, &error) as Data? {
-            decryptedData = pkcs1Result
         } else {
-            let msg = oaepError?.takeRetainedValue().localizedDescription
-                ?? error?.takeRetainedValue().localizedDescription
-                ?? "Unknown"
-            completion(.success(DecryptResult(decryptedData: nil, error: "Decryption Error: \(msg)", code: .unknown)))
-            return
+            let oaepMessage = oaepError?.takeRetainedValue().localizedDescription ?? "Unknown"
+            guard mayHoldPkcs1Ciphertext(keyAlias),
+                  let pkcs1Result = Self.decryptPkcs1v15(rsaPrivateKey, ciphertext) else {
+                completion(.success(DecryptResult(decryptedData: nil, error: "Decryption Error: \(oaepMessage)", code: .unknown)))
+                return
+            }
+            decryptedData = pkcs1Result
         }
 
         guard let str = String(data: decryptedData, encoding: .utf8) else {
@@ -1337,7 +1404,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         completion(.success(DecryptResult(decryptedData: str, error: nil, code: .success, authenticationType: authenticationType)))
     }
 
-    private func performEcDecryption(keyAlias: String?, payload: String, payloadFormat: PayloadFormat, prompt: String, authenticationType: AuthenticationType, completion: @escaping (Result<DecryptResult, Error>) -> Void) {
+    private func performEcDecryption(keyAlias: String?, ciphertext: Data, prompt: String, authenticationType: AuthenticationType, completion: @escaping (Result<DecryptResult, Error>) -> Void) {
          let keyResult = getEcPrivateKey(keyAlias: keyAlias, prompt: prompt)
          guard let ecKey = keyResult.key else {
                let failure = refineFailure(keyResult.error, "EC Key not found or auth failed", keyAlias: keyAlias)
@@ -1345,13 +1412,16 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
                return
         }
 
-        guard let encryptedData = parsePayload(payload, format: payloadFormat) else {
+        // Fetching the key reference doesn't prompt; decrypting does. Reject
+        // input that can't be an ECIES payload before that, as Android does:
+        // a 65-byte uncompressed ephemeral public key, then at least the tag.
+        guard ciphertext.count >= Self.eciesMinimumPayloadSize, ciphertext.first == 0x04 else {
              completion(.success(DecryptResult(decryptedData: nil, error: "Invalid payload", code: .invalidInput)))
              return
         }
 
         var error: Unmanaged<CFError>?
-        guard let decrypted = SecKeyCreateDecryptedData(ecKey, .eciesEncryptionStandardX963SHA256AESGCM, encryptedData as CFData, &error) as Data?,
+        guard let decrypted = SecKeyCreateDecryptedData(ecKey, .eciesEncryptionStandardX963SHA256AESGCM, ciphertext as CFData, &error) as Data?,
               let str = String(data: decrypted, encoding: .utf8) else {
              let msg = error?.takeRetainedValue().localizedDescription ?? "Unknown"
              let failure = refineFailure(.unknown, "Decryption Error: \(msg)", keyAlias: keyAlias)
@@ -1390,6 +1460,63 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         // Removing every enrolled biometric also invalidates the key.
         return error.map { Int32($0.code) == kLAErrorBiometryNotEnrolled } ?? false
     }
+
+    /// Whether ciphertext for the RSA key under [keyAlias] may be PKCS#1 v1.5.
+    ///
+    /// Before v11.0.0 the plugin decrypted RSA with PKCS#1 v1.5. Since then it
+    /// decrypts RSA-OAEP, and servers encrypt with OAEP, as Android keys created
+    /// since then require. So only a key created before that can have PKCS#1
+    /// v1.5 ciphertext. Keys created from 13.1.0 record that they are
+    /// OAEP-only; keys created from 11.1.0 carry the `DeviceCredentialsSetting`
+    /// record written with every key since then. Any other key (created before
+    /// 11.1.0, or migrated from v2.x) keeps the PKCS#1 v1.5 fallback, so its
+    /// existing ciphertext still decrypts.
+    private func mayHoldPkcs1Ciphertext(_ keyAlias: String?) -> Bool {
+        !RsaPaddingSetting.isOaepOnly(keyAlias) && DeviceCredentialsSetting.read(keyAlias) == nil
+    }
+
+    /// RSAES-PKCS1-v1_5 decryption with explicit rejection (RFC 8017 §7.2.2).
+    ///
+    /// Current iOS and macOS releases decrypt with `.rsaEncryptionPKCS1` using
+    /// implicit rejection: invalid ciphertext yields a pseudorandom message
+    /// instead of an error. That suits callers who only ever receive PKCS#1
+    /// v1.5, but this fallback runs after OAEP failed, typically on OAEP
+    /// ciphertext that was corrupted or tampered with, and implicit rejection
+    /// turned it into "decrypted" garbage. So this decrypts with raw RSA and
+    /// checks the encoding itself. An explicit check is a padding oracle in
+    /// principle, but only keys created before 11.1.0 get here, and those all
+    /// require the user to authenticate for every decryption.
+    private static func decryptPkcs1v15(_ key: SecKey, _ ciphertext: Data) -> Data? {
+        let k = SecKeyGetBlockSize(key)
+        // Left-pad short input to the modulus length, as `.rsaEncryptionPKCS1`
+        // accepts it: some encoders drop a ciphertext's leading zero octets.
+        guard k >= 11, ciphertext.count <= k else { return nil }
+        let block = Data(count: k - ciphertext.count) + ciphertext
+        guard let em = SecKeyCreateDecryptedData(key, .rsaEncryptionRaw, block as CFData, nil) as Data?,
+              em.count == k else { return nil }
+        return decodePkcs1v15EncryptionBlock([UInt8](em))
+    }
+
+    /// EME-PKCS1-v1_5 decoding: EM = 0x00 || 0x02 || PS || 0x00 || M, where PS
+    /// is at least eight non-zero octets. Every octet is examined, so the time
+    /// taken doesn't depend on where the encoding goes wrong.
+    private static func decodePkcs1v15EncryptionBlock(_ em: [UInt8]) -> Data? {
+        guard em.count >= 11 else { return nil }
+        var separator = 0
+        var searching = 1
+        for i in 2..<em.count {
+            let isZero = Int((UInt16(em[i]) &- 1) >> 15) // 1 if em[i] == 0, else 0
+            let first = isZero & searching
+            separator |= first * i
+            searching &= first ^ 1
+        }
+        let valid = (Int(em[0]) | Int(em[1] ^ 0x02)) == 0 && separator >= 10
+        return valid ? Data(em[(separator + 1)...]) : nil
+    }
+
+    /// An ECIES payload's minimum size: the 65-byte uncompressed ephemeral
+    /// public key plus the 16-byte GCM tag.
+    private static let eciesMinimumPayloadSize = 65 + 16
 
     /// Re-classifies a failed sign or decrypt as `.keyInvalidated` when the key
     /// turns out to be invalidated, e.g. by an enrollment change between the
@@ -1475,6 +1602,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         _ = DeviceCredentialsSetting.delete(keyAlias)
         _ = RequireAuthenticationSetting.delete(keyAlias)
         _ = RsaPublicKeyStore.delete(keyAlias)
+        _ = RsaPaddingSetting.delete(keyAlias)
     }
 
 

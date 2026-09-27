@@ -39,7 +39,14 @@ void main() {
       final outcome = await d.controller.reveal(item);
       expect(outcome, isA<RevealFailed>());
       outcome as RevealFailed;
-      expect(outcome.code, BiometricError.unknown);
+      // The flipped bit is in the first byte. For ECIES that is the ephemeral
+      // key's 0x04 prefix, which the plugin rejects before any prompt; RSA-OAEP
+      // ciphertext is only rejected by decryption itself.
+      expect(
+          outcome.code,
+          choice == VaultKeyChoice.ec
+              ? BiometricError.invalidInput
+              : BiometricError.unknown);
       expect(outcome.ciphertextRejected, isTrue);
       expect(outcome.keyUnusable, isFalse);
       expect(d.controller.keyState, VaultKeyState.healthy);

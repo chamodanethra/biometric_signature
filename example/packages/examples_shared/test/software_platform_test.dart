@@ -308,6 +308,33 @@ void main() {
           BiometricError.invalidInput);
     });
 
+    test('malformed payloads are invalidInput before the key is used',
+        () async {
+      Future<BiometricError?> decrypt(String payload,
+              {PayloadFormat format = PayloadFormat.base64,
+              String? alias}) async =>
+          (await api.decrypt(
+                  payload: payload, payloadFormat: format, keyAlias: alias))
+              .code;
+      final notEcies = base64.encode(List<int>.filled(20, 7));
+
+      for (final platform in [DevicePlatform.android, DevicePlatform.ios]) {
+        install(platform);
+        await api.createKeys(
+            config: CreateKeysConfig(
+                signatureType: SignatureType.ecdsa, enableDecryption: true));
+        expect(await decrypt('not base64!'), BiometricError.invalidInput);
+        expect(await decrypt('zz', format: PayloadFormat.hex),
+            BiometricError.invalidInput);
+        expect(await decrypt(notEcies), BiometricError.invalidInput);
+        // Decoding comes before the key lookup.
+        expect(await decrypt('not base64!', alias: 'missing'),
+            BiometricError.invalidInput);
+        expect(await decrypt(notEcies, alias: 'missing'),
+            BiometricError.keyNotFound);
+      }
+    });
+
     test('empty and blank payloads match each platform', () async {
       Future<BiometricError?> sign(String payload) async =>
           (await api.createSignature(payload: payload)).code;

@@ -83,12 +83,26 @@ class CryptoOperations(
         return entry.certificate.publicKey
     }
 
+    /**
+     * Throws [IllegalArgumentException] (mapped to `INVALID_INPUT`) unless [data] is
+     * framed like an ECIES payload: a 65-byte uncompressed ephemeral public key, then
+     * the ciphertext and the 16-byte GCM tag.
+     */
+    fun requireEciesPayload(data: ByteArray) {
+        require(data.size >= Constants.EC_PUBKEY_SIZE + Constants.GCM_TAG_BYTES) {
+            "Invalid ECIES payload: too short (${data.size} bytes)"
+        }
+        require(data[0] == 0x04.toByte()) {
+            "Invalid ECIES payload: the ephemeral key must be uncompressed (0x04)"
+        }
+    }
+
     fun performEciesDecryption(
         keyAlias: String?,
         unwrapCipher: Cipher,
-        payload: String,
-        format: PayloadFormat
+        data: ByteArray
     ): String {
+        requireEciesPayload(data)
         val wrappedFilename = Constants.ecWrappedFilename(keyAlias)
         val wrapped = fileIO.readFileIfExists(wrappedFilename)
             ?: throw KeyNotFoundException("Encrypted EC key not found")
@@ -103,19 +117,7 @@ class CryptoOperations(
             val privateKey: PrivateKey = KeyFactory.getInstance("EC")
                 .generatePrivate(PKCS8EncodedKeySpec(privateKeyBytes))
 
-            val data = try {
-                FormatUtils.parsePayload(payload, format)
-            } catch (e: IllegalArgumentException) {
-                throw IllegalArgumentException("Invalid payload", e)
-            }
-            require(data.size >= Constants.EC_PUBKEY_SIZE + Constants.GCM_TAG_BYTES) {
-                "Invalid ECIES payload: too short (${data.size} bytes)"
-            }
-
             val ephemeralKeyBytes = data.copyOfRange(0, Constants.EC_PUBKEY_SIZE)
-            require(ephemeralKeyBytes[0] == 0x04.toByte()) {
-                "Invalid ephemeral key: expected uncompressed (0x04)"
-            }
 
             val ciphertextWithTag = data.copyOfRange(Constants.EC_PUBKEY_SIZE, data.size)
 

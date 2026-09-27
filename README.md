@@ -438,8 +438,10 @@ implementation of both, used by the example apps, is in
 `decrypt` returns the plaintext as a UTF-8 string, so encrypt text; base64-encode binary data
 (e.g. an AES key that wraps a larger payload) before encrypting it.
 
-> Keys created before v11.0.0 authorise PKCS#1 v1.5 instead of OAEP. The plugin still falls back to
-> PKCS#1 v1.5 for those, so existing ciphertext keeps working, but new keys should use OAEP.
+> Keys created before v11.0.0 authorise PKCS#1 v1.5 instead of OAEP. The plugin still decrypts
+> PKCS#1 v1.5 ciphertext for those keys, so existing ciphertext keeps working. Newer keys decrypt
+> OAEP only: on Android they don't allow PKCS#1 v1.5, and on iOS/macOS the fallback is limited to
+> keys created before v11.1.0 (keys from 11.0.x can't be told apart from older ones).
 
 ## Hardware Key Attestation
 
@@ -698,7 +700,7 @@ final result = await biometricSignature.createSignatureFromBytes(
 Decrypts the given payload using the private key and biometrics.
 
 - **Parameters**:
-  - `payload`: The encrypted data. See [Encrypting a payload](#encrypting-a-payload) for the exact scheme the backend must use. An empty or whitespace-only payload returns `invalidInput` without a prompt.
+  - `payload`: The encrypted data. See [Encrypting a payload](#encrypting-a-payload) for the exact scheme the backend must use. A payload that is empty, whitespace-only or can't be decoded as `payloadFormat` returns `invalidInput` without a prompt.
   - `payloadFormat`: Format of encrypted data (`PayloadFormat.base64`, `hex`)
   - `keyAlias`: Which key to decrypt with. Defaults to the default alias.
   - `config`: `DecryptConfig` with platform options

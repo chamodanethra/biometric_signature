@@ -402,8 +402,7 @@ class _CodeTile extends StatelessWidget {
             '("Decryption not enabled for EC signing-only mode").',
         BiometricError.invalidInput => 'An empty payload or a 129-byte '
             'attestation challenge — one-tap triggers above. Also malformed '
-            'base64/hex ciphertext (reported after the prompt on Android, '
-            'and in RSA mode on iOS/macOS).',
+            'base64/hex ciphertext, which is rejected before any prompt.',
         BiometricError.securityUpdateRequired => 'Android only: the OS '
             'reports a known sensor vulnerability. Not triggerable on '
             'purpose.',

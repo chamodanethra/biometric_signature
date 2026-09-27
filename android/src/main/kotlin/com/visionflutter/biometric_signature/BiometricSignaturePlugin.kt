@@ -670,6 +670,18 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             callback(Result.success(DecryptResult(code = BiometricError.INVALID_INPUT, error = "Payload is required")))
             return
         }
+        // Decode it up front too, so malformed input is reported before any key
+        // access or prompt. android.util.Base64 skips characters outside its
+        // alphabet, so junk such as "...." can decode to nothing: no ciphertext.
+        val encryptedBytes = try {
+            FormatUtils.parsePayload(payload, payloadFormat)
+        } catch (e: IllegalArgumentException) {
+            null
+        }
+        if (encryptedBytes == null || encryptedBytes.isEmpty()) {
+            callback(Result.success(DecryptResult(code = BiometricError.INVALID_INPUT, error = "Invalid payload")))
+            return
+        }
         val act = activity
         if (act == null) {
             callback(
@@ -709,18 +721,13 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                                         init(Cipher.DECRYPT_MODE, entry.privateKey)
                                     }
                                 }
-                                val encryptedBytes = try {
-                                    FormatUtils.parsePayload(payload, payloadFormat)
-                                } catch (e: IllegalArgumentException) {
-                                    throw IllegalArgumentException("Invalid payload", e)
-                                }
                                 String(cipher.doFinal(encryptedBytes), Charsets.UTF_8)
                             }
 
                             KeyMode.HYBRID_EC -> {
                                 val cipher = cryptoOperations.getCipherForDecryption(keyAlias)
                                     ?: throw KeyNotFoundException("Decryption keys not found")
-                                cryptoOperations.performEciesDecryption(keyAlias, cipher, payload, payloadFormat)
+                                cryptoOperations.performEciesDecryption(keyAlias, cipher, encryptedBytes)
                             }
 
                             else -> throw SecurityException("Unsupported decryption mode")
@@ -748,8 +755,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                     KeyMode.RSA -> decryptRsa(
                         act,
                         keyAlias,
-                        payload,
-                        payloadFormat,
+                        encryptedBytes,
                         prompt,
                         subtitle,
                         description,
@@ -760,8 +766,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                     KeyMode.HYBRID_EC -> decryptHybridEc(
                         act,
                         keyAlias,
-                        payload,
-                        payloadFormat,
+                        encryptedBytes,
                         prompt,
                         subtitle,
                         description,
@@ -802,8 +807,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
     private suspend fun decryptRsa(
         activity: FlutterFragmentActivity,
         keyAlias: String?,
-        payload: String,
-        payloadFormat: PayloadFormat,
+        encryptedBytes: ByteArray,
         prompt: String,
         subtitle: String?,
         description: String?,
@@ -828,12 +832,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         val decrypted = withContext(Dispatchers.IO) {
             val authenticatedCipher = successOutcome.cryptoObject?.cipher
                 ?: throw SecurityException("Authentication failed - no cipher returned")
-            try {
-                val encryptedBytes = FormatUtils.parsePayload(payload, payloadFormat)
-                authenticatedCipher.doFinal(encryptedBytes)
-            } catch (e: IllegalArgumentException) {
-                throw IllegalArgumentException("Invalid Base64 payload", e)
-            }
+            authenticatedCipher.doFinal(encryptedBytes)
         }
 
         return DecryptSuccess(String(decrypted, Charsets.UTF_8), successOutcome.authenticationType)
@@ -874,8 +873,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
     private suspend fun decryptHybridEc(
         activity: FlutterFragmentActivity,
         keyAlias: String?,
-        payload: String,
-        payloadFormat: PayloadFormat,
+        encryptedBytes: ByteArray,
         prompt: String,
         subtitle: String?,
         description: String?,
@@ -884,6 +882,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
     ): DecryptSuccess {
         val cipher = withContext(Dispatchers.IO) { cryptoOperations.getCipherForDecryption(keyAlias) }
             ?: throw KeyNotFoundException("Decryption keys not found")
+        // Reject input that can't be an ECIES payload before prompting for it.
+        cryptoOperations.requireEciesPayload(encryptedBytes)
 
         biometricPromptHelper.checkBiometricAvailability(activity, allowDeviceCredentials)
 
@@ -895,7 +895,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         val data = withContext(Dispatchers.IO) {
             val authenticatedCipher = successOutcome.cryptoObject?.cipher
                 ?: throw SecurityException("Authentication failed - no cipher returned")
-            cryptoOperations.performEciesDecryption(keyAlias, authenticatedCipher, payload, payloadFormat)
+            cryptoOperations.performEciesDecryption(keyAlias, authenticatedCipher, encryptedBytes)
         }
 
         return DecryptSuccess(data, successOutcome.authenticationType)

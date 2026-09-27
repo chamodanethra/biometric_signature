@@ -534,6 +534,19 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
     if (payload.trim().isEmpty) {
       return error(BiometricError.invalidInput, 'Payload is required');
     }
+    // Like the plugin, decode before touching the key, so malformed input, or
+    // input that decodes to nothing, is invalidInput before any prompt.
+    final Uint8List data;
+    try {
+      data = payloadFormat == PayloadFormat.hex
+          ? fromHex(payload)
+          : base64.decode(payload.trim());
+    } on FormatException {
+      return error(BiometricError.invalidInput, 'Invalid payload');
+    }
+    if (data.isEmpty) {
+      return error(BiometricError.invalidInput, 'Invalid payload');
+    }
     final key = _keys[_k(keyAlias)];
     if (key == null) {
       return error(BiometricError.keyNotFound, 'Keys not found');
@@ -542,12 +555,12 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
       return error(
           BiometricError.keyInvalidated, 'Biometric key has been invalidated');
     }
-    final Uint8List data;
-    try {
-      data = payloadFormat == PayloadFormat.hex
-          ? fromHex(payload)
-          : base64.decode(payload.trim());
-    } on FormatException {
+    // Also like the plugin: after the key checks but before the prompt, reject
+    // input too short to be ECIES (65-byte ephemeral key + 16-byte tag).
+    final usesEcies = platform == DevicePlatform.android
+        ? key.decryptingKey != null
+        : !key.isRsa;
+    if (usesEcies && (data.length < 65 + 16 || data[0] != 0x04)) {
       return error(BiometricError.invalidInput, 'Invalid payload');
     }
 
