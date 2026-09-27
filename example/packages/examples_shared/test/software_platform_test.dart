@@ -95,6 +95,13 @@ void main() {
         expect(result.code, BiometricError.success, reason: result.error);
         expect(result.decryptedData, 'secret ✓ ${format.name}');
       }
+      // Line-wrapped base64 decrypts too: whitespace is ignored.
+      final wrapped = base64
+          .encode(scheme.encrypt('wrapped'))
+          .replaceAllMapped(RegExp('.{1,16}'), (m) => '${m[0]}\r\n');
+      final unwrapped = await api.decrypt(
+          payload: wrapped, payloadFormat: PayloadFormat.base64, keyAlias: 'v');
+      expect(unwrapped.decryptedData, 'wrapped', reason: unwrapped.error);
       // getKeyInfo resolves to the same scheme.
       final info = await api.getKeyInfo(keyAlias: 'v');
       final again = EncryptionTarget.resolve(
@@ -329,6 +336,13 @@ void main() {
         expect(await decrypt(notEcies), BiometricError.invalidInput);
         // Decoding comes before the key lookup.
         expect(await decrypt('not base64!', alias: 'missing'),
+            BiometricError.invalidInput);
+        // A character outside the base64 alphabet (other than whitespace)
+        // makes the payload invalid, even next to valid data; so does
+        // base64url's alphabet.
+        expect(await decrypt('A!Q==', alias: 'missing'),
+            BiometricError.invalidInput);
+        expect(await decrypt('-_8=', alias: 'missing'),
             BiometricError.invalidInput);
         expect(await decrypt(notEcies, alias: 'missing'),
             BiometricError.keyNotFound);

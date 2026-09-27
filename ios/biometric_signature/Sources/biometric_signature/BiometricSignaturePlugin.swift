@@ -803,8 +803,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             return
         }
         // Decode it up front too, so malformed input is reported before any key
-        // access or prompt. `.ignoreUnknownCharacters` can decode junk such as
-        // "...." to nothing, which is no ciphertext either.
+        // access or prompt.
         guard let ciphertext = parsePayload(payload, format: payloadFormat), !ciphertext.isEmpty else {
             completion(.success(DecryptResult(decryptedData: nil, error: "Invalid payload", code: .invalidInput)))
             return
@@ -1852,13 +1851,20 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
 
     private func parsePayload(_ payload: String, format: PayloadFormat) -> Data? {
         switch format {
-        case .base64:
-            return Data(base64Encoded: payload, options: .ignoreUnknownCharacters)
+        case .base64, .raw:
+            return decodeBase64(payload)
         case .hex:
             return parseHex(payload)
-        case .raw:
-            return Data(base64Encoded: payload, options: .ignoreUnknownCharacters)
         }
+    }
+
+    /// Decodes standard Base64, ignoring whitespace such as the line breaks of
+    /// wrapped Base64. Any other character outside the alphabet makes it
+    /// invalid: `.ignoreUnknownCharacters` would drop it and decode the rest, so
+    /// "A!Q==" decoded as "AQ==".
+    private func decodeBase64(_ payload: String) -> Data? {
+        let compact = payload.components(separatedBy: CharacterSet(charactersIn: " \t\r\n")).joined()
+        return Data(base64Encoded: compact)
     }
 
     private func parseHex(_ hex: String) -> Data? {

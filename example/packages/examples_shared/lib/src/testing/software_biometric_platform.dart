@@ -540,7 +540,7 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
     try {
       data = payloadFormat == PayloadFormat.hex
           ? fromHex(payload)
-          : base64.decode(payload.trim());
+          : _decodeBase64(payload);
     } on FormatException {
       return error(BiometricError.invalidInput, 'Invalid payload');
     }
@@ -682,4 +682,18 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
           : authenticationTypeToReport,
     );
   }
+}
+
+final RegExp _base64Payload = RegExp(r'^[A-Za-z0-9+/]*={0,2}$');
+
+/// Decodes a base64 payload the way the plugin does: whitespace, such as the
+/// line breaks of wrapped base64, is ignored, and any other character outside
+/// the standard alphabet is a [FormatException]. (`base64.decode` alone would
+/// reject the whitespace but accept base64url's `-` and `_`.)
+Uint8List _decodeBase64(String payload) {
+  final compact = payload.replaceAll(RegExp(r'[ \t\r\n]'), '');
+  if (!_base64Payload.hasMatch(compact)) {
+    throw const FormatException('Invalid base64');
+  }
+  return base64.decode(compact);
 }

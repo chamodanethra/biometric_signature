@@ -116,7 +116,9 @@ class BiometricSignature {
   ///
   /// [payload] is the encrypted data. A payload that is empty, whitespace-only
   /// or can't be decoded as [payloadFormat] returns
-  /// [BiometricError.invalidInput] without showing a prompt.
+  /// [BiometricError.invalidInput] without showing a prompt. Base64 uses the
+  /// standard alphabet: spaces, tabs and line breaks are ignored, and any other
+  /// character outside it makes the payload invalid.
   /// [keyAlias] specifies which key to decrypt with. Defaults to the default alias.
   /// [payloadFormat] specifies the format of the encrypted data.
   /// [config] contains platform-specific options. See [DecryptConfig].

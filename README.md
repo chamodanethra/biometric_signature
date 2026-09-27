@@ -700,7 +700,7 @@ final result = await biometricSignature.createSignatureFromBytes(
 Decrypts the given payload using the private key and biometrics.
 
 - **Parameters**:
-  - `payload`: The encrypted data. See [Encrypting a payload](#encrypting-a-payload) for the exact scheme the backend must use. A payload that is empty, whitespace-only or can't be decoded as `payloadFormat` returns `invalidInput` without a prompt.
+  - `payload`: The encrypted data. See [Encrypting a payload](#encrypting-a-payload) for the exact scheme the backend must use. A payload that is empty, whitespace-only or can't be decoded as `payloadFormat` returns `invalidInput` without a prompt. Base64 uses the standard alphabet: spaces, tabs and line breaks are ignored, and any other character outside it makes the payload invalid.
   - `payloadFormat`: Format of encrypted data (`PayloadFormat.base64`, `hex`)
   - `keyAlias`: Which key to decrypt with. Defaults to the default alias.
   - `config`: `DecryptConfig` with platform options

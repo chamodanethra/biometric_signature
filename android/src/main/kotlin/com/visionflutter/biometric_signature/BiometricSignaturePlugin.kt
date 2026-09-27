@@ -671,8 +671,7 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             return
         }
         // Decode it up front too, so malformed input is reported before any key
-        // access or prompt. android.util.Base64 skips characters outside its
-        // alphabet, so junk such as "...." can decode to nothing: no ciphertext.
+        // access or prompt.
         val encryptedBytes = try {
             FormatUtils.parsePayload(payload, payloadFormat)
         } catch (e: IllegalArgumentException) {
