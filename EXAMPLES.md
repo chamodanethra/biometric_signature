@@ -1,357 +1,178 @@
-# Biometric Signature Examples
+# Example apps
 
-This repository contains comprehensive real-world examples demonstrating the biometric_signature plugin in action.
+A biometric prompt that returns `true` only protects your app's UI: anything that can hook or
+patch the app can fake that `true`. `biometric_signature` instead gives you a key pair in secure
+hardware whose private key only works after the user authenticates, so your **server** can check
+a signature instead of trusting the app. The four example apps show what that makes possible,
+and what the server has to check for it to hold.
 
-## 📱 Available Examples
+| App | Story | What it shows | Platforms |
+|-----|-------|---------------|-----------|
+| [`example/`](example/) — API Explorer | Every method, option, format and error code, one screen per area | All of the plugin's API; local signature verification; attestation-chain inspection; a call log with "Copy as Dart" | Android, iOS, macOS, Windows |
+| [`passwordless_login/`](passwordless_login/) | Sign in without a password: each account gets its own device-bound key | Android key attestation verified by the server, per-account aliases, single-use challenge-response with `createSignatureFromBytes`, re-binding after `keyInvalidated` | Android (attested); iOS, macOS, Windows with attestation turned off |
+| [`banking_app/`](banking_app/) | Step-up transaction signing | A silent key (`requireAuthentication: false`) signs every API request; a biometric key approves transfers by signing the exact bytes the bank issued; risk tiers, where the largest transfers need a key *attested* as biometric-only | Android (all tiers); iOS, macOS, Windows capped below the top tier |
+| [`secure_vault/`](secure_vault/) | Secrets only the enrolled user can reveal | `decrypt` with the right scheme per platform (Android hybrid ECIES, Android RSA-OAEP, Apple Secure Enclave ECIES, Apple RSA-OAEP), envelopes for large items, sharing between devices, what an enrollment change does to sealed data | Android, iOS, macOS (Windows can't decrypt) |
 
-### 1. Basic Example (`example/`)
-**Difficulty**: Beginner  
-**Purpose**: Simple demonstration of core plugin features
+## Running them
 
-A minimal example showing basic key generation, signature creation, and key management.
+Each directory is a normal Flutter app that depends on the plugin by path:
 
-**Features**:
-- Toggle between RSA and ECDSA algorithms
-- Create biometric keys
-- Sign payloads
-- View public keys and signatures
-
-**Run**:
 ```bash
-cd example
+cd passwordless_login   # or example, banking_app, secure_vault
 flutter run
 ```
 
----
+- Android: the apps already use `FlutterFragmentActivity` and the `USE_BIOMETRIC` permission.
+  Key attestation needs a physical device; an emulator's software attestation is rejected, as
+  a real server would reject it.
+- iOS/macOS: Face ID / Touch ID need a device, or the Simulator's *Features → Face ID*
+  menu (which can also change the enrollment, to trigger `keyInvalidated`).
+- Windows: needs Windows Hello with a PIN.
+- `flutter test` in each app runs its flows against a software fake of the plugin
+  (`SoftwareBiometricPlatform`), so they run anywhere.
 
-### 2. Banking App (`banking_app/`)
-**Difficulty**: Intermediate  
-**Purpose**: Secure transaction signing for financial applications
+## The mock server
 
-A complete banking application demonstrating secure transaction signing using biometric authentication.
+The three scenario apps run their "server" in the same process, behind a mock network
+(`MockTransport`) that round-trips every request through JSON, the way a real HTTP API would.
+Each app has a **server console** (the terminal icon) with the server's records, an audit log,
+every request and response, the server's policy, and **faults** you can inject: tampered
+fields, replayed requests, expired challenges, failed uploads. They show what each server check
+catches.
 
-**Features**:
-- 💰 Account balance management
-- 💸 Money transfers between accounts
-- 🔐 Biometric transaction signing
-- 📝 Transaction history
-- ✅ Server-side verification (simulated)
+The shared code lives in [`example/packages/examples_shared`](example/packages/examples_shared):
 
-**Key Concepts**:
-- Challenge-response protocol for transactions
-- Cryptographic proof of transaction authorization
-- Hardware-backed security for financial operations
-- Non-repudiation through biometric signatures
+- `crypto.dart` — signature verification (RSA PKCS#1 v1.5 and ECDSA P-256 over SHA-256),
+  RSA-OAEP with the per-platform MGF1 digest, both ECIES variants, and which one a key needs.
+- `attestation.dart` — X.509 and Android key-description parsing, and chain verification up to
+  Google's attestation roots.
+- `server.dart` — the mock transport, single-use challenges, a replay cache, storage and an
+  audit log.
+- `ui.dart` / `testing.dart` — guidance for every `BiometricError`, shared widgets, and the
+  software fake of the plugin.
 
-**Run**:
-```bash
-cd banking_app
-flutter pub get
-flutter run
-```
+This is demo code. It is written to be read, not deployed. A real server also needs TLS, rate
+limiting, durable storage and, for attestation, a check of Google's revocation list
+(`https://android.googleapis.com/attestation/status`), which the demos deliberately skip and
+flag in every report. Google recommends its
+[key attestation library](https://github.com/android/keyattestation) over custom verifiers.
 
-**[View Full Documentation →](banking_app/README.md)**
+## `example/` — API Explorer
 
----
+One screen per area: Device, Keys, Sign, Decrypt, Inventory, Prompt and Errors. Everything
+goes through a call log you can copy as Dart.
 
-### 3. Document Signer (`document_signer/`)
-**Difficulty**: Intermediate  
-**Purpose**: Digital document signing with biometric authentication
+Try this:
 
-A document signing application for secure authentication of legal documents, contracts, and agreements.
+1. **Keys**: create an EC key under `explorer_a`, then create it again with *failIfExists* to
+   get `keyAlreadyExists`. On Android, add a 32-byte attestation challenge and open the
+   attestation report; a 129-byte challenge gives `invalidInput`.
+2. **Sign**: sign a random nonce with `createSignatureFromBytes`, then *Verify locally*. The
+   same check rejects a message with one flipped bit.
+3. **Decrypt**: the Explorer picks the encryption scheme from the key it finds, encrypts
+   locally, and asks the plugin to decrypt. Switch between base64, hex and raw payloads.
+4. **Errors**: trigger `keyNotFound`, `notSupported` and `invalidInput`, and follow the steps
+   for `keyInvalidated`.
 
-**Features**:
-- 📄 Create and manage documents
-- ✍️ Sign documents with biometrics
-- 🔐 Cryptographic signature verification
-- 📋 Document library with signing status
-- 📤 Export signed documents
+## `passwordless_login/` — attested device binding
 
-**Key Concepts**:
-- Document integrity through hashing
-- Digital signatures for authenticity
-- Non-repudiation for legal documents
-- Audit trail with timestamps
-- Tamper-evident signatures
+Registering an account creates a key under its own alias (`acct_<id>`, with `failIfExists`).
+On Android the server first issues an attestation challenge and verifies the returned chain:
+Google's root, the challenge, a TEE or StrongBox security level, and that the attested key is
+the one being registered. Signing in signs a single-use server nonce with
+`createSignatureFromBytes`; the server rebuilds the signed bytes itself instead of trusting the
+app's copy.
 
-**Run**:
-```bash
-cd document_signer
-flutter pub get
-flutter run
-```
+Try this:
 
-**[View Full Documentation →](document_signer/README.md)**
+1. Register, and read the attestation report (on a physical Android device).
+2. Sign in and follow the signing trace, then use the console to tamper with a signature,
+   replay a sign-in, expire a nonce, or present it as another user.
+3. Fail the registration upload from the console, then *Retry upload*: the app re-reads the
+   chain with `getKeyInfo`.
+4. Enroll a new fingerprint or face in system settings and sign in again: `keyInvalidated`,
+   then re-bind with the recovery code.
 
----
+This sign-in is replay-resistant, but it is **not** phishing-resistant: the app chooses the
+relying-party string it signs, and the OS doesn't bind it to a web origin. Use platform
+passkeys if you need that. [More](passwordless_login/README.md)
 
-### 4. Passwordless Login (`passwordless_login/`)
-**Difficulty**: Advanced  
-**Purpose**: Complete passwordless authentication system with full lifecycle management
+## `banking_app/` — step-up transaction signing
 
-A full-featured passwordless authentication system demonstrating the complete lifecycle of biometric authentication, including error handling, recovery flows, and account management.
+The device has two keys:
 
-**Features**:
-- 🔐 Passwordless registration and login
-- 👤 User account management
-- ✅ Challenge-response authentication
-- 🔄 Session management
-- 🎯 Secure token handling
-- ⚠️ Comprehensive error handling (locked out, key invalidated, etc.)
-- 🔄 Biometric re-enrollment flow
-- 🔑 Device credential fallback option
-- ⚙️ Account settings and configuration
-- 🔍 Key status monitoring
-- 🧪 Test authentication feature
+| Alias | Config | What a signature proves |
+|-------|--------|-------------------------|
+| `device_binding` | `requireAuthentication: false`, attested on Android | This device signed the request. Nothing about who was holding it. |
+| `txn_approval` | `enforceBiometric`, `setInvalidatedByBiometricEnrollment: true`, attested on Android | The enrolled user approved these exact bytes (biometric-only when attested as such). |
 
-**Key Concepts**:
-- FIDO2/WebAuthn-style authentication
-- Challenge-response protocol
-- Server-side signature verification
-- Public key infrastructure
-- Phishing-resistant authentication
-- Error recovery and re-enrollment
-- Biometric lifecycle management
-- Hardware-backed key storage
+The bank decides what each transfer needs:
 
-**Run**:
-```bash
-cd passwordless_login
-flutter pub get
-flutter run
-```
+| Tier | Amount | Required |
+|------|--------|----------|
+| A | up to $100 | A silent `device_binding` signature |
+| B | up to $2,000 | A `txn_approval` signature |
+| C | over $2,000 | A `txn_approval` signature from a key that Android attestation proves is biometric-only |
 
-**[View Full Documentation →](passwordless_login/README.md)**
+The prompt shows the amount and payee. The bank verifies the signature over the bytes it
+issued, and treats `authenticationType` as a client claim to record, not as evidence. After an
+enrollment change, the silent key still works, so the user can re-verify and get a new
+approval key.
 
----
+Try this: make tier A, B and C transfers; tamper with the amount or replay a confirmation from
+the console; enroll a new fingerprint and re-verify. [More](banking_app/README.md)
 
-## 🎯 Which Example Should I Start With?
+## `secure_vault/` — biometric decryption
 
-### For Learning the Plugin
-Start with **Basic Example** (`example/`) → then explore others based on your use case
+A provisioning server seals secrets to the device's vault key using the scheme that key
+decrypts. The device stores only ciphertext; each item is revealed by `decrypt`, which only
+succeeds after the user authenticates.
 
-### For Financial Applications
-**Banking App** - Shows transaction signing and payment authorization
+| Platform and key | Scheme the server encrypts with |
+|------------------|---------------------------------|
+| Android `ecdsa` + `enableDecryption` | ECIES P-256, X9.63-KDF-SHA256 with empty shared info, AES-128-GCM with a derived 12-byte IV, against `decryptingPublicKey` |
+| Android `rsa` + `enableDecryption` | RSA-OAEP, SHA-256, MGF1-SHA-1 |
+| iOS/macOS `ecdsa` | Apple `eciesEncryptionStandardX963SHA256AESGCM` |
+| iOS/macOS `rsa` | RSA-OAEP, SHA-256, MGF1-SHA-256 |
+| Windows | Not supported (`decrypt` returns `notAvailable`) |
 
-### For Document Management
-**Document Signer** - Shows document authentication and legal signing
+Try this: reveal a server secret in base64 and in hex; add a note (sealing needs no prompt,
+revealing does); compare `simplePrompt` (a UI gate) with `decrypt` (a cryptographic gate);
+share an item with another vault address; enroll a new fingerprint and see which items survive
+re-provisioning. [More](secure_vault/README.md)
 
-### For User Authentication
-**Passwordless Login** - Shows modern authentication without passwords
+## What the demos claim, and what they don't
 
-## 🔐 Security Features Demonstrated
+- A signature proves possession of a hardware-backed key whose access policy was satisfied
+  (biometric, optionally the device PIN). It does not identify a person, so it is not
+  evidence of non-repudiation.
+- Only Android attests individual keys. On iOS, macOS and Windows the server takes the
+  platform's word that a key is hardware-backed; the demos show that as "not attested".
+- A silent key (`requireAuthentication: false`) proves the device, not the user.
+- `authenticationType` is reported by the app and isn't signed. Base policy on what the key
+  itself requires, which on Android the attestation proves.
+- None of the demos is FIDO, WebAuthn or a passkey implementation.
 
-All examples demonstrate:
-- ✅ Hardware-backed key storage (StrongBox/Secure Enclave)
-- ✅ Private keys never leave secure hardware
-- ✅ Biometric authentication for every sensitive operation
-- ✅ Cryptographic signatures for non-repudiation
-- ✅ Platform-specific best practices
+## Where each API is used
 
-## 📚 Learning Path
+| API or option | Explorer | Passwordless | Banking | Vault |
+|---------------|:-:|:-:|:-:|:-:|
+| `createKeys` with `keyAlias`, `failIfExists` | ✓ | ✓ | ✓ | ✓ |
+| `attestationChallenge` / `attestationCertificateChain` | ✓ | ✓ | ✓ | |
+| `requireAuthentication: false` | ✓ | | ✓ | |
+| `enableDecryption`, hybrid mode | ✓ | | | ✓ |
+| `createSignature` (text) | ✓ | | ✓ | |
+| `createSignatureFromBytes` | ✓ | ✓ | ✓ | |
+| `decrypt` with `PayloadFormat` base64 / hex | ✓ | | | ✓ |
+| `getKeyInfo(checkValidity: true)` | ✓ | ✓ | ✓ | ✓ |
+| `getKeyInfo(keyFormat: KeyFormat.pem)` | ✓ | | | ✓ |
+| `biometricKeyExists` | ✓ | | | ✓ |
+| `deleteKeys` / `deleteAllKeys` | ✓ | ✓ | ✓ | ✓ |
+| `simplePrompt` | ✓ | ✓ | | ✓ |
+| `biometricAuthAvailable`, `isDeviceLockSet` | ✓ | ✓ | ✓ | ✓ |
+| Prompt texts (`promptSubtitle`, `promptDescription`, `cancelButtonText`) | ✓ | ✓ | ✓ | ✓ |
+| `keyInvalidated` / `keyNotFound` recovery | ✓ | ✓ | ✓ | ✓ |
+| `authenticationType` | ✓ | ✓ | ✓ | ✓ |
 
-```
-1. Basic Example
-   ↓
-   Learn: Core API, key generation, signing basics
-   
-2. Choose your path:
-   
-   Path A: Financial Apps
-   └── Banking App
-       Learn: Transaction security, verification flows
-   
-   Path B: Document Management
-   └── Document Signer
-       Learn: Document integrity, legal signatures
-   
-   Path C: Authentication
-   └── Passwordless Login
-       Learn: Challenge-response, session management
-
-3. Build Your Own
-   Combine concepts from multiple examples
-```
-
-## 🛠️ Common Code Patterns
-
-### Initialize Biometric Service
-```dart
-import 'package:biometric_signature/biometric_signature.dart';
-
-final biometric = BiometricSignature();
-
-// Check availability
-final availability = await biometric.biometricAuthAvailable();
-if (availability.canAuthenticate ?? false) {
-  print('Biometrics available: ${availability.availableBiometrics}');
-}
-
-// Create keys (RSA by default)
-final keyResult = await biometric.createKeys(
-  keyFormat: KeyFormat.pem,
-  promptMessage: 'Authenticate to create keys',
-  config: CreateKeysConfig(
-    signatureType: SignatureType.rsa,
-    useDeviceCredentials: true,
-    setInvalidatedByBiometricEnrollment: true,
-    enforceBiometric: true,
-    enableDecryption: false, // Android only
-  ),
-);
-
-if (keyResult.code == BiometricError.success) {
-  print('Public Key: ${keyResult.publicKey}');
-}
-```
-
-### Get Key Info
-```dart
-// Check key existence with metadata
-final info = await biometric.getKeyInfo(
-  checkValidity: true,
-  keyFormat: KeyFormat.pem,
-);
-
-if (info.exists && (info.isValid ?? true)) {
-  print('Algorithm: ${info.algorithm}, Size: ${info.keySize} bits');
-  print('Hybrid Mode: ${info.isHybridMode}');
-  print('Public Key: ${info.publicKey}');
-}
-```
-
-### Sign Data
-```dart
-final result = await biometric.createSignature(
-  payload: 'data_to_sign',
-  promptMessage: 'Authenticate to sign',
-  signatureFormat: SignatureFormat.base64,
-  keyFormat: KeyFormat.pem,
-  config: CreateSignatureConfig(
-    allowDeviceCredentials: true,
-  ),
-);
-
-if (result.code == BiometricError.success) {
-  print('Signature: ${result.signature}');
-}
-```
-
-### Decrypt Data
-```dart
-final decryptResult = await biometric.decrypt(
-  payload: encryptedBase64,
-  payloadFormat: PayloadFormat.base64,
-  promptMessage: 'Authenticate to decrypt',
-  config: DecryptConfig(
-    allowDeviceCredentials: false,
-  ),
-);
-
-if (decryptResult.code == BiometricError.success) {
-  print('Decrypted: ${decryptResult.decryptedData}');
-}
-```
-
-### Error Handling
-```dart
-final result = await biometric.createSignature(
-  payload: 'data_to_sign',
-  promptMessage: 'Authenticate',
-);
-
-switch (result.code) {
-  case BiometricError.success:
-    print('Signed: ${result.signature}');
-    break;
-    
-  case BiometricError.userCanceled:
-    print('User cancelled authentication');
-    break;
-    
-  case BiometricError.keyInvalidated:
-    print('Key invalidated - biometrics changed, re-enrollment required');
-    // Show re-enrollment dialog to user
-    break;
-    
-  case BiometricError.lockedOut:
-    print('Temporarily locked out - too many attempts');
-    // Show retry message or device credential option
-    break;
-    
-  case BiometricError.lockedOutPermanent:
-    print('Permanently locked out - must use device credential');
-    // Require device passcode/PIN to unlock
-    break;
-    
-  case BiometricError.notEnrolled:
-    print('No biometrics enrolled - user must enroll in settings');
-    break;
-    
-  case BiometricError.notAvailable:
-    print('Biometric hardware not available on this device');
-    break;
-    
-  case BiometricError.keyNotFound:
-    print('Key not found - may need re-enrollment');
-    break;
-    
-  default:
-    print('Error: ${result.code} - ${result.error}');
-}
-```
-
-### Re-enrollment (Key Invalidation Recovery)
-```dart
-// After detecting BiometricError.keyInvalidated
-Future<void> reEnrollUser(User user) async {
-  // 1. Delete old invalidated keys
-  await biometric.deleteKeys();
-  
-  // 2. Create new keys with same configuration
-  final keyResult = await biometric.createKeys(
-    keyFormat: KeyFormat.base64,
-    promptMessage: 'Re-enroll biometrics',
-    config: CreateKeysConfig(
-      signatureType: SignatureType.rsa,
-      useDeviceCredentials: user.allowDeviceCredentials,
-      setInvalidatedByBiometricEnrollment: true,
-    ),
-  );
-  
-  if (keyResult.code == BiometricError.success) {
-    // 3. Update user's public key in database
-    await updateUserPublicKey(user.id, keyResult.publicKey!);
-    print('Re-enrollment successful!');
-  }
-}
-```
-
-### Delete Keys
-```dart
-final deleted = await biometric.deleteKeys();
-if (deleted) {
-  print('All biometric keys removed');
-}
-```
-
-## 📝 Notes
-
-- All examples simulate server-side logic locally
-- In production, implement proper backend infrastructure
-- Follow platform-specific guidelines for production apps
-- Consider additional security measures for your use case
-- Test on real devices for accurate biometric behavior
-
-## 🤝 Contributing
-
-Found an issue or want to improve an example? Contributions are welcome!
-
-1. Fork the repository
-2. Create your feature branch
-3. Test your changes on all platforms
-4. Submit a pull request
-
-## 📄 License
-
-These examples are part of the biometric_signature plugin and follow the same license.
+The Explorer also covers every `KeyFormat`, `SignatureFormat` and `PayloadFormat`, and every
+`BiometricError`.

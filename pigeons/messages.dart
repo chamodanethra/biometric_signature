@@ -177,6 +177,14 @@ class KeyCreationResult {
   /// See [AuthenticationType] for how inference is performed when the
   /// platform does not report the method directly.
   AuthenticationType? authenticationType;
+
+  /// [Android] DER-encoded X.509 key attestation certificate chain of the new
+  /// signing key, leaf (the attestation certificate) first, root last.
+  ///
+  /// Set only when [CreateKeysConfig.attestationChallenge] was provided and
+  /// key creation succeeded; null otherwise and on all other platforms. The
+  /// plugin does not parse or verify the chain — send it to your server.
+  List<Uint8List>? attestationCertificateChain;
 }
 
 class SignatureResult {
@@ -238,6 +246,15 @@ class KeyInfo {
 
   /// Key size of the decryption key in bits (hybrid mode only).
   int? decryptingKeySize;
+
+  /// [Android] DER-encoded X.509 key attestation certificate chain of the
+  /// signing key, leaf first.
+  ///
+  /// Present only for keys created with [CreateKeysConfig.attestationChallenge]
+  /// (the leaf carries the key attestation extension, OID
+  /// 1.3.6.1.4.1.11129.2.1.17). Null for unattested keys and on all other
+  /// platforms.
+  List<Uint8List>? attestationCertificateChain;
 }
 
 /// The cryptographic algorithm to use for key generation.
@@ -337,6 +354,48 @@ class CreateKeysConfig {
   /// ("something you have") only; it does not verify user presence and cannot
   /// satisfy inherence-based SCA requirements.
   bool? requireAuthentication;
+
+  // === Hardware key attestation (Android only) ===
+
+  /// [Android] Server-issued, single-use challenge (1–128 bytes) for hardware
+  /// key attestation. Requires Android 7.0 (API 24) or newer.
+  ///
+  /// When set, the keystore embeds the challenge in an X.509 attestation
+  /// certificate for the new signing key, and `createKeys` returns the chain
+  /// in [KeyCreationResult.attestationCertificateChain] so your server can
+  /// verify that the key was generated in secure hardware (TEE or StrongBox).
+  /// The plugin neither parses nor verifies the chain.
+  ///
+  /// Attestation is an explicit opt-in, so it fails instead of silently
+  /// returning an unattested key:
+  /// - [BiometricError.invalidInput]: the challenge is empty or longer than
+  ///   128 bytes.
+  /// - [BiometricError.notSupported]: Android 6 (API 23), or the device's
+  ///   keystore cannot attest the key.
+  /// - [BiometricError.notAvailable]: the keystore reported a transient
+  ///   failure (e.g. attestation keys are not provisioned yet). Retry later
+  ///   with a fresh challenge. Detected on Android 13+; older versions report
+  ///   [BiometricError.notSupported] instead.
+  ///
+  /// The input checks (and [failIfExists]) run before anything is deleted. A
+  /// failure during key generation happens after the existing key under the
+  /// same alias was removed — as with any `createKeys` failure — and never
+  /// leaves an unattested key behind. Use [failIfExists] or a fresh alias to
+  /// protect an existing key.
+  ///
+  /// If StrongBox key generation fails, the plugin retries once in the TEE;
+  /// the chain's `attestationSecurityLevel` tells your server which one
+  /// produced the key. In hybrid mode (`signatureType: ecdsa` +
+  /// `enableDecryption: true`) only the keystore EC *signing* key is attested;
+  /// the software-generated decryption key cannot be.
+  ///
+  /// **iOS/macOS/Windows**: setting this field makes `createKeys` return
+  /// [BiometricError.notSupported] without touching existing keys. This
+  /// deliberately departs from how other platform-specific fields are
+  /// ignored: ignoring it would hand back an unattested key the caller
+  /// believes is attested. Apple has no public API to attest an individual
+  /// Secure Enclave key, and Windows attestation is not implemented.
+  Uint8List? attestationChallenge;
 }
 
 /// Configuration for signature creation (all platforms).

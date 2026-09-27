@@ -4,6 +4,14 @@ import android.security.keystore.KeyPermanentlyInvalidatedException
 import androidx.biometric.BiometricManager
 import kotlinx.coroutines.CancellationException
 
+/**
+ * Thrown when the key material an operation needs is missing for the alias: the
+ * keystore signing key, or a hybrid-mode decryption key. Mapped to
+ * [BiometricError.KEY_NOT_FOUND] so callers can tell "no key" apart from an
+ * unexpected failure.
+ */
+class KeyNotFoundException(message: String) : IllegalStateException(message)
+
 object ErrorMapper {
     fun safeErrorMessage(e: Throwable): String {
         return when (val code = mapToBiometricError(e)) {
@@ -62,6 +70,8 @@ object ErrorMapper {
             causeCode == 15 -> BiometricError.SECURITY_UPDATE_REQUIRED
 
             e is KeyPermanentlyInvalidatedException -> BiometricError.KEY_INVALIDATED
+
+            e is KeyNotFoundException -> BiometricError.KEY_NOT_FOUND
 
             e is CancellationException -> BiometricError.USER_CANCELED
 

@@ -25,3 +25,64 @@ jobs:
 #      - run: flutter analyze
 
       - run: flutter test
+
+  examples:
+    name: examples (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - example/packages/examples_shared
+          - example
+          - passwordless_login
+          - banking_app
+          - secure_vault
+    defaults:
+      run:
+        working-directory: ${{ matrix.package }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: 'stable'
+
+      - run: flutter pub get
+
+      - run: dart format --output=none --set-exit-if-changed lib test
+
+      - run: flutter analyze
+
+      - run: flutter test
+
+  # The plugin supports Flutter 3.24.5, so the examples must not use newer APIs.
+  examples-min-flutter:
+    name: examples on Flutter 3.24.5 (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - example/packages/examples_shared
+          - example
+          - passwordless_login
+          - banking_app
+          - secure_vault
+    defaults:
+      run:
+        working-directory: ${{ matrix.package }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - run: flutter pub get
+
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings

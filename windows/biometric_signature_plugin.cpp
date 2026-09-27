@@ -275,6 +275,18 @@ void BiometricSignaturePlugin::CreateKeys(
     const KeyFormat &key_format, const std::string *prompt_message,
     std::function<void(ErrorOr<KeyCreationResult> reply)> result) {
 
+  // Key attestation is Android-only. Silently ignoring the challenge would hand
+  // back an unattested key the caller believes is attested, so this fails
+  // in-band before Windows Hello is involved or any existing key is touched.
+  if (config != nullptr && config->attestation_challenge() != nullptr) {
+    KeyCreationResult response;
+    response.set_error(
+        "Key attestation (attestationChallenge) is not supported on Windows.");
+    response.set_code(BiometricError::kNotSupported);
+    result(response);
+    return;
+  }
+
   // Bring Flutter window to foreground so Windows Hello dialog appears properly
   BringWindowToForeground();
 

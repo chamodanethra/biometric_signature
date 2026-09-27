@@ -15,17 +15,32 @@ Even if an attacker bypasses or hooks biometric APIs, your backend will still re
 - **Cryptographic Proof Of Identity:** Hardware-backed RSA (Android) or ECDSA (all platforms) signatures that your backend can independently verify.
 - **Decryption Support:** 
   - **RSA**: RSA-OAEP with a SHA-256 main digest (Android native, iOS/macOS via wrapped software key). The MGF1 digest differs by platform — see [Encrypting a payload](#encrypting-a-payload).
-  - **EC**: ECIES (`eciesEncryptionStandardX963SHA256AESGCM`)
+  - **EC**: ECIES over P-256 with AES-GCM (Apple's `eciesEncryptionStandardX963SHA256AESGCM` on iOS/macOS). The key derivation differs on Android — see [Encrypting a payload](#encrypting-a-payload).
 - **Hardware Security:** Uses Secure Enclave (iOS/macOS) and Keystore/StrongBox (Android).
+- **Key Attestation (Android):** Pass a server challenge when creating keys and get the keystore's X.509 attestation chain, so your backend can verify the key was generated in the TEE or StrongBox. See [Hardware Key Attestation](#hardware-key-attestation).
 - **Hybrid Architectures:**
   - **Android Hybrid EC:** Hardware EC signing + software ECIES decryption. Software EC private key is AES-wrapped using a Keystore/StrongBox AES-256 master key that requires biometric authentication for every unwrap.
-  - **iOS/macOS Hybrid RSA:** Software RSA key for **both signing and decryption**, wrapped using ECIES with Secure Enclave EC public key. Hardware EC is only used for wrapping/unwrapping.
+  - **iOS/macOS Hybrid RSA:** Software RSA key for **both signing and decryption**, wrapped using ECIES with Secure Enclave EC public key. Hardware EC is only used for wrapping/unwrapping, so these keys report `isHybridMode: false` (one key signs and decrypts).
 - **Named Key Aliases:** Manage multiple independent key pairs per app (e.g., one for auth, one for payment signing) via optional `keyAlias` parameter.
 - **Key Overwrite Protection:** Prevent accidental key replacement with `failIfExists` option.
 - **Key Invalidation:** Keys can be bound to biometric enrollment state (fingerprint/Face ID changes).
 - **Device Credentials:** Optional PIN/Pattern/Password fallback on Android.
 - **Simple Prompt (No Crypto):** Verify user presence without key operations. Supports device-credential fallback and Android biometric strength selection.
 
+
+## Example apps
+
+The repository has four example apps. Each scenario app runs a mock "server" in-process, so you
+can see, and tamper with, everything a real backend has to check. See
+[EXAMPLES.md](https://github.com/chamodanethra/biometric_signature/blob/main/EXAMPLES.md) for a
+walkthrough of each.
+
+| App | What it shows |
+|-----|---------------|
+| [API Explorer](https://github.com/chamodanethra/biometric_signature/tree/main/example) | Every method, option, output format and error code, with local signature verification and attestation-chain inspection |
+| [Passwordless Login](https://github.com/chamodanethra/biometric_signature/tree/main/passwordless_login) | Per-account keys, Android key attestation verified by the server, replay-resistant challenge-response sign-in, and re-binding after a biometric enrollment change |
+| [Step-up Banking](https://github.com/chamodanethra/biometric_signature/tree/main/banking_app) | A silent device key that signs every API request, a biometric key that approves transfers, and risk tiers that require an attested biometric-only key for large amounts |
+| [Secure Vault](https://github.com/chamodanethra/biometric_signature/tree/main/secure_vault) | Secrets sealed to the device key and revealed only by biometric decryption (ECIES or RSA-OAEP), sharing between devices, and what an enrollment change does to sealed data |
 
 ## Security Architecture
 
@@ -170,7 +185,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^13.0.0
+  biometric_signature: ^13.1.0
 ```
 
 |             | Android | iOS   | macOS  | Windows |
@@ -402,13 +417,125 @@ ciphertext = public_key.encrypt(
 RSA-2048 with a SHA-256 OAEP digest leaves 190 bytes of plaintext capacity; wrap a symmetric key
 rather than the payload itself if you need more.
 
-For EC keys the payload is encrypted with ECIES (`eciesEncryptionStandardX963SHA256AESGCM`) on all
-platforms, so no per-platform branch is needed. iOS/macOS keys created with `SignatureType.rsa` use
-the hybrid architecture and still decrypt RSA-OAEP payloads — encrypt against the RSA key returned
-in `decryptingPublicKey`.
+iOS/macOS keys created with `SignatureType.rsa` sign and decrypt with the same RSA key (the Secure
+Enclave key only wraps it), so encrypt RSA-OAEP payloads against the RSA key returned in
+`publicKey`; `getKeyInfo` returns the same key.
 
-> Keys created before v11.0.0 authorise PKCS#1 v1.5 instead of OAEP. The plugin still falls back to
-> PKCS#1 v1.5 for those, so existing ciphertext keeps working, but new keys should use OAEP.
+For EC keys the payload is ECIES over P-256 with AES-128-GCM: the sender's 65-byte uncompressed
+ephemeral public key, then the ciphertext, then the 16-byte tag. The key derivation (ANSI X9.63
+KDF with SHA-256 over the ECDH shared secret) **differs by platform**, so encrypt for the platform
+you issued the key to:
+
+| Platform | Encrypt against | KDF shared info | KDF output | AES key | GCM IV |
+|----------|-----------------|-----------------|------------|---------|--------|
+| Android (`ecdsa` + `enableDecryption`) | `decryptingPublicKey` | empty | 28 bytes | first 16 bytes | last 12 bytes |
+| iOS / macOS (`ecdsa`) | `publicKey` | the 65-byte ephemeral public key | 16 bytes | all 16 bytes | 16 zero bytes |
+
+The iOS/macOS form is Apple's `eciesEncryptionStandardX963SHA256AESGCM`. A Dart reference
+implementation of both, used by the example apps, is in
+[`ecies.dart`](https://github.com/chamodanethra/biometric_signature/blob/main/example/packages/examples_shared/lib/src/crypto/ecies.dart).
+
+`decrypt` returns the plaintext as a UTF-8 string, so encrypt text; base64-encode binary data
+(e.g. an AES key that wraps a larger payload) before encrypting it.
+
+> Keys created before v11.0.0 authorise PKCS#1 v1.5 instead of OAEP. The plugin still decrypts
+> PKCS#1 v1.5 ciphertext for those keys, so existing ciphertext keeps working. Newer keys decrypt
+> OAEP only: on Android they don't allow PKCS#1 v1.5, and on iOS/macOS the fallback is limited to
+> keys created before v11.1.0 (keys from 11.0.x can't be told apart from older ones).
+
+## Hardware Key Attestation
+
+A signature proves possession of a private key. Key attestation also lets your server verify
+*where* that key lives. On Android 7.0+ you can pass a server-issued challenge to `createKeys`,
+and the keystore returns an X.509 certificate chain for the new signing key. The chain embeds your
+challenge and describes the key: its security level (TEE or StrongBox), its user-authentication
+requirements, the app that created it, and the device's boot state. The plugin returns the chain
+as raw DER bytes and leaves parsing and verification to your server.
+
+```dart
+// Random, single-use, at most 128 bytes, issued by your server.
+final Uint8List challenge = await api.fetchAttestationChallenge();
+
+final result = await biometricSignature.createKeys(
+  keyAlias: 'payment_key',
+  promptMessage: 'Create an attested key',
+  config: CreateKeysConfig(
+    signatureType: SignatureType.ecdsa,
+    attestationChallenge: Platform.isAndroid ? challenge : null,
+  ),
+);
+
+if (result.code == BiometricError.success) {
+  // DER X.509 certificates, leaf first (null on iOS/macOS/Windows).
+  final chain = result.attestationCertificateChain?.map(base64Encode).toList();
+  await api.registerKey(publicKey: result.publicKey, attestationChain: chain);
+} else if (result.code == BiometricError.notAvailable) {
+  // Transient keystore failure: retry later with a fresh challenge.
+} else if (result.code == BiometricError.notSupported) {
+  // This device can't attest keys: apply your server's policy.
+}
+```
+
+Attestation is an explicit opt-in, so `createKeys` fails instead of returning an unattested key:
+
+| Code | Cause | Existing key under the alias |
+|------|-------|------------------------------|
+| `invalidInput` | The challenge is empty or longer than 128 bytes | Untouched |
+| `notSupported` | Android 6 (API 23) | Untouched |
+| `notSupported` | The device's keystore can't attest the key | Deleted, as with any key-creation failure |
+| `notAvailable` | A transient keystore failure, e.g. attestation keys not provisioned yet. Retry later with a fresh challenge. Detected on Android 13+; older versions report `notSupported`. | Deleted |
+| `notSupported` | iOS, macOS or Windows | Untouched |
+
+- A failed attempt never leaves an unattested key behind. To keep an existing key if creation
+  fails, pass `failIfExists: true` (checked first) or use a fresh `keyAlias`.
+- If StrongBox key generation fails, the plugin retries once in the TEE. The chain's
+  `attestationSecurityLevel` tells your server which one produced the key.
+- In hybrid mode (`ecdsa` + `enableDecryption`) only the keystore EC signing key is attested; the
+  software decryption key cannot be.
+- `getKeyInfo` returns the same chain for a key created with a challenge, e.g. to retry a failed
+  upload. The chain still embeds the original challenge, so your server decides whether to accept
+  it.
+- **iOS/macOS**: Apple has no public API to attest an individual Secure Enclave key. App Attest
+  vouches for your app and device with a separate Apple-managed key, not for the plugin's keys.
+  **Windows**: not implemented; Windows Hello's `KeyCredential.GetAttestationAsync` is TPM-based
+  and takes no caller-supplied challenge. On these platforms setting `attestationChallenge`
+  returns `notSupported` rather than being ignored, so an unattested key is never mistaken for an
+  attested one. Only set it on Android, as in the example above.
+
+### Verifying the chain on your server
+
+Google recommends its [key attestation verification library](https://github.com/android/keyattestation)
+(Kotlin) over custom verifiers; see also
+[Verify hardware-backed key pairs with key attestation](https://developer.android.com/privacy-and-security/security-key-attestation).
+At a minimum:
+
+1. Validate the chain up to one of Google's attestation roots, published at
+   `https://android.googleapis.com/attestation/root`. Trust the whole published set rather than
+   pinning one certificate: a new ECDSA P-384 root has signed chains since February 2026,
+   alongside the older RSA root.
+2. Reject certificates listed as revoked or suspended at
+   `https://android.googleapis.com/attestation/status`.
+3. Traverse the validated chain from the trusted root toward the leaf and select the first
+   certificate containing the key description extension (OID `1.3.6.1.4.1.11129.2.1.17`). Reject
+   the chain if none exists. Do not assume this certificate is the leaf: an attacker can append
+   certificates with fabricated attestation extensions. Parse only the selected certificate's
+   extension and require its `attestationChallenge` to equal the challenge you issued. Accept
+   each challenge only once.
+4. In that same extension, require `attestationSecurityLevel` to be `TrustedEnvironment` or
+   `StrongBox`. Reject `Software`: emulators and devices without hardware attestation produce
+   software-rooted chains.
+5. Require the selected attestation certificate's public key to match the public key returned
+   by `createKeys`; reject a mismatch instead of using a later certificate's public key.
+6. In the selected certificate's extension, optionally check `attestationApplicationId` (package
+   name and signing-certificate digest), `rootOfTrust` (verified boot state, locked bootloader)
+   and the key's authorizations, e.g. that user authentication is required.
+
+The [Passwordless Login](https://github.com/chamodanethra/biometric_signature/tree/main/passwordless_login)
+and [Step-up Banking](https://github.com/chamodanethra/biometric_signature/tree/main/banking_app)
+examples perform checks 1 and 3–6 in Dart, in their mock server, to show what each one catches
+([`attestation_verifier.dart`](https://github.com/chamodanethra/biometric_signature/blob/main/example/packages/examples_shared/lib/src/attestation/attestation_verifier.dart)).
+They skip the revocation check (2). That code is for illustration; on a real server, use Google's
+library.
 
 ## Class: BiometricSignaturePlugin
 
@@ -428,6 +555,7 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
   - `publicKey`: The formatted public key string (Base64 or PEM).
   - `code`: `BiometricError` code (e.g., `success`, `userCanceled`, `keyAlreadyExists`).
   - `error`: Descriptive error message.
+  - `attestationCertificateChain`: DER X.509 attestation chain of the new key, leaf first. Android only, and only when `attestationChallenge` was set; see [Hardware Key Attestation](#hardware-key-attestation).
 
 #### CreateKeysConfig Options
 
@@ -443,19 +571,23 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
 | `promptSubtitle` | Android | none | Subtitle for biometric prompt |
 | `promptDescription` | Android | none | Description for biometric prompt |
 | `cancelButtonText` | Android | `"Cancel"` | Cancel button text |
+| `attestationChallenge` | Android 7.0+ | none | Server challenge (1–128 bytes) for [hardware key attestation](#hardware-key-attestation); the chain is returned in `attestationCertificateChain`. Returns `notSupported` on iOS/macOS/Windows |
 
 **On `setInvalidatedByBiometricEnrollment`:** the default is `true` on every platform that
 supports it — a key created without the flag is bound to the biometric set enrolled at
 creation time, and enrolling or removing a fingerprint/face permanently invalidates it. Your
-app must then create a new key and re-enroll its public key with the server; use
-`getKeyInfo(checkValidity: true)` to detect this before signing. Pass `false` to opt out and
-keep keys usable across enrollment changes.
+app must then create a new key and re-enroll its public key with the server. Signing or
+decrypting with an invalidated key returns `keyInvalidated` without showing a prompt, and
+`getKeyInfo(checkValidity: true)` detects it ahead of time. Pass `false` to opt out and keep
+keys usable across enrollment changes.
 
 It maps to `KeyGenParameterSpec.Builder.setInvalidatedByBiometricEnrollment(...)` on Android
 (API 23 has no such setter, so keys there are always invalidated) and selects
 `.biometryCurrentSet` vs `.biometryAny` on the Secure Enclave key for iOS/macOS. It is ignored
 on Windows, and ignored when `requireAuthentication` is `false` — a key with no
-user-authentication constraint is not tied to the enrolled biometric set.
+user-authentication constraint is not tied to the enrolled biometric set. On iOS/macOS it is
+also ignored when `useDeviceCredentials` is `true`: that key uses `.userPresence`, which the
+device passcode can always satisfy, so an enrollment change doesn't invalidate it.
 
 ```dart
 final result = await biometricSignature.createKeys(
@@ -484,7 +616,7 @@ if (result.code == BiometricError.success) {
 Prompts the user for biometric authentication and generates a cryptographic signature.
 
 - **Parameters**:
-  - `payload`: The data to sign
+  - `payload`: The data to sign, encoded as UTF-8. An empty payload returns `invalidInput` without a prompt; Android also rejects a whitespace-only one.
   - `keyAlias`: Which key to sign with. Defaults to the default alias.
   - `config`: `CreateSignatureConfig` with platform options
   - `signatureFormat`: Output format for signature
@@ -523,7 +655,7 @@ final result = await biometricSignature.createSignature(
 Prompts the user for biometric authentication and generates a cryptographic signature over raw binary data. This is ideal for challenge-response authentication flows where a random nonce is generated as raw bytes.
 
 - **Parameters**:
-  - `payload`: The raw byte data (`Uint8List`) to sign
+  - `payload`: The raw byte data (`Uint8List`) to sign. An empty payload returns `invalidInput` without a prompt.
   - `keyAlias`: Which key to sign with. Defaults to the default alias.
   - `config`: `CreateSignatureConfig` with platform options
   - `signatureFormat`: Output format for signature
@@ -568,7 +700,7 @@ final result = await biometricSignature.createSignatureFromBytes(
 Decrypts the given payload using the private key and biometrics.
 
 - **Parameters**:
-  - `payload`: The encrypted data. See [Encrypting a payload](#encrypting-a-payload) for the exact scheme the backend must use.
+  - `payload`: The encrypted data. See [Encrypting a payload](#encrypting-a-payload) for the exact scheme the backend must use. A payload that is empty, whitespace-only or can't be decoded as `payloadFormat` returns `invalidInput` without a prompt. Base64 uses the standard alphabet: spaces, tabs and line breaks are ignored, and any other character outside it makes the payload invalid.
   - `payloadFormat`: Format of encrypted data (`PayloadFormat.base64`, `hex`)
   - `keyAlias`: Which key to decrypt with. Defaults to the default alias.
   - `config`: `DecryptConfig` with platform options
@@ -677,6 +809,7 @@ Retrieves detailed information about existing biometric keys without prompting f
   - `isHybridMode`: Whether using hybrid signing/decryption keys.
   - `publicKey`: The signing public key.
   - `decryptingPublicKey`: Decryption key (hybrid mode only).
+  - `attestationCertificateChain`: Attestation chain of a key created with `attestationChallenge` (Android only; `null` for unattested keys).
 
 ```dart
 final info = await biometricSignature.getKeyInfo(

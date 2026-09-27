@@ -1,388 +1,178 @@
-import 'package:biometric_signature/biometric_signature.dart';
+import 'package:examples_shared/ui.dart';
 import 'package:flutter/material.dart';
-import 'package:passwordless_login_example/screens/home_screen.dart';
-import 'package:passwordless_login_example/screens/register_screen.dart';
-import 'package:passwordless_login_example/services/auth_service.dart';
 
+import '../app_scope.dart';
+import '../client/accounts.dart';
+import '../client/auth_client.dart';
+import '../client/outcome.dart';
+import '../server/models.dart';
+import '../widgets/app_scaffold.dart';
+import '../widgets/outcome_view.dart';
+import '../widgets/signing_trace.dart';
+import 'preflight_screen.dart';
+import 'recovery_screen.dart';
+import 'session_screen.dart';
+
+/// Signs in by signing a server nonce, and shows the signing trace.
+///
+/// Without an [account], asks for a username and looks for one of that
+/// account's keys on this device (e.g. an iOS keychain key that survived a
+/// reinstall), restoring the account here.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  /// Creates the screen.
+  const LoginScreen({super.key, this.account});
+
+  /// The account to sign in, or `null` to find one by username.
+  final LocalAccount? account;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final AuthService _authService = AuthService();
-  final _usernameController = TextEditingController();
-  bool _isLoading = false;
+  late final _username = TextEditingController(text: widget.account?.username);
+  LoginTrace? _trace;
+  AuthOutcome<SignIn>? _outcome;
+  bool _busy = false;
+  String? _usernameError;
 
   @override
   void dispose() {
-    _usernameController.dispose();
+    _username.dispose();
     super.dispose();
   }
 
-  Future<void> _login() async {
-    final username = _usernameController.text.trim();
-
-    if (username.isEmpty) {
-      _showError('Please enter your username');
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      // Request challenge from server
-      final challenge = await _authService.requestChallenge(username);
-
-      // Authenticate with biometric (signs the challenge)
-      final result = await _authService.authenticateWithChallenge(
-        username: username,
-        challengeId: challenge.challengeId,
-      );
-
-      // Handle different error codes
-      if (result.code != BiometricError.success) {
-        await _handleBiometricError(result, username);
-        setState(() => _isLoading = false);
-        return;
+  Future<void> _signIn() async {
+    final services = AppScope.of(context);
+    final name = normalizeUsername(_username.text);
+    final problem = usernameProblem(name);
+    final trace = LoginTrace(name);
+    setState(() {
+      _usernameError = problem;
+      if (problem == null) {
+        _busy = true;
+        _outcome = null;
+        _trace = trace;
       }
+    });
+    if (problem != null) return;
+    final outcome = await services.client.login(
+      username: name,
+      account: widget.account,
+      trace: trace,
+    );
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _outcome = outcome;
+    });
+  }
 
-      // Success - create session and navigate
-      await _authService.createSession(username);
-
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-        );
-      }
-    } catch (e) {
-      _showError(e.toString());
-      setState(() => _isLoading = false);
+  Future<void> _unlockThenSignIn() async {
+    final unlocked =
+        await AppScope.of(context).client.unlockWithDeviceCredential();
+    if (!mounted) return;
+    if (unlocked is Success) {
+      await _signIn();
+    } else {
+      setState(() => _outcome = unlocked.castFailure());
     }
   }
 
-  Future<void> _handleBiometricError(
-    SignatureResult result,
-    String username,
-  ) async {
-    switch (result.code) {
-      case BiometricError.userCanceled:
-        _showSnackBar('Authentication cancelled');
-        break;
-
-      case BiometricError.keyInvalidated:
-        final reEnroll = await _showReEnrollDialog();
-        if (reEnroll == true && mounted) {
-          await _performReEnrollment(username);
-        }
-        break;
-
-      case BiometricError.lockedOut:
-        await _showLockedOutDialog(temporary: true);
-        break;
-
-      case BiometricError.lockedOutPermanent:
-        await _showLockedOutDialog(temporary: false);
-        break;
-
-      case BiometricError.notEnrolled:
-        await _showNotEnrolledDialog();
-        break;
-
-      case BiometricError.notAvailable:
-        await _showNotAvailableDialog();
-        break;
-
-      case BiometricError.keyNotFound:
-        await _showKeyNotFoundDialog(username);
-        break;
-
-      default:
-        _showError('Authentication failed: ${result.error ?? result.code}');
-    }
-  }
-
-  Future<bool?> _showReEnrollDialog() {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange),
-            SizedBox(width: 12),
-            Text('Key Invalidated'),
-          ],
-        ),
-        content: const Text(
-          'Your biometric key has been invalidated due to changes in enrolled '
-          'biometrics (e.g., adding a new fingerprint or face).\n\n'
-          'You need to re-enroll to continue using biometric authentication.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Re-enroll'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _performReEnrollment(String username) async {
-    setState(() => _isLoading = true);
-    try {
-      await _authService.reEnrollBiometrics(username);
-      _showSnackBar('Biometric re-enrollment successful! Please login again.');
-    } catch (e) {
-      _showError('Re-enrollment failed: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _showLockedOutDialog({required bool temporary}) {
-    return showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.lock_clock,
-                color: temporary ? Colors.orange : Colors.red),
-            const SizedBox(width: 12),
-            Text(temporary ? 'Temporarily Locked Out' : 'Locked Out'),
-          ],
-        ),
-        content: Text(
-          temporary
-              ? 'Too many failed biometric attempts. Please wait a moment '
-                  'before trying again, or use your device passcode if enabled.'
-              : 'You are locked out due to too many failed attempts. You must '
-                  'authenticate with your device passcode/PIN to unlock biometric authentication.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showNotEnrolledDialog() {
-    return showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.fingerprint_outlined, color: Colors.orange),
-            SizedBox(width: 12),
-            Text('No Biometrics Enrolled'),
-          ],
-        ),
-        content: const Text(
-          'No fingerprints or face data are enrolled on this device.\n\n'
-          'Please go to your device Settings and enroll at least one biometric '
-          'before using this authentication method.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showNotAvailableDialog() {
-    return showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.error_outline, color: Colors.red),
-            SizedBox(width: 12),
-            Text('Biometrics Not Available'),
-          ],
-        ),
-        content: const Text(
-          'Biometric authentication is not available on this device.\n\n'
-          'This could be because:\n'
-          '• The device has no biometric hardware\n'
-          '• Biometrics are disabled in settings\n'
-          '• The device is not secure (no lock screen)',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showKeyNotFoundDialog(String username) {
-    return showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.key_off, color: Colors.orange),
-            SizedBox(width: 12),
-            Text('Key Not Found'),
-          ],
-        ),
-        content: const Text(
-          'No biometric key found for your account.\n\n'
-          'You may need to re-enroll your biometric authentication.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _performReEnrollment(username);
-            },
-            child: const Text('Re-enroll'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
-    );
-  }
-
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+  void _open(Widget screen, {bool replace = false}) {
+    final route = MaterialPageRoute<void>(builder: (_) => screen);
+    final navigator = Navigator.of(context);
+    replace ? navigator.pushReplacement(route) : navigator.push(route);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+    final services = AppScope.of(context);
+    final account = widget.account;
+    final outcome = _outcome;
+    final trace = _trace;
+    return AppScaffold(
+      title: account == null ? 'Sign in to an existing account' : 'Sign in',
+      body: PageList(children: [
+        if (account == null)
+          SectionCard(
+            title: 'Find your key',
+            subtitle: 'No local account needed',
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Icon(
-                  Icons.fingerprint,
-                  size: 80,
-                  color: Theme.of(context).primaryColor,
+                const Explainer(
+                  'The server lists the key aliases registered for the '
+                  'username. If one of them is still on this device — an iOS '
+                  'keychain key survives uninstalling the app, while its '
+                  'preferences do not — signing with it restores the account '
+                  'here. Otherwise use your recovery code.',
                 ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Welcome Back',
-                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Login with your biometrics',
-                  style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-                ),
-                const SizedBox(height: 48),
+                const SizedBox(height: 12),
                 TextField(
-                  controller: _usernameController,
-                  decoration: const InputDecoration(
+                  key: const Key('login-username'),
+                  controller: _username,
+                  enabled: !_busy,
+                  autocorrect: false,
+                  decoration: InputDecoration(
                     labelText: 'Username',
-                    prefixIcon: Icon(Icons.person),
-                  ),
-                  enabled: !_isLoading,
-                  onSubmitted: (_) => _login(),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _login,
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.fingerprint),
-                              SizedBox(width: 8),
-                              Text('Login', style: TextStyle(fontSize: 16)),
-                            ],
-                          ),
-                  ),
-                ),
-                const SizedBox(height: 32),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'Don\'t have an account? ',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const RegisterScreen(),
-                          ),
-                        );
-                      },
-                      child: const Text('Register'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 48),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                  ),
-                  child: Column(
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.security, size: 20, color: Colors.blue),
-                          SizedBox(width: 8),
-                          Text(
-                            'Secure & Passwordless',
-                            style: TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Your biometric data never leaves your device. '
-                        'We use cryptographic signatures for authentication.',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                      ),
-                    ],
+                    errorText: _usernameError,
+                    prefixIcon: const Icon(Icons.person_outline),
                   ),
                 ),
               ],
             ),
+          )
+        else
+          SectionCard(
+            title: account.username,
+            subtitle: '${account.alias} · ${account.trustTier.label}',
+            child: Explainer(
+              'Signing proves this device holds the key registered for '
+              '${account.username}. The prompt appears once; nothing but the '
+              'signature leaves the device.'
+              '${account.allowDeviceCredentials ? ' Your device PIN / passcode is also accepted.' : ''}',
+            ),
           ),
+        FilledButton.icon(
+          key: const Key('sign-in'),
+          onPressed: _busy ? null : _signIn,
+          icon: const Icon(Icons.fingerprint),
+          label: Text(_busy ? 'Signing in…' : 'Sign in'),
         ),
-      ),
+        if (outcome case Success(:final value))
+          CapabilityBanner(
+            kind: StatusKind.success,
+            title: value.restored
+                ? 'Signed in — account restored on this device'
+                : 'Signed in',
+            message: 'The server verified the signature and issued a session.',
+            action: FilledButton(
+              key: const Key('continue'),
+              onPressed: () =>
+                  _open(SessionScreen(signIn: value), replace: true),
+              child: const Text('Continue'),
+            ),
+          )
+        else if (outcome != null)
+          OutcomeView(
+            outcome: outcome,
+            onRetry: _signIn,
+            onUnlock: _unlockThenSignIn,
+            onPreflight: () => _open(const PreflightScreen()),
+            onRebind: () => _open(
+              RecoveryScreen(
+                account: outcome is NeedsRebind<SignIn>
+                    ? outcome.account ?? account
+                    : account,
+                username: normalizeUsername(_username.text),
+              ),
+              replace: true,
+            ),
+          ),
+        if (trace != null)
+          SigningTraceView(trace: trace, platform: services.platform),
+      ]),
     );
   }
 }

@@ -1,414 +1,269 @@
-import 'package:banking_app_example/models/account.dart';
-import 'package:banking_app_example/services/transaction_service.dart';
+import 'package:examples_shared/ui.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 
+import '../app.dart';
+import '../client/bank_client.dart';
+import '../money.dart';
+import '../server/models.dart';
+import '../server/risk_policy.dart';
+import '../widgets/bank_widgets.dart';
+import 'approve_screen.dart';
+
+/// Enter a transfer; see its risk tier live; ask the bank to prepare it.
 class TransferScreen extends StatefulWidget {
-  final List<Account> accounts;
-
-  const TransferScreen({super.key, required this.accounts});
+  /// Creates the screen.
+  const TransferScreen({super.key});
 
   @override
   State<TransferScreen> createState() => _TransferScreenState();
 }
 
 class _TransferScreenState extends State<TransferScreen> {
-  final TransactionService _transactionService = TransactionService();
-  final _formKey = GlobalKey<FormState>();
-  final _amountController = TextEditingController();
-  final _descriptionController = TextEditingController();
-
-  Account? _fromAccount;
-  Account? _toAccount;
-  bool _isProcessing = false;
+  final _amount = TextEditingController();
+  String? _fromAccount;
+  String? _payeeId;
+  bool _busy = false;
+  BankError? _error;
 
   @override
   void initState() {
     super.initState();
-    if (widget.accounts.isNotEmpty) {
-      _fromAccount = widget.accounts.first;
-    }
+    _amount.addListener(() => setState(() => _error = null));
   }
 
   @override
   void dispose() {
-    _amountController.dispose();
-    _descriptionController.dispose();
+    _amount.dispose();
     super.dispose();
   }
 
-  Future<void> _processTransfer() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    if (_fromAccount == null || _toAccount == null) {
-      _showError('Please select both accounts');
-      return;
-    }
-
-    if (_fromAccount!.id == _toAccount!.id) {
-      _showError('Cannot transfer to the same account');
-      return;
-    }
-
-    final amount = double.tryParse(_amountController.text);
-    if (amount == null || amount <= 0) {
-      _showError('Invalid amount');
-      return;
-    }
-
-    setState(() => _isProcessing = true);
-
+  Future<void> _review() async {
+    final services = AppScope.of(context);
+    final cents = parseAmountToCents(_amount.text);
+    if (cents == null || _fromAccount == null || _payeeId == null) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     try {
-      // Show confirmation dialog
-      final confirmed = await _showConfirmationDialog(amount);
-
-      if (!confirmed) {
-        setState(() => _isProcessing = false);
-        return;
-      }
-
-      // Create and sign transaction (this triggers biometric prompt)
-      final transaction = await _transactionService.createTransaction(
-        fromAccountId: _fromAccount!.id,
-        toAccountId: _toAccount!.id,
-        amount: amount,
-        description: _descriptionController.text.trim(),
+      final prepared = await services.client.prepareTransfer(
+        fromAccount: _fromAccount!,
+        payeeId: _payeeId!,
+        amountCents: cents,
       );
-
-      if (mounted) {
-        // Show success
-        await showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.green, size: 32),
-                SizedBox(width: 12),
-                Text('Transfer Successful'),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Amount: ${NumberFormat.currency(symbol: '\$').format(amount)}',
-                ),
-                Text('From: ${_fromAccount!.name}'),
-                Text('To: ${_toAccount!.name}'),
-                const SizedBox(height: 8),
-                const Divider(),
-                const SizedBox(height: 8),
-                const Text(
-                  'Transaction ID:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  transaction.id,
-                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Signature:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  '${transaction.signature.substring(0, 32)}...',
-                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
-                ),
-              ],
-            ),
-            actions: [
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context); // Close dialog
-                  Navigator.pop(context, true); // Return to home with success
-                },
-                child: const Text('Done'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      _showError(e.toString());
-      setState(() => _isProcessing = false);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ApproveScreen(prepared: prepared)));
+    } on BankError catch (e) {
+      if (mounted) setState(() => _error = e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
-  }
-
-  Future<bool> _showConfirmationDialog(double amount) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm Transfer'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'You are about to transfer:',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              NumberFormat.currency(symbol: '\$').format(amount),
-              style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            _buildInfoRow('From', _fromAccount!.name),
-            _buildInfoRow('To', _toAccount!.name),
-            if (_descriptionController.text.isNotEmpty)
-              _buildInfoRow('Note', _descriptionController.text),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, size: 20, color: Colors.blue),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'You will be asked to authenticate with biometrics',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
-    );
-
-    return result ?? false;
-  }
-
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 60,
-            child: Text('$label:', style: TextStyle(color: Colors.grey[600])),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final availableToAccounts =
-        widget.accounts.where((a) => a.id != _fromAccount?.id).toList();
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Transfer Money')),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // From Account
-            const Text(
-              'From Account',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<Account>(
-              value: _fromAccount,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.account_balance_wallet),
-              ),
-              items: widget.accounts.map((account) {
-                return DropdownMenuItem(
-                  value: account,
-                  child: Text(
-                    '${account.name} - ${NumberFormat.currency(symbol: '\$').format(account.balance)}',
-                    style: const TextStyle(fontSize: 14),
+    final services = AppScope.of(context);
+    final snapshot = services.session.snapshot;
+    if (snapshot == null) {
+      return const BankScaffold(
+        title: 'New transfer',
+        body: Center(child: Text('Load your accounts first.')),
+      );
+    }
+    _fromAccount ??= snapshot.accounts.first.id;
+    _payeeId ??= snapshot.payees.first.id;
+    final policy = snapshot.policy;
+    final cents = parseAmountToCents(_amount.text);
+    final theme = Theme.of(context);
+    final examples = [
+      4500,
+      125000,
+      policy.tierBLimitCents + 40000,
+    ];
+    return BankScaffold(
+      title: 'New transfer',
+      body: ListView(
+        padding: pagePadding(context),
+        children: [
+          SectionCard(
+            title: 'From',
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final a in snapshot.accounts)
+                  ChoiceChip(
+                    label: Text('${a.name} ${maskAccount(a.id)} · '
+                        '${formatCents(a.balanceCents)}'),
+                    selected: _fromAccount == a.id,
+                    onSelected: (_) => setState(() => _fromAccount = a.id),
                   ),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _fromAccount = value;
-                  // Reset to account if it's the same as from
-                  if (_toAccount?.id == value?.id) {
-                    _toAccount = null;
-                  }
-                });
-              },
-              validator: (value) =>
-                  value == null ? 'Please select an account' : null,
-            ),
-
-            const SizedBox(height: 24),
-
-            // To Account
-            const Text(
-              'To Account',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<Account>(
-              value: _toAccount,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.account_balance),
-              ),
-              items: availableToAccounts.map((account) {
-                return DropdownMenuItem(
-                  value: account,
-                  child: Text(account.name),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() => _toAccount = value);
-              },
-              validator: (value) =>
-                  value == null ? 'Please select an account' : null,
-            ),
-
-            const SizedBox(height: 24),
-
-            // Amount
-            const Text(
-              'Amount',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: _amountController,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.attach_money),
-                hintText: '0.00',
-              ),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
               ],
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter an amount';
-                }
-                final amount = double.tryParse(value);
-                if (amount == null || amount <= 0) {
-                  return 'Please enter a valid amount';
-                }
-                if (_fromAccount != null && amount > _fromAccount!.balance) {
-                  return 'Insufficient balance';
-                }
-                return null;
-              },
             ),
-
-            const SizedBox(height: 24),
-
-            // Description (optional)
-            const Text(
-              'Description (Optional)',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.note),
-                hintText: 'Add a note...',
-              ),
-              maxLines: 2,
-            ),
-
-            const SizedBox(height: 32),
-
-            // Submit Button
-            ElevatedButton(
-              onPressed: _isProcessing ? null : _processTransfer,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-              child: _isProcessing
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.fingerprint),
-                        SizedBox(width: 8),
-                        Text(
-                          'Authenticate & Transfer',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                      ],
-                    ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Security Info
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.green.withOpacity(0.3)),
-              ),
-              child: const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.security, color: Colors.green, size: 20),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'This transaction will be cryptographically signed using '
-                      'your device\'s secure hardware. You will be asked to '
-                      'authenticate with biometrics.',
-                      style: TextStyle(fontSize: 12),
-                    ),
+          ),
+          gap,
+          SectionCard(
+            title: 'To',
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final p in snapshot.payees)
+                  ChoiceChip(
+                    label: Text('${p.name} ${p.account}'),
+                    selected: _payeeId == p.id,
+                    onSelected: (_) => setState(() => _payeeId = p.id),
                   ),
-                ],
-              ),
+              ],
+            ),
+          ),
+          gap,
+          SectionCard(
+            title: 'Amount',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  key: const ValueKey('amount-field'),
+                  controller: _amount,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    prefixText: r'$ ',
+                    labelText: 'Amount (USD)',
+                    errorText: _amount.text.isNotEmpty && cents == null
+                        ? 'Enter an amount like 1250 or 1,250.00'
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final e in examples)
+                      ActionChip(
+                        label: Text('${formatCents(e)} · tier '
+                            '${policy.tierFor(e).label}'),
+                        onPressed: () => _amount.text = '${e ~/ 100}.'
+                            '${(e % 100).toString().padLeft(2, '0')}',
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          gap,
+          if (cents == null)
+            SectionCard(
+              title: 'Risk tier',
+              subtitle: 'Enter an amount to see what the bank will require',
+              child: _TierTable(policy: policy),
+            )
+          else
+            _TierPreview(
+                decision: policy.evaluate(cents, snapshot.device),
+                policy: policy,
+                fetchedAt: snapshot.fetchedAt),
+          if (_error != null) ...[
+            gap,
+            CapabilityBanner(
+              kind: StatusKind.danger,
+              title: _error!.reasonCode == 'tier'
+                  ? 'The bank declined this transfer'
+                  : 'Could not prepare the transfer',
+              message: _error!.message,
             ),
           ],
-        ),
+          gap,
+          FilledButton.icon(
+            key: const ValueKey('review-transfer'),
+            onPressed: _busy || cents == null || cents <= 0 ? null : _review,
+            icon: _busy
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.arrow_forward),
+            label: const Text('Review'),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Review asks the bank to prepare the transfer (a request signed '
+            'silently by device_binding). The bank decides the tier and '
+            'returns the exact bytes you will approve.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
       ),
     );
   }
+}
+
+class _TierPreview extends StatelessWidget {
+  const _TierPreview({
+    required this.decision,
+    required this.policy,
+    required this.fetchedAt,
+  });
+
+  final TierDecision decision;
+  final RiskPolicy policy;
+  final DateTime fetchedAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final tier = decision.tier;
+    return SectionCard(
+      key: const ValueKey('tier-preview'),
+      title: 'Tier ${tier.label} · ${policy.rangeFor(tier)}',
+      subtitle: 'Preview from the bank\'s policy as of '
+          '${formatTime(fetchedAt)}; the bank decides when you continue.',
+      trailing: TierChip(tier),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          KeyValueRow(
+              label: 'Requires', value: decision.requirement, copyable: false),
+          KeyValueRow(
+            label: 'Signed by',
+            value: tier == RiskTier.a
+                ? '${KeyAliases.deviceBinding} — silently, no prompt'
+                : '${KeyAliases.approval} — biometric prompt',
+            copyable: false,
+          ),
+          if (decision.allowed)
+            KeyValueRow(
+                label: 'Assurance', value: decision.assurance, copyable: false)
+          else ...[
+            const SizedBox(height: 8),
+            CapabilityBanner(
+              kind: StatusKind.warning,
+              title: 'Not allowed on this device',
+              message: decision.reason!,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TierTable extends StatelessWidget {
+  const _TierTable({required this.policy});
+
+  final RiskPolicy policy;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final t in RiskTier.values)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: TierChip(t),
+              title: Text(policy.rangeFor(t)),
+              subtitle: Text(policy.requirementFor(t)),
+            ),
+        ],
+      );
 }

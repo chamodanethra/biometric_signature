@@ -6,5 +6,5 @@ include: package:flutter_lints/flutter.yaml
 analyzer:
   exclude:
     - banking_app/**
-    - document_signer/**
+    - secure_vault/**
     - passwordless_login/**

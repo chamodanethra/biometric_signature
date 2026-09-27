@@ -10,11 +10,32 @@ import java.security.KeyPair
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.security.ProviderException
+import java.security.cert.Certificate
+import java.security.cert.X509Certificate
 import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.RSAKeyGenParameterSpec
 import javax.crypto.KeyGenerator
+
+/**
+ * Attestation was requested but the device could not produce an attested key.
+ *
+ * [isTransient] is true when the keystore reported that retrying later is likely
+ * to succeed (e.g. remotely provisioned attestation keys are not available yet).
+ */
+class KeyAttestationException(
+    message: String,
+    cause: Throwable? = null,
+    val isTransient: Boolean = false
+) : Exception(message, cause)
+
+/** A generated keystore key plus its attestation chain (null when attestation was not requested). */
+data class GeneratedKey(
+    val keyPair: KeyPair,
+    val attestationCertChain: List<ByteArray>?
+)
 
 class KeyManager(private val appContext: Context, private val fileIO: FileIOHelper) {
 
@@ -23,8 +44,9 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
         useDeviceCredentials: Boolean,
         invalidateOnEnrollment: Boolean,
         enableDecryption: Boolean,
-        requireAuthentication: Boolean
-    ): KeyPair {
+        requireAuthentication: Boolean,
+        attestationChallenge: ByteArray? = null
+    ): GeneratedKey {
         val purposes = if (enableDecryption) {
             KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_DECRYPT
         } else {
@@ -32,49 +54,213 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
         }
 
         val alias = Constants.biometricKeyAlias(keyAlias)
-        val builder = KeyGenParameterSpec.Builder(alias, purposes)
-            .setDigests(KeyProperties.DIGEST_SHA256)
-            .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
-            .setAlgorithmParameterSpec(RSAKeyGenParameterSpec(2048, RSAKeyGenParameterSpec.F4))
-            .setUserAuthenticationRequired(requireAuthentication)
 
-        if (enableDecryption) {
-            builder.setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_OAEP)
-            tryPinOaepMgf1Digest(builder)
+        fun specFor(useStrongBox: Boolean): KeyGenParameterSpec {
+            val builder = KeyGenParameterSpec.Builder(alias, purposes)
+                .setDigests(KeyProperties.DIGEST_SHA256)
+                .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
+                .setAlgorithmParameterSpec(RSAKeyGenParameterSpec(2048, RSAKeyGenParameterSpec.F4))
+                .setUserAuthenticationRequired(requireAuthentication)
+
+            if (enableDecryption) {
+                builder.setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_OAEP)
+                tryPinOaepMgf1Digest(builder)
+            }
+
+            if (requireAuthentication) {
+                configurePerOperationAuth(builder, useDeviceCredentials)
+                configureInvalidation(builder, invalidateOnEnrollment)
+            }
+            if (useStrongBox) tryEnableStrongBox(builder)
+            applyAttestationChallenge(builder, attestationChallenge)
+            return builder.build()
         }
 
-        if (requireAuthentication) {
-            configurePerOperationAuth(builder, useDeviceCredentials)
-            configureInvalidation(builder, invalidateOnEnrollment)
-        }
-        tryEnableStrongBox(builder)
-
-        val kpg = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, Constants.KEYSTORE_PROVIDER)
-        kpg.initialize(builder.build())
-        return kpg.generateKeyPair()
+        return generateKeyPairWithOptionalAttestation(
+            KeyProperties.KEY_ALGORITHM_RSA, alias, attestationChallenge, ::specFor
+        )
     }
 
     fun generateEcKeyInKeyStore(
         keyAlias: String?,
         useDeviceCredentials: Boolean,
         invalidateOnEnrollment: Boolean,
-        requireAuthentication: Boolean
-    ): KeyPair {
+        requireAuthentication: Boolean,
+        attestationChallenge: ByteArray? = null
+    ): GeneratedKey {
         val alias = Constants.biometricKeyAlias(keyAlias)
-        val builder = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
-            .setDigests(KeyProperties.DIGEST_SHA256)
-            .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
-            .setUserAuthenticationRequired(requireAuthentication)
 
-        if (requireAuthentication) {
-            configurePerOperationAuth(builder, useDeviceCredentials)
-            configureInvalidation(builder, invalidateOnEnrollment)
+        fun specFor(useStrongBox: Boolean): KeyGenParameterSpec {
+            val builder = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
+                .setDigests(KeyProperties.DIGEST_SHA256)
+                .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+                .setUserAuthenticationRequired(requireAuthentication)
+
+            if (requireAuthentication) {
+                configurePerOperationAuth(builder, useDeviceCredentials)
+                configureInvalidation(builder, invalidateOnEnrollment)
+            }
+            if (useStrongBox) tryEnableStrongBox(builder)
+            applyAttestationChallenge(builder, attestationChallenge)
+            return builder.build()
         }
-        tryEnableStrongBox(builder)
 
-        val kpg = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, Constants.KEYSTORE_PROVIDER)
-        kpg.initialize(builder.build())
-        return kpg.generateKeyPair()
+        return generateKeyPairWithOptionalAttestation(
+            KeyProperties.KEY_ALGORITHM_EC, alias, attestationChallenge, ::specFor
+        )
+    }
+
+    /**
+     * Runs key generation, adding attestation-specific failure handling.
+     *
+     * Without a challenge the behavior is identical to the pre-attestation
+     * code path: a single attempt with StrongBox enabled best-effort, any
+     * failure propagating unchanged to the caller.
+     *
+     * With a challenge, failures are handled deliberately because attestation
+     * is an explicit opt-in that must not silently degrade: StrongBox devices
+     * can fail attestation-chain generation (StrongBoxUnavailableException,
+     * ProviderException) at generateKeyPair() time, where the builder-level
+     * try/catch helpers cannot see them. A single TEE retry keeps the
+     * attestation hardware-backed; it is skipped when StrongBox was never
+     * requested, since it would only repeat the same (slow) TEE attempt. A
+     * final failure removes any partial keystore entry so an unattested key
+     * never shadows the alias.
+     */
+    private fun generateKeyPairWithOptionalAttestation(
+        keyAlgorithm: String,
+        alias: String,
+        attestationChallenge: ByteArray?,
+        specFor: (useStrongBox: Boolean) -> KeyGenParameterSpec
+    ): GeneratedKey {
+        fun generate(spec: KeyGenParameterSpec): KeyPair {
+            val kpg = KeyPairGenerator.getInstance(keyAlgorithm, Constants.KEYSTORE_PROVIDER)
+            kpg.initialize(spec)
+            return kpg.generateKeyPair()
+        }
+
+        val spec = specFor(true)
+        if (attestationChallenge == null) {
+            return GeneratedKey(generate(spec), null)
+        }
+
+        val keyPair = try {
+            generate(spec)
+        } catch (firstFailure: Exception) {
+            deleteEntryQuietly(alias)
+            if (!isStrongBoxBacked(spec)) throw attestationFailure(firstFailure)
+            try {
+                generate(specFor(false))
+            } catch (teeFailure: Exception) {
+                deleteEntryQuietly(alias)
+                throw attestationFailure(teeFailure)
+            }
+        }
+
+        val chain = runCatching {
+            val keyStore = KeyStore.getInstance(Constants.KEYSTORE_PROVIDER).apply { load(null) }
+            attestationChainOf(keyStore.getCertificateChain(alias))
+        }.getOrNull()
+        if (chain == null) {
+            // Never hand back an unattested key the caller believes is attested.
+            deleteEntryQuietly(alias)
+            throw KeyAttestationException("Keystore returned no key attestation certificate chain")
+        }
+        return GeneratedKey(keyPair, chain)
+    }
+
+    /**
+     * The DER-encoded chain (leaf first) if [certificates] is a key attestation
+     * chain: at least two certificates, with the Android key attestation
+     * extension on the leaf. An unattested key's single self-signed keystore
+     * certificate yields null. Never throws.
+     */
+    fun attestationChainOf(certificates: Array<out Certificate>?): List<ByteArray>? {
+        if (certificates == null || certificates.size < 2) return null
+        val leaf = certificates[0] as? X509Certificate ?: return null
+        return try {
+            if (leaf.getExtensionValue(Constants.KEY_ATTESTATION_EXTENSION_OID) == null) null
+            else certificates.map { it.encoded }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun isStrongBoxBacked(spec: KeyGenParameterSpec): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && spec.isStrongBoxBacked
+
+    private fun deleteEntryQuietly(alias: String) {
+        runCatching {
+            KeyStore.getInstance(Constants.KEYSTORE_PROVIDER)
+                .apply { load(null) }
+                .deleteEntry(alias)
+        }
+    }
+
+    /**
+     * Classifies a key-generation failure that happened with a challenge set.
+     *
+     * Keystore failures surface as ProviderException (StrongBoxUnavailableException
+     * included) wrapping an android.security.KeyStoreException, and become a
+     * [KeyAttestationException]. Its message carries the whole cause chain
+     * because the useful text — e.g. the remote key provisioning status — sits on
+     * inner causes. Anything else (e.g. an invalid parameter) is returned
+     * unchanged, so the generic error mapping classifies it exactly as it would
+     * without a challenge.
+     */
+    private fun attestationFailure(e: Exception): Exception {
+        if (e !is ProviderException) return e
+        val causes = causeChain(e)
+        val detail = causes.mapNotNull { it.message?.takeIf(String::isNotBlank) }
+            .distinct()
+            .joinToString(" -> ")
+        return if (isTransientKeystoreFailure(causes)) {
+            KeyAttestationException(
+                "Key attestation is temporarily unavailable, retry later ($detail)",
+                e,
+                isTransient = true
+            )
+        } else {
+            KeyAttestationException("Key attestation failed ($detail)", e)
+        }
+    }
+
+    private fun causeChain(e: Throwable): List<Throwable> {
+        val chain = mutableListOf<Throwable>()
+        var current: Throwable? = e
+        while (current != null && current !in chain) {
+            chain.add(current)
+            current = current.cause
+        }
+        return chain
+    }
+
+    /**
+     * Whether the keystore marked the failure transient, i.e. retrying later is
+     * likely to succeed (attestation keys still being provisioned, secure
+     * hardware busy, ...). The flag is public API from Android 13 (API 33);
+     * earlier versions don't expose it, so their failures count as permanent.
+     */
+    private fun isTransientKeystoreFailure(causes: List<Throwable>): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        for (cause in causes) {
+            if (cause is android.security.KeyStoreException && cause.isTransientFailure) return true
+        }
+        return false
+    }
+
+    /**
+     * Requests an attestation certificate chain for the key. The plugin
+     * pre-validates API 24 and rejects older devices; the guard here keeps
+     * the setter call itself legal on API 23.
+     */
+    private fun applyAttestationChallenge(
+        builder: KeyGenParameterSpec.Builder,
+        attestationChallenge: ByteArray?
+    ) {
+        if (attestationChallenge != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            builder.setAttestationChallenge(attestationChallenge)
+        }
     }
 
     fun generateMasterKey(keyAlias: String?, useDeviceCredentials: Boolean, invalidateOnEnrollment: Boolean, requireAuthentication: Boolean) {

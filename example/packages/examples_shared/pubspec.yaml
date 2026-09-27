@@ -1,0 +1,24 @@
+name: examples_shared
+description: >-
+  Shared, unpublished helpers for the biometric_signature example apps: DER,
+  signature verification, ECIES / RSA-OAEP encryption, Android key
+  attestation verification, a mock server toolkit, UI widgets and a
+  software fake of the plugin platform. Demo code, not production code.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+  flutter: '>=3.24.5'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  biometric_signature:
+    path: ../../../
+  pointycastle: ^4.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0

@@ -346,7 +346,16 @@ data class KeyCreationResult (
    * See [AuthenticationType] for how inference is performed when the
    * platform does not report the method directly.
    */
-  val authenticationType: AuthenticationType? = null
+  val authenticationType: AuthenticationType? = null,
+  /**
+   * [Android] DER-encoded X.509 key attestation certificate chain of the new
+   * signing key, leaf (the attestation certificate) first, root last.
+   *
+   * Set only when [CreateKeysConfig.attestationChallenge] was provided and
+   * key creation succeeded; null otherwise and on all other platforms. The
+   * plugin does not parse or verify the chain — send it to your server.
+   */
+  val attestationCertificateChain: List<ByteArray>? = null
 )
  {
   companion object {
@@ -362,7 +371,8 @@ data class KeyCreationResult (
       val decryptingKeySize = pigeonVar_list[8] as Long?
       val isHybridMode = pigeonVar_list[9] as Boolean?
       val authenticationType = pigeonVar_list[10] as AuthenticationType?
-      return KeyCreationResult(publicKey, publicKeyBytes, error, code, algorithm, keySize, decryptingPublicKey, decryptingAlgorithm, decryptingKeySize, isHybridMode, authenticationType)
+      val attestationCertificateChain = pigeonVar_list[11] as List<ByteArray>?
+      return KeyCreationResult(publicKey, publicKeyBytes, error, code, algorithm, keySize, decryptingPublicKey, decryptingAlgorithm, decryptingKeySize, isHybridMode, authenticationType, attestationCertificateChain)
     }
   }
   fun toList(): List<Any?> {
@@ -378,6 +388,7 @@ data class KeyCreationResult (
       decryptingKeySize,
       isHybridMode,
       authenticationType,
+      attestationCertificateChain,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -518,7 +529,17 @@ data class KeyInfo (
   /** Algorithm of the decryption key (hybrid mode only). */
   val decryptingAlgorithm: String? = null,
   /** Key size of the decryption key in bits (hybrid mode only). */
-  val decryptingKeySize: Long? = null
+  val decryptingKeySize: Long? = null,
+  /**
+   * [Android] DER-encoded X.509 key attestation certificate chain of the
+   * signing key, leaf first.
+   *
+   * Present only for keys created with [CreateKeysConfig.attestationChallenge]
+   * (the leaf carries the key attestation extension, OID
+   * 1.3.6.1.4.1.11129.2.1.17). Null for unattested keys and on all other
+   * platforms.
+   */
+  val attestationCertificateChain: List<ByteArray>? = null
 )
  {
   companion object {
@@ -532,7 +553,8 @@ data class KeyInfo (
       val decryptingPublicKey = pigeonVar_list[6] as String?
       val decryptingAlgorithm = pigeonVar_list[7] as String?
       val decryptingKeySize = pigeonVar_list[8] as Long?
-      return KeyInfo(exists, isValid, algorithm, keySize, isHybridMode, publicKey, decryptingPublicKey, decryptingAlgorithm, decryptingKeySize)
+      val attestationCertificateChain = pigeonVar_list[9] as List<ByteArray>?
+      return KeyInfo(exists, isValid, algorithm, keySize, isHybridMode, publicKey, decryptingPublicKey, decryptingAlgorithm, decryptingKeySize, attestationCertificateChain)
     }
   }
   fun toList(): List<Any?> {
@@ -546,6 +568,7 @@ data class KeyInfo (
       decryptingPublicKey,
       decryptingAlgorithm,
       decryptingKeySize,
+      attestationCertificateChain,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -648,7 +671,48 @@ data class CreateKeysConfig (
    * ("something you have") only; it does not verify user presence and cannot
    * satisfy inherence-based SCA requirements.
    */
-  val requireAuthentication: Boolean? = null
+  val requireAuthentication: Boolean? = null,
+  /**
+   * [Android] Server-issued, single-use challenge (1–128 bytes) for hardware
+   * key attestation. Requires Android 7.0 (API 24) or newer.
+   *
+   * When set, the keystore embeds the challenge in an X.509 attestation
+   * certificate for the new signing key, and `createKeys` returns the chain
+   * in [KeyCreationResult.attestationCertificateChain] so your server can
+   * verify that the key was generated in secure hardware (TEE or StrongBox).
+   * The plugin neither parses nor verifies the chain.
+   *
+   * Attestation is an explicit opt-in, so it fails instead of silently
+   * returning an unattested key:
+   * - [BiometricError.invalidInput]: the challenge is empty or longer than
+   *   128 bytes.
+   * - [BiometricError.notSupported]: Android 6 (API 23), or the device's
+   *   keystore cannot attest the key.
+   * - [BiometricError.notAvailable]: the keystore reported a transient
+   *   failure (e.g. attestation keys are not provisioned yet). Retry later
+   *   with a fresh challenge. Detected on Android 13+; older versions report
+   *   [BiometricError.notSupported] instead.
+   *
+   * The input checks (and [failIfExists]) run before anything is deleted. A
+   * failure during key generation happens after the existing key under the
+   * same alias was removed — as with any `createKeys` failure — and never
+   * leaves an unattested key behind. Use [failIfExists] or a fresh alias to
+   * protect an existing key.
+   *
+   * If StrongBox key generation fails, the plugin retries once in the TEE;
+   * the chain's `attestationSecurityLevel` tells your server which one
+   * produced the key. In hybrid mode (`signatureType: ecdsa` +
+   * `enableDecryption: true`) only the keystore EC *signing* key is attested;
+   * the software-generated decryption key cannot be.
+   *
+   * **iOS/macOS/Windows**: setting this field makes `createKeys` return
+   * [BiometricError.notSupported] without touching existing keys. This
+   * deliberately departs from how other platform-specific fields are
+   * ignored: ignoring it would hand back an unattested key the caller
+   * believes is attested. Apple has no public API to attest an individual
+   * Secure Enclave key, and Windows attestation is not implemented.
+   */
+  val attestationChallenge: ByteArray? = null
 )
  {
   companion object {
@@ -663,7 +727,8 @@ data class CreateKeysConfig (
       val cancelButtonText = pigeonVar_list[7] as String?
       val failIfExists = pigeonVar_list[8] as Boolean?
       val requireAuthentication = pigeonVar_list[9] as Boolean?
-      return CreateKeysConfig(signatureType, enforceBiometric, setInvalidatedByBiometricEnrollment, useDeviceCredentials, enableDecryption, promptSubtitle, promptDescription, cancelButtonText, failIfExists, requireAuthentication)
+      val attestationChallenge = pigeonVar_list[10] as ByteArray?
+      return CreateKeysConfig(signatureType, enforceBiometric, setInvalidatedByBiometricEnrollment, useDeviceCredentials, enableDecryption, promptSubtitle, promptDescription, cancelButtonText, failIfExists, requireAuthentication, attestationChallenge)
     }
   }
   fun toList(): List<Any?> {
@@ -678,6 +743,7 @@ data class CreateKeysConfig (
       cancelButtonText,
       failIfExists,
       requireAuthentication,
+      attestationChallenge,
     )
   }
   override fun equals(other: Any?): Boolean {

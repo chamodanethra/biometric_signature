@@ -53,7 +53,9 @@ class BiometricSignature {
 
   /// Creates a digital signature using biometric authentication.
   ///
-  /// [payload] is the data to sign.
+  /// [payload] is the data to sign, encoded as UTF-8. An empty payload returns
+  /// [BiometricError.invalidInput] without showing a prompt; Android also
+  /// rejects a whitespace-only one.
   /// [keyAlias] specifies which key to sign with. Defaults to the default alias.
   /// [config] contains platform-specific options. See [CreateSignatureConfig].
   /// [signatureFormat] specifies the output format for the signature.
@@ -81,7 +83,8 @@ class BiometricSignature {
 
   /// Creates a digital signature from raw bytes using biometric authentication.
   ///
-  /// [payload] is the raw byte data to sign.
+  /// [payload] is the raw byte data to sign. An empty payload returns
+  /// [BiometricError.invalidInput] without showing a prompt.
   /// [keyAlias] specifies which key to sign with. Defaults to the default alias.
   /// [config] contains platform-specific options. See [CreateSignatureConfig].
   /// [signatureFormat] specifies the output format for the signature.
@@ -111,7 +114,11 @@ class BiometricSignature {
   ///
   /// Note: Not supported on Windows.
   ///
-  /// [payload] is the encrypted data.
+  /// [payload] is the encrypted data. A payload that is empty, whitespace-only
+  /// or can't be decoded as [payloadFormat] returns
+  /// [BiometricError.invalidInput] without showing a prompt. Base64 uses the
+  /// standard alphabet: spaces, tabs and line breaks are ignored, and any other
+  /// character outside it makes the payload invalid.
   /// [keyAlias] specifies which key to decrypt with. Defaults to the default alias.
   /// [payloadFormat] specifies the format of the encrypted data.
   /// [config] contains platform-specific options. See [DecryptConfig].

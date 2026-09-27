@@ -32,6 +32,9 @@ object Constants {
     const val KEY_ALIAS_PREFIX = "biometric_key_"
     const val MASTER_KEY_ALIAS_PREFIX = "biometric_master_key_"
 
+    // Android key attestation extension (KeyDescription) on an attested key's leaf certificate.
+    const val KEY_ATTESTATION_EXTENSION_OID = "1.3.6.1.4.1.11129.2.1.17"
+
     const val EC_PUBKEY_SIZE = 65
     const val GCM_TAG_BITS = 128
     const val GCM_TAG_BYTES = 16

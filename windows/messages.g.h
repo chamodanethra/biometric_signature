@@ -266,7 +266,8 @@ class KeyCreationResult {
     const std::string* decrypting_algorithm,
     const int64_t* decrypting_key_size,
     const bool* is_hybrid_mode,
-    const AuthenticationType* authentication_type);
+    const AuthenticationType* authentication_type,
+    const flutter::EncodableList* attestation_certificate_chain);
 
   const std::string* public_key() const;
   void set_public_key(const std::string_view* value_arg);
@@ -317,6 +318,16 @@ class KeyCreationResult {
   void set_authentication_type(const AuthenticationType* value_arg);
   void set_authentication_type(const AuthenticationType& value_arg);
 
+  // [Android] DER-encoded X.509 key attestation certificate chain of the new
+  // signing key, leaf (the attestation certificate) first, root last.
+  //
+  // Set only when [CreateKeysConfig.attestationChallenge] was provided and
+  // key creation succeeded; null otherwise and on all other platforms. The
+  // plugin does not parse or verify the chain — send it to your server.
+  const flutter::EncodableList* attestation_certificate_chain() const;
+  void set_attestation_certificate_chain(const flutter::EncodableList* value_arg);
+  void set_attestation_certificate_chain(const flutter::EncodableList& value_arg);
+
  private:
   static KeyCreationResult FromEncodableList(const flutter::EncodableList& list);
   flutter::EncodableList ToEncodableList() const;
@@ -333,6 +344,7 @@ class KeyCreationResult {
   std::optional<int64_t> decrypting_key_size_;
   std::optional<bool> is_hybrid_mode_;
   std::optional<AuthenticationType> authentication_type_;
+  std::optional<flutter::EncodableList> attestation_certificate_chain_;
 };
 
 
@@ -470,7 +482,8 @@ class KeyInfo {
     const std::string* public_key,
     const std::string* decrypting_public_key,
     const std::string* decrypting_algorithm,
-    const int64_t* decrypting_key_size);
+    const int64_t* decrypting_key_size,
+    const flutter::EncodableList* attestation_certificate_chain);
 
   // Whether any biometric key exists on the device.
   const bool* exists() const;
@@ -518,6 +531,17 @@ class KeyInfo {
   void set_decrypting_key_size(const int64_t* value_arg);
   void set_decrypting_key_size(int64_t value_arg);
 
+  // [Android] DER-encoded X.509 key attestation certificate chain of the
+  // signing key, leaf first.
+  //
+  // Present only for keys created with [CreateKeysConfig.attestationChallenge]
+  // (the leaf carries the key attestation extension, OID
+  // 1.3.6.1.4.1.11129.2.1.17). Null for unattested keys and on all other
+  // platforms.
+  const flutter::EncodableList* attestation_certificate_chain() const;
+  void set_attestation_certificate_chain(const flutter::EncodableList* value_arg);
+  void set_attestation_certificate_chain(const flutter::EncodableList& value_arg);
+
  private:
   static KeyInfo FromEncodableList(const flutter::EncodableList& list);
   flutter::EncodableList ToEncodableList() const;
@@ -532,6 +556,7 @@ class KeyInfo {
   std::optional<std::string> decrypting_public_key_;
   std::optional<std::string> decrypting_algorithm_;
   std::optional<int64_t> decrypting_key_size_;
+  std::optional<flutter::EncodableList> attestation_certificate_chain_;
 };
 
 
@@ -558,7 +583,8 @@ class CreateKeysConfig {
     const std::string* prompt_description,
     const std::string* cancel_button_text,
     const bool* fail_if_exists,
-    const bool* require_authentication);
+    const bool* require_authentication,
+    const std::vector<uint8_t>* attestation_challenge);
 
   // [Android/iOS/macOS] The cryptographic algorithm to use.
   // Windows only supports RSA and ignores this field.
@@ -655,6 +681,48 @@ class CreateKeysConfig {
   void set_require_authentication(const bool* value_arg);
   void set_require_authentication(bool value_arg);
 
+  // [Android] Server-issued, single-use challenge (1–128 bytes) for hardware
+  // key attestation. Requires Android 7.0 (API 24) or newer.
+  //
+  // When set, the keystore embeds the challenge in an X.509 attestation
+  // certificate for the new signing key, and `createKeys` returns the chain
+  // in [KeyCreationResult.attestationCertificateChain] so your server can
+  // verify that the key was generated in secure hardware (TEE or StrongBox).
+  // The plugin neither parses nor verifies the chain.
+  //
+  // Attestation is an explicit opt-in, so it fails instead of silently
+  // returning an unattested key:
+  // - [BiometricError.invalidInput]: the challenge is empty or longer than
+  //   128 bytes.
+  // - [BiometricError.notSupported]: Android 6 (API 23), or the device's
+  //   keystore cannot attest the key.
+  // - [BiometricError.notAvailable]: the keystore reported a transient
+  //   failure (e.g. attestation keys are not provisioned yet). Retry later
+  //   with a fresh challenge. Detected on Android 13+; older versions report
+  //   [BiometricError.notSupported] instead.
+  //
+  // The input checks (and [failIfExists]) run before anything is deleted. A
+  // failure during key generation happens after the existing key under the
+  // same alias was removed — as with any `createKeys` failure — and never
+  // leaves an unattested key behind. Use [failIfExists] or a fresh alias to
+  // protect an existing key.
+  //
+  // If StrongBox key generation fails, the plugin retries once in the TEE;
+  // the chain's `attestationSecurityLevel` tells your server which one
+  // produced the key. In hybrid mode (`signatureType: ecdsa` +
+  // `enableDecryption: true`) only the keystore EC *signing* key is attested;
+  // the software-generated decryption key cannot be.
+  //
+  // **iOS/macOS/Windows**: setting this field makes `createKeys` return
+  // [BiometricError.notSupported] without touching existing keys. This
+  // deliberately departs from how other platform-specific fields are
+  // ignored: ignoring it would hand back an unattested key the caller
+  // believes is attested. Apple has no public API to attest an individual
+  // Secure Enclave key, and Windows attestation is not implemented.
+  const std::vector<uint8_t>* attestation_challenge() const;
+  void set_attestation_challenge(const std::vector<uint8_t>* value_arg);
+  void set_attestation_challenge(const std::vector<uint8_t>& value_arg);
+
  private:
   static CreateKeysConfig FromEncodableList(const flutter::EncodableList& list);
   flutter::EncodableList ToEncodableList() const;
@@ -670,6 +738,7 @@ class CreateKeysConfig {
   std::optional<std::string> cancel_button_text_;
   std::optional<bool> fail_if_exists_;
   std::optional<bool> require_authentication_;
+  std::optional<std::vector<uint8_t>> attestation_challenge_;
 };
 
 
