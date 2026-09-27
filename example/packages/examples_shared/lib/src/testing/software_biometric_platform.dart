@@ -435,8 +435,12 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
       'keyFormat': keyFormat,
       'promptMessage': promptMessage,
     }));
+    // Android rejects a blank string (Kotlin isBlank); iOS, macOS and
+    // Windows reject only an empty one, which _sign covers.
     return _sign(Uint8List.fromList(utf8.encode(payload)), keyAlias,
-        signatureFormat, keyFormat);
+        signatureFormat, keyFormat,
+        rejectAsBlank: simulatedPlatform == DevicePlatform.android &&
+            payload.trim().isEmpty);
   }
 
   @override
@@ -463,8 +467,9 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
     Uint8List message,
     String? keyAlias,
     SignatureFormat signatureFormat,
-    KeyFormat keyFormat,
-  ) async {
+    KeyFormat keyFormat, {
+    bool rejectAsBlank = false,
+  }) async {
     await _delay();
     SignatureResult error(BiometricError code, String message) =>
         SignatureResult(code: code, error: message);
@@ -472,7 +477,7 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
     if (scripted != null) {
       return error(scripted.$1, scripted.$2 ?? 'Scripted ${scripted.$1.name}');
     }
-    if (message.isEmpty) {
+    if (message.isEmpty || rejectAsBlank) {
       return error(BiometricError.invalidInput, 'Payload is required');
     }
     final key = _keys[_k(keyAlias)];

@@ -614,7 +614,7 @@ if (result.code == BiometricError.success) {
 Prompts the user for biometric authentication and generates a cryptographic signature.
 
 - **Parameters**:
-  - `payload`: The data to sign
+  - `payload`: The data to sign, encoded as UTF-8. An empty payload returns `invalidInput` without a prompt; Android also rejects a whitespace-only one.
   - `keyAlias`: Which key to sign with. Defaults to the default alias.
   - `config`: `CreateSignatureConfig` with platform options
   - `signatureFormat`: Output format for signature
@@ -653,7 +653,7 @@ final result = await biometricSignature.createSignature(
 Prompts the user for biometric authentication and generates a cryptographic signature over raw binary data. This is ideal for challenge-response authentication flows where a random nonce is generated as raw bytes.
 
 - **Parameters**:
-  - `payload`: The raw byte data (`Uint8List`) to sign
+  - `payload`: The raw byte data (`Uint8List`) to sign. An empty payload returns `invalidInput` without a prompt.
   - `keyAlias`: Which key to sign with. Defaults to the default alias.
   - `config`: `CreateSignatureConfig` with platform options
   - `signatureFormat`: Output format for signature
@@ -698,7 +698,7 @@ final result = await biometricSignature.createSignatureFromBytes(
 Decrypts the given payload using the private key and biometrics.
 
 - **Parameters**:
-  - `payload`: The encrypted data. See [Encrypting a payload](#encrypting-a-payload) for the exact scheme the backend must use.
+  - `payload`: The encrypted data. See [Encrypting a payload](#encrypting-a-payload) for the exact scheme the backend must use. An empty or whitespace-only payload returns `invalidInput` without a prompt.
   - `payloadFormat`: Format of encrypted data (`PayloadFormat.base64`, `hex`)
   - `keyAlias`: Which key to decrypt with. Defaults to the default alias.
   - `config`: `DecryptConfig` with platform options

@@ -82,7 +82,8 @@ class SignScreen extends StatelessWidget {
                       name: 'payload (String)',
                       controller: c.textPayload,
                       maxLines: 3,
-                      hint: 'Empty: invalidInput on Android and Windows',
+                      hint:
+                          'Empty: invalidInput (Android also rejects whitespace-only)',
                       onChanged: (_) => c.update(() {}),
                     )
                   else

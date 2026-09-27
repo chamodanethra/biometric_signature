@@ -537,6 +537,11 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         promptMessage: String?,
         completion: @escaping (Result<SignatureResult, Error>) -> Void
     ) {
+        if payload.isEmpty {
+             completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: "Payload is required", code: .invalidInput)))
+             return
+        }
+
         guard let dataToSign = payload.data(using: .utf8) else {
              completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: "Invalid payload", code: .invalidInput)))
              return
@@ -727,6 +732,13 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         promptMessage: String?,
         completion: @escaping (Result<DecryptResult, Error>) -> Void
     ) {
+        // A blank payload holds no ciphertext. Reject it before any prompt, as
+        // Android does, instead of authenticating and then failing to decrypt.
+        if payload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            completion(.success(DecryptResult(decryptedData: nil, error: "Payload is required", code: .invalidInput)))
+            return
+        }
+
         let prompt = promptMessage ?? "Authenticate"
         let authType = resolveAuthenticationType(keyAlias: keyAlias)
 

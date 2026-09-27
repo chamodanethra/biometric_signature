@@ -22,6 +22,11 @@
   * A key created with `useDeviceCredentials: true` uses `.userPresence`, which the device passcode can always satisfy, so an enrollment change never invalidates it. It was nevertheless recorded as invalidatable and reported `isValid: false` after one. Such keys are no longer recorded or reported as invalidatable.
   * Biometric lockout, and keys created before v8.1.0 (always `.biometryAny` or `.userPresence`), no longer report `isValid: false`.
 
+* **`createSignature` and `decrypt` now reject an empty payload before any prompt.**
+  * **iOS/macOS `createSignature` signed an empty payload.** `createSignature(payload: '')` went on to sign zero bytes, where Android and Windows return `invalidInput`. It now returns `invalidInput` ("Payload is required") before any key lookup or prompt, as `createSignatureFromBytes` already did. Android still also rejects a whitespace-only string; iOS, macOS and Windows sign it.
+  * **iOS/macOS `decrypt` checked the payload only after accessing the key**, in RSA mode after the user had authenticated. An empty or whitespace-only payload then failed with `unknown` or `invalidInput` ("Invalid payload"), depending on the format. Both now return `invalidInput` ("Payload is required") before any key lookup or prompt, as on Android.
+  * **Android `decrypt` returned `unknown` for an empty payload when no activity was in the foreground**, because it checked for the activity first. It now checks the payload first, as `createSignature` does.
+  * Windows `decrypt` is unchanged: it returns `notAvailable`, since Windows doesn't support decryption.
 * **README: the ECIES section said no per-platform branch was needed.** It is: Android derives a 16-byte AES key and a 12-byte GCM IV from the shared secret with empty shared info, while Apple's `eciesEncryptionStandardX963SHA256AESGCM` uses the ephemeral public key as shared info, derives only the key, and uses a 16-byte zero IV. A payload encrypted for one platform fails on the other. "Encrypting a payload" now gives both, and notes that `decrypt` returns UTF-8 text.
 
 ### Examples

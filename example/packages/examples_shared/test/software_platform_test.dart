@@ -308,6 +308,37 @@ void main() {
           BiometricError.invalidInput);
     });
 
+    test('empty and blank payloads match each platform', () async {
+      Future<BiometricError?> sign(String payload) async =>
+          (await api.createSignature(payload: payload)).code;
+      Future<BiometricError?> decrypt(String payload) async => (await api
+              .decrypt(payload: payload, payloadFormat: PayloadFormat.base64))
+          .code;
+
+      install(DevicePlatform.android);
+      await api.createKeys(
+          config: CreateKeysConfig(
+              signatureType: SignatureType.ecdsa, enableDecryption: true));
+      expect(await sign(''), BiometricError.invalidInput);
+      expect(await sign('  '), BiometricError.invalidInput);
+      expect(await decrypt('  '), BiometricError.invalidInput);
+
+      for (final platform in [DevicePlatform.ios, DevicePlatform.macos]) {
+        install(platform);
+        await api.createKeys(
+            config: CreateKeysConfig(signatureType: SignatureType.ecdsa));
+        expect(await sign(''), BiometricError.invalidInput);
+        expect(await sign('  '), BiometricError.success);
+        expect(await decrypt('  '), BiometricError.invalidInput);
+      }
+
+      install(DevicePlatform.windows);
+      await api.createKeys();
+      expect(await sign(''), BiometricError.invalidInput);
+      expect(await sign('  '), BiometricError.success);
+      expect(await decrypt(''), BiometricError.notAvailable);
+    });
+
     test('publicKeyBytes differ per platform; publicKey is always SPKI',
         () async {
       install(DevicePlatform.ios);

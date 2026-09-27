@@ -666,6 +666,10 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         promptMessage: String?,
         callback: (Result<DecryptResult>) -> Unit
     ) {
+        if (payload.isBlank()) {
+            callback(Result.success(DecryptResult(code = BiometricError.INVALID_INPUT, error = "Payload is required")))
+            return
+        }
         val act = activity
         if (act == null) {
             callback(
@@ -676,10 +680,6 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                     )
                 )
             )
-            return
-        }
-        if (payload.isBlank()) {
-            callback(Result.success(DecryptResult(code = BiometricError.INVALID_INPUT, error = "Payload is required")))
             return
         }
 
