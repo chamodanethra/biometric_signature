@@ -1,4 +1,4 @@
-## [13.1.0] - 2026-09-26
+## [13.1.0] - 2026-09-27
 
 ### Added
 * **Android hardware key attestation.** Fixes [#69](https://github.com/chamodanethra/biometric_signature/issues/69).
@@ -35,6 +35,8 @@
 
 ### Examples
 * The example apps are rebuilt around what the plugin does beyond a biometric prompt; see [EXAMPLES.md](https://github.com/chamodanethra/biometric_signature/blob/main/EXAMPLES.md). `example/` is now an API Explorer covering every method, option, format and error code, and the scenario apps (`passwordless_login`, `banking_app`, and `secure_vault`, formerly `document_signer`) verify signatures and Android attestation chains in an in-process mock server instead of only checking that a signature is non-empty.
+* The example apps now target iOS 15.0 and macOS 12.0, the oldest versions Xcode 27 builds for. The plugin itself still supports iOS 13.0 and macOS 10.15.
+  * Xcode 27 also fails on pods that declare an older minimum, including this plugin's, so the examples' Podfiles raise pod targets to the app's in `post_install`. Flutter 3.47 and later do this for you; on older versions, an app that builds with Xcode 27 through CocoaPods needs the same step.
 
 ## [13.0.0] - 2026-07-25
 
