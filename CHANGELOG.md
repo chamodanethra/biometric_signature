@@ -1,4 +1,4 @@
-## [Unreleased]
+## [13.2.0] - 2026-09-30
 
 ### Added
 * **Optional key attestation.** New `CreateKeysConfig.attestationMode` decides what `createKeys` does when `attestationChallenge` is set but the key can't be attested:
