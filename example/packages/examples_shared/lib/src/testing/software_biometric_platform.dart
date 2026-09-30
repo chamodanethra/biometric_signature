@@ -331,6 +331,10 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
         : config?.attestationChallenge;
     (BiometricError, String)? attestationFailure;
     if (challenge != null) {
+      if (challenge.isEmpty || challenge.length > 128) {
+        return error(BiometricError.invalidInput,
+            'attestationChallenge must be 1-128 bytes');
+      }
       if (platform != DevicePlatform.android) {
         final unsupported = 'Key attestation (attestationChallenge) is not '
             'supported on ${platform.label}.';
@@ -338,12 +342,8 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
           return error(BiometricError.notSupported, unsupported);
         }
         attestationFailure = (BiometricError.notSupported, unsupported);
+        challenge = null;
       }
-      if (challenge.isEmpty || challenge.length > 128) {
-        return error(BiometricError.invalidInput,
-            'attestationChallenge must be 1-128 bytes');
-      }
-      if (attestationFailure != null) challenge = null;
     }
     final exists = _keys.containsKey(_k(keyAlias));
     if (config?.failIfExists == true && exists) {

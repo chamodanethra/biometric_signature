@@ -9,7 +9,7 @@
   * When a mode falls back, the key is created in the same call, with no second prompt, and the new `KeyCreationResult.attestationErrorCode` (`notSupported` or `notAvailable`) and `attestationError` say why. Every mode except `disabled` still returns `invalidInput` for an empty or over-128-byte challenge.
 
 ### Changed
-* **Android: an invalid `attestationChallenge` on Android 6 (API 23) now returns `invalidInput` instead of `notSupported`**, matching every other platform and mode. The challenge length is now checked before the API level.
+* **An invalid `attestationChallenge` now returns `invalidInput` on every platform.** An empty or over-128-byte challenge used to return `notSupported` on Android 6 (API 23), iOS, macOS and Windows. The challenge length is now checked first, in every mode except `disabled`.
 
 ## [13.1.0] - 2026-09-27
 

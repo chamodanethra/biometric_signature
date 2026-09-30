@@ -571,10 +571,15 @@ void main() {
         }
       });
 
-      test('an invalid challenge fails in every other mode', () async {
-        for (final p in [DevicePlatform.android, DevicePlatform.ios]) {
+      test('an invalid challenge fails in every mode but disabled', () async {
+        for (final p in [
+          DevicePlatform.android,
+          DevicePlatform.ios,
+          DevicePlatform.windows,
+        ]) {
           install(p);
           for (final mode in [
+            AttestationMode.enforceOnChallenge,
             AttestationMode.enforceOnChallengeIfSupported,
             AttestationMode.preferred,
           ]) {

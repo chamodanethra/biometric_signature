@@ -438,9 +438,9 @@ class CreateKeysConfig {
   /// `enableDecryption: true`) only the keystore EC *signing* key is attested;
   /// the software-generated decryption key cannot be.
   ///
-  /// **iOS/macOS/Windows**: setting this field makes `createKeys` return
-  /// [BiometricError.notSupported] without touching existing keys, unless
-  /// [attestationMode] allows falling back. This deliberately departs from
+  /// **iOS/macOS/Windows**: setting this field to a valid challenge makes
+  /// `createKeys` return [BiometricError.notSupported] without touching
+  /// existing keys, unless [attestationMode] allows falling back. This deliberately departs from
   /// how other platform-specific fields are ignored: ignoring it would hand
   /// back an unattested key the caller believes is attested. Apple has no
   /// public API to attest an individual Secure Enclave key, and Windows

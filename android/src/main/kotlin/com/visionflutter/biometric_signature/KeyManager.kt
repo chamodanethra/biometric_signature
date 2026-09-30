@@ -45,6 +45,51 @@ fun AttestationMode.allowsFallback(failure: KeyAttestationException): Boolean = 
 }
 
 /**
+ * Runs [generate] with StrongBox requested and, if that fails and the attempt
+ * was [strongBoxBacked], once more in the TEE. [cleanUp] runs after every failed
+ * attempt so a partial keystore entry never survives it. The last failure is
+ * rethrown unchanged.
+ */
+internal fun <T> generateWithTeeRetry(
+    strongBoxBacked: Boolean,
+    generate: (useStrongBox: Boolean) -> T,
+    cleanUp: () -> Unit
+): T {
+    try {
+        return generate(true)
+    } catch (strongBoxFailure: Exception) {
+        cleanUp()
+        if (!strongBoxBacked) throw strongBoxFailure
+    }
+    try {
+        return generate(false)
+    } catch (teeFailure: Exception) {
+        cleanUp()
+        throw teeFailure
+    }
+}
+
+/**
+ * Runs [generateAttested] and, if [attestationMode] accepts its
+ * [KeyAttestationException], generates an unattested key instead, reporting
+ * the failure alongside it. The unattested attempt gets the same TEE retry
+ * ([generateWithTeeRetry]): StrongBox may just have failed for reasons
+ * unrelated to attestation, and the fallback exists to still hand back a key.
+ */
+internal fun generateWithAttestationFallback(
+    attestationMode: AttestationMode,
+    generateAttested: () -> GeneratedKey,
+    unattestedStrongBoxBacked: Boolean,
+    generateUnattested: (useStrongBox: Boolean) -> KeyPair,
+    cleanUp: () -> Unit
+): GeneratedKey = try {
+    generateAttested()
+} catch (failure: KeyAttestationException) {
+    if (!attestationMode.allowsFallback(failure)) throw failure
+    GeneratedKey(generateWithTeeRetry(unattestedStrongBoxBacked, generateUnattested, cleanUp), null, failure)
+}
+
+/**
  * A generated keystore key plus its attestation chain (null when attestation
  * was not requested or fell back). [attestationFailure] is set when a
  * challenge was provided but the [AttestationMode] accepted an unattested key.
@@ -148,8 +193,7 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
      * never shadows the alias.
      *
      * If [attestationMode] accepts the attestation failure, the key is
-     * generated once more without a challenge, exactly as if none had been
-     * provided, and the failure is reported alongside it.
+     * generated again without a challenge; see [generateWithAttestationFallback].
      */
     private fun generateKeyPairWithOptionalAttestation(
         keyAlgorithm: String,
@@ -168,12 +212,14 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
             return GeneratedKey(generate(specFor(true, null)), null)
         }
 
-        return try {
-            generateAttestedKeyPair(alias, attestationChallenge, ::generate, specFor)
-        } catch (failure: KeyAttestationException) {
-            if (!attestationMode.allowsFallback(failure)) throw failure
-            GeneratedKey(generate(specFor(true, null)), null, failure)
-        }
+        val unattestedSpec = specFor(true, null)
+        return generateWithAttestationFallback(
+            attestationMode,
+            { generateAttestedKeyPair(alias, attestationChallenge, ::generate, specFor) },
+            isStrongBoxBacked(unattestedSpec),
+            { useStrongBox -> generate(if (useStrongBox) unattestedSpec else specFor(false, null)) },
+            { deleteEntryQuietly(alias) }
+        )
     }
 
     private fun generateAttestedKeyPair(
@@ -188,16 +234,13 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
 
         val spec = specFor(true, attestationChallenge)
         val keyPair = try {
-            generate(spec)
-        } catch (firstFailure: Exception) {
-            deleteEntryQuietly(alias)
-            if (!isStrongBoxBacked(spec)) throw attestationFailure(firstFailure)
-            try {
-                generate(specFor(false, attestationChallenge))
-            } catch (teeFailure: Exception) {
-                deleteEntryQuietly(alias)
-                throw attestationFailure(teeFailure)
-            }
+            generateWithTeeRetry(
+                isStrongBoxBacked(spec),
+                { useStrongBox -> generate(if (useStrongBox) spec else specFor(false, attestationChallenge)) },
+                { deleteEntryQuietly(alias) }
+            )
+        } catch (e: Exception) {
+            throw attestationFailure(e)
         }
 
         val chain = runCatching {

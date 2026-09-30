@@ -519,24 +519,21 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         // the attestation mode allows falling back, this fails in-band before
         // any existing key is touched.
         var attestationFallbackReason: String? = nil
-        if let challenge = config?.attestationChallenge {
+        let attestationMode = config?.attestationMode ?? .enforceOnChallenge
+        if let challenge = config?.attestationChallenge, attestationMode != .disabled {
+            if challenge.data.isEmpty || challenge.data.count > 128 {
+                completion(.success(KeyCreationResult(
+                    error: "attestationChallenge must be between 1 and 128 bytes",
+                    code: .invalidInput
+                )))
+                return
+            }
             let unsupported = "Key attestation (attestationChallenge) is only supported on Android"
-            switch config?.attestationMode ?? .enforceOnChallenge {
-            case .enforceOnChallenge:
+            if attestationMode == .enforceOnChallenge {
                 completion(.success(KeyCreationResult(error: unsupported, code: .notSupported)))
                 return
-            case .enforceOnChallengeIfSupported, .preferred:
-                if challenge.data.isEmpty || challenge.data.count > 128 {
-                    completion(.success(KeyCreationResult(
-                        error: "attestationChallenge must be between 1 and 128 bytes",
-                        code: .invalidInput
-                    )))
-                    return
-                }
-                attestationFallbackReason = unsupported
-            case .disabled:
-                break
             }
+            attestationFallbackReason = unsupported
         }
 
         // Extract config values with defaults
