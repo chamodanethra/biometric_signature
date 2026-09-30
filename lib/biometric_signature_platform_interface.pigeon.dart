@@ -173,6 +173,41 @@ enum SignatureType {
   ecdsa,
 }
 
+/// How `createKeys` treats [CreateKeysConfig.attestationChallenge] when the
+/// key cannot be attested.
+///
+/// Every mode fails with [BiometricError.invalidInput] for an empty or
+/// over-long challenge, except [disabled], which ignores the challenge. When a
+/// mode falls back, the key is created without attestation in the same call
+/// (no second prompt), and [KeyCreationResult.attestationErrorCode] says why.
+///
+/// Falling back only changes what the client returns: your server must still
+/// decide whether an unattested key is acceptable.
+///
+/// More modes may be added in minor releases, so avoid exhaustive switches
+/// over this enum.
+enum AttestationMode {
+  /// Fail whenever a challenge is provided and the key cannot be attested.
+  /// The default.
+  enforceOnChallenge,
+
+  /// Fall back to an unattested key when the device or platform cannot
+  /// attest keys ([BiometricError.notSupported]), but fail on transient
+  /// keystore failures ([BiometricError.notAvailable]).
+  ///
+  /// Transient failures are only detected on Android 13+. Android 7–12 report
+  /// every attestation failure as unsupported, so this mode falls back there.
+  enforceOnChallengeIfSupported,
+
+  /// Fall back to an unattested key on any attestation failure, transient
+  /// ones included.
+  preferred,
+
+  /// Ignore the challenge and create an unattested key, e.g. to switch
+  /// attestation off remotely without changing call sites.
+  disabled,
+}
+
 /// Output format for public keys.
 enum KeyFormat {
   /// Base64-encoded DER (SubjectPublicKeyInfo).
@@ -283,6 +318,8 @@ class KeyCreationResult {
     this.isHybridMode,
     this.authenticationType,
     this.attestationCertificateChain,
+    this.attestationErrorCode,
+    this.attestationError,
   });
 
   String? publicKey;
@@ -320,6 +357,19 @@ class KeyCreationResult {
   /// plugin does not parse or verify the chain — send it to your server.
   List<Uint8List>? attestationCertificateChain;
 
+  /// Why the key was created without attestation although
+  /// [CreateKeysConfig.attestationChallenge] was provided.
+  ///
+  /// Set only when [CreateKeysConfig.attestationMode] allowed falling back to
+  /// an unattested key: [BiometricError.notSupported] when the device or
+  /// platform cannot attest keys, [BiometricError.notAvailable] when the
+  /// keystore reported a transient failure. Null when the key is attested,
+  /// when no challenge was provided, and for [AttestationMode.disabled].
+  BiometricError? attestationErrorCode;
+
+  /// Human-readable detail for [attestationErrorCode].
+  String? attestationError;
+
   List<Object?> _toList() {
     return <Object?>[
       publicKey,
@@ -334,6 +384,8 @@ class KeyCreationResult {
       isHybridMode,
       authenticationType,
       attestationCertificateChain,
+      attestationErrorCode,
+      attestationError,
     ];
   }
 
@@ -357,6 +409,8 @@ class KeyCreationResult {
       authenticationType: result[10] as AuthenticationType?,
       attestationCertificateChain:
           (result[11] as List<Object?>?)?.cast<Uint8List>(),
+      attestationErrorCode: result[12] as BiometricError?,
+      attestationError: result[13] as String?,
     );
   }
 
@@ -642,6 +696,7 @@ class CreateKeysConfig {
     this.failIfExists,
     this.requireAuthentication,
     this.attestationChallenge,
+    this.attestationMode,
   });
 
   /// [Android/iOS/macOS] The cryptographic algorithm to use.
@@ -728,8 +783,9 @@ class CreateKeysConfig {
   /// verify that the key was generated in secure hardware (TEE or StrongBox).
   /// The plugin neither parses nor verifies the chain.
   ///
-  /// Attestation is an explicit opt-in, so it fails instead of silently
-  /// returning an unattested key:
+  /// Attestation is an explicit opt-in, so by default
+  /// ([AttestationMode.enforceOnChallenge]) it fails instead of silently
+  /// returning an unattested key ([attestationMode] can allow falling back):
   /// - [BiometricError.invalidInput]: the challenge is empty or longer than
   ///   128 bytes.
   /// - [BiometricError.notSupported]: Android 6 (API 23), or the device's
@@ -752,12 +808,18 @@ class CreateKeysConfig {
   /// the software-generated decryption key cannot be.
   ///
   /// **iOS/macOS/Windows**: setting this field makes `createKeys` return
-  /// [BiometricError.notSupported] without touching existing keys. This
-  /// deliberately departs from how other platform-specific fields are
-  /// ignored: ignoring it would hand back an unattested key the caller
-  /// believes is attested. Apple has no public API to attest an individual
-  /// Secure Enclave key, and Windows attestation is not implemented.
+  /// [BiometricError.notSupported] without touching existing keys, unless
+  /// [attestationMode] allows falling back. This deliberately departs from
+  /// how other platform-specific fields are ignored: ignoring it would hand
+  /// back an unattested key the caller believes is attested. Apple has no
+  /// public API to attest an individual Secure Enclave key, and Windows
+  /// attestation is not implemented.
   Uint8List? attestationChallenge;
+
+  /// [All platforms] What `createKeys` does when [attestationChallenge] is
+  /// provided but the key cannot be attested. Defaults to
+  /// [AttestationMode.enforceOnChallenge]. Has no effect without a challenge.
+  AttestationMode? attestationMode;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -772,6 +834,7 @@ class CreateKeysConfig {
       failIfExists,
       requireAuthentication,
       attestationChallenge,
+      attestationMode,
     ];
   }
 
@@ -793,6 +856,7 @@ class CreateKeysConfig {
       failIfExists: result[8] as bool?,
       requireAuthentication: result[9] as bool?,
       attestationChallenge: result[10] as Uint8List?,
+      attestationMode: result[11] as AttestationMode?,
     );
   }
 
@@ -1116,44 +1180,47 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is SignatureType) {
       buffer.putUint8(133);
       writeValue(buffer, value.index);
-    } else if (value is KeyFormat) {
+    } else if (value is AttestationMode) {
       buffer.putUint8(134);
       writeValue(buffer, value.index);
-    } else if (value is SignatureFormat) {
+    } else if (value is KeyFormat) {
       buffer.putUint8(135);
       writeValue(buffer, value.index);
-    } else if (value is PayloadFormat) {
+    } else if (value is SignatureFormat) {
       buffer.putUint8(136);
       writeValue(buffer, value.index);
-    } else if (value is BiometricAvailability) {
+    } else if (value is PayloadFormat) {
       buffer.putUint8(137);
-      writeValue(buffer, value.encode());
-    } else if (value is KeyCreationResult) {
+      writeValue(buffer, value.index);
+    } else if (value is BiometricAvailability) {
       buffer.putUint8(138);
       writeValue(buffer, value.encode());
-    } else if (value is SignatureResult) {
+    } else if (value is KeyCreationResult) {
       buffer.putUint8(139);
       writeValue(buffer, value.encode());
-    } else if (value is DecryptResult) {
+    } else if (value is SignatureResult) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    } else if (value is KeyInfo) {
+    } else if (value is DecryptResult) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    } else if (value is CreateKeysConfig) {
+    } else if (value is KeyInfo) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    } else if (value is CreateSignatureConfig) {
+    } else if (value is CreateKeysConfig) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    } else if (value is DecryptConfig) {
+    } else if (value is CreateSignatureConfig) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
-    } else if (value is SimplePromptConfig) {
+    } else if (value is DecryptConfig) {
       buffer.putUint8(145);
       writeValue(buffer, value.encode());
-    } else if (value is SimplePromptResult) {
+    } else if (value is SimplePromptConfig) {
       buffer.putUint8(146);
+      writeValue(buffer, value.encode());
+    } else if (value is SimplePromptResult) {
+      buffer.putUint8(147);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1180,32 +1247,35 @@ class _PigeonCodec extends StandardMessageCodec {
         return value == null ? null : SignatureType.values[value];
       case 134:
         final int? value = readValue(buffer) as int?;
-        return value == null ? null : KeyFormat.values[value];
+        return value == null ? null : AttestationMode.values[value];
       case 135:
         final int? value = readValue(buffer) as int?;
-        return value == null ? null : SignatureFormat.values[value];
+        return value == null ? null : KeyFormat.values[value];
       case 136:
         final int? value = readValue(buffer) as int?;
-        return value == null ? null : PayloadFormat.values[value];
+        return value == null ? null : SignatureFormat.values[value];
       case 137:
-        return BiometricAvailability.decode(readValue(buffer)!);
+        final int? value = readValue(buffer) as int?;
+        return value == null ? null : PayloadFormat.values[value];
       case 138:
-        return KeyCreationResult.decode(readValue(buffer)!);
+        return BiometricAvailability.decode(readValue(buffer)!);
       case 139:
-        return SignatureResult.decode(readValue(buffer)!);
+        return KeyCreationResult.decode(readValue(buffer)!);
       case 140:
-        return DecryptResult.decode(readValue(buffer)!);
+        return SignatureResult.decode(readValue(buffer)!);
       case 141:
-        return KeyInfo.decode(readValue(buffer)!);
+        return DecryptResult.decode(readValue(buffer)!);
       case 142:
-        return CreateKeysConfig.decode(readValue(buffer)!);
+        return KeyInfo.decode(readValue(buffer)!);
       case 143:
-        return CreateSignatureConfig.decode(readValue(buffer)!);
+        return CreateKeysConfig.decode(readValue(buffer)!);
       case 144:
-        return DecryptConfig.decode(readValue(buffer)!);
+        return CreateSignatureConfig.decode(readValue(buffer)!);
       case 145:
-        return SimplePromptConfig.decode(readValue(buffer)!);
+        return DecryptConfig.decode(readValue(buffer)!);
       case 146:
+        return SimplePromptConfig.decode(readValue(buffer)!);
+      case 147:
         return SimplePromptResult.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);

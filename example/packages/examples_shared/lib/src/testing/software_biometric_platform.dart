@@ -40,6 +40,10 @@ enum FakeAttestationMode {
   /// `notSupported`, like a keystore that cannot attest. As on a device,
   /// an existing key under the alias has already been deleted by then.
   notSupported,
+
+  /// `notAvailable`, like a keystore whose attestation keys are not
+  /// provisioned yet.
+  transientFailure,
 }
 
 /// A call the fake received.
@@ -315,18 +319,31 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
     if (platform == DevicePlatform.other) {
       return error(BiometricError.notSupported, 'Unsupported platform');
     }
-    final challenge = config?.attestationChallenge;
+    final attestationMode =
+        config?.attestationMode ?? AttestationMode.enforceOnChallenge;
+    bool allowsFallback({required bool transient}) => switch (attestationMode) {
+          AttestationMode.enforceOnChallenge => false,
+          AttestationMode.enforceOnChallengeIfSupported => !transient,
+          AttestationMode.preferred || AttestationMode.disabled => true,
+        };
+    var challenge = attestationMode == AttestationMode.disabled
+        ? null
+        : config?.attestationChallenge;
+    (BiometricError, String)? attestationFailure;
     if (challenge != null) {
       if (platform != DevicePlatform.android) {
-        return error(
-            BiometricError.notSupported,
-            'Key attestation (attestationChallenge) is not supported on '
-            '${platform.label}.');
+        final unsupported = 'Key attestation (attestationChallenge) is not '
+            'supported on ${platform.label}.';
+        if (!allowsFallback(transient: false)) {
+          return error(BiometricError.notSupported, unsupported);
+        }
+        attestationFailure = (BiometricError.notSupported, unsupported);
       }
       if (challenge.isEmpty || challenge.length > 128) {
         return error(BiometricError.invalidInput,
             'attestationChallenge must be 1-128 bytes');
       }
+      if (attestationFailure != null) challenge = null;
     }
     final exists = _keys.containsKey(_k(keyAlias));
     if (config?.failIfExists == true && exists) {
@@ -368,12 +385,27 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
     List<Uint8List>? chain;
     if (challenge != null) {
       chain = cannedAttestationChain;
-      if (chain == null) {
-        if (attestationMode == FakeAttestationMode.notSupported) {
-          return error(
-              BiometricError.notSupported, 'This keystore cannot attest keys');
+      final failure = chain != null
+          ? null
+          : switch (this.attestationMode) {
+              FakeAttestationMode.synthetic => null,
+              FakeAttestationMode.notSupported => (
+                  BiometricError.notSupported,
+                  'This keystore cannot attest keys',
+                ),
+              FakeAttestationMode.transientFailure => (
+                  BiometricError.notAvailable,
+                  'Key attestation is temporarily unavailable, retry later',
+                ),
+            };
+      if (failure != null) {
+        if (!allowsFallback(
+            transient: failure.$1 == BiometricError.notAvailable)) {
+          return error(failure.$1, failure.$2);
         }
-        chain = syntheticAttestation.chainFor(
+        attestationFailure = failure;
+      } else {
+        chain ??= syntheticAttestation.chainFor(
           attestedSpki: signingSpki,
           challenge: challenge,
           properties: SyntheticKeyProperties(
@@ -416,6 +448,8 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
       isHybridMode: decryptingKey != null,
       authenticationType: prompted ? _authTypeFor(key) : null,
       attestationCertificateChain: chain,
+      attestationErrorCode: attestationFailure?.$1,
+      attestationError: attestationFailure?.$2,
     );
   }
 

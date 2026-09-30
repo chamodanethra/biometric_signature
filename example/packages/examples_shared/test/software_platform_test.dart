@@ -499,6 +499,93 @@ void main() {
       }
     });
 
+    group('attestationMode', () {
+      Future<KeyCreationResult> create(AttestationMode mode,
+              {Uint8List? challenge}) =>
+          api.createKeys(
+            keyAlias: 'mode',
+            config: CreateKeysConfig(
+              attestationChallenge: challenge ?? Uint8List(8),
+              attestationMode: mode,
+            ),
+          );
+
+      test('Android: unsupported keystore', () async {
+        install(DevicePlatform.android).attestationMode =
+            FakeAttestationMode.notSupported;
+        expect((await create(AttestationMode.enforceOnChallenge)).code,
+            BiometricError.notSupported);
+        for (final mode in [
+          AttestationMode.enforceOnChallengeIfSupported,
+          AttestationMode.preferred,
+        ]) {
+          final r = await create(mode);
+          expect(r.code, BiometricError.success, reason: mode.name);
+          expect(r.attestationCertificateChain, isNull);
+          expect(r.attestationErrorCode, BiometricError.notSupported);
+          expect(r.attestationError, isNotEmpty);
+        }
+      });
+
+      test('Android: transient failure', () async {
+        install(DevicePlatform.android).attestationMode =
+            FakeAttestationMode.transientFailure;
+        for (final mode in [
+          AttestationMode.enforceOnChallenge,
+          AttestationMode.enforceOnChallengeIfSupported,
+        ]) {
+          expect((await create(mode)).code, BiometricError.notAvailable,
+              reason: mode.name);
+        }
+        final r = await create(AttestationMode.preferred);
+        expect(r.code, BiometricError.success);
+        expect(r.attestationErrorCode, BiometricError.notAvailable);
+      });
+
+      test('Android: attested keys carry no fallback reason', () async {
+        install(DevicePlatform.android);
+        final r = await create(AttestationMode.preferred,
+            challenge: secureRandomBytes(32));
+        expect(r.attestationCertificateChain, isNotEmpty);
+        expect(r.attestationErrorCode, isNull);
+        expect(r.attestationError, isNull);
+      });
+
+      test('iOS/Windows: fallback modes create an unattested key', () async {
+        for (final p in [DevicePlatform.ios, DevicePlatform.windows]) {
+          install(p);
+          final r = await create(AttestationMode.enforceOnChallengeIfSupported);
+          expect(r.code, BiometricError.success, reason: p.label);
+          expect(r.attestationErrorCode, BiometricError.notSupported);
+        }
+      });
+
+      test('disabled ignores the challenge, even an invalid one', () async {
+        for (final p in [DevicePlatform.android, DevicePlatform.ios]) {
+          install(p);
+          final r =
+              await create(AttestationMode.disabled, challenge: Uint8List(0));
+          expect(r.code, BiometricError.success, reason: p.label);
+          expect(r.attestationCertificateChain, isNull);
+          expect(r.attestationErrorCode, isNull);
+        }
+      });
+
+      test('an invalid challenge fails in every other mode', () async {
+        for (final p in [DevicePlatform.android, DevicePlatform.ios]) {
+          install(p);
+          for (final mode in [
+            AttestationMode.enforceOnChallengeIfSupported,
+            AttestationMode.preferred,
+          ]) {
+            expect((await create(mode, challenge: Uint8List(129))).code,
+                BiometricError.invalidInput,
+                reason: '${p.label} ${mode.name}');
+          }
+        }
+      });
+    });
+
     test('a canned chain is returned as-is', () async {
       install(DevicePlatform.android).cannedAttestationChain = [
         Uint8List.fromList([1, 2, 3]),
