@@ -276,15 +276,44 @@ void BiometricSignaturePlugin::CreateKeys(
     std::function<void(ErrorOr<KeyCreationResult> reply)> result) {
 
   // Key attestation is Android-only. Silently ignoring the challenge would hand
-  // back an unattested key the caller believes is attested, so this fails
-  // in-band before Windows Hello is involved or any existing key is touched.
-  if (config != nullptr && config->attestation_challenge() != nullptr) {
-    KeyCreationResult response;
-    response.set_error(
-        "Key attestation (attestationChallenge) is not supported on Windows.");
-    response.set_code(BiometricError::kNotSupported);
-    result(response);
-    return;
+  // back an unattested key the caller believes is attested, so unless the
+  // attestation mode allows falling back, this fails in-band before Windows
+  // Hello is involved or any existing key is touched.
+  const AttestationMode attestation_mode =
+      config != nullptr && config->attestation_mode() != nullptr
+          ? *config->attestation_mode()
+          : AttestationMode::kEnforceOnChallenge;
+  if (config != nullptr && config->attestation_challenge() != nullptr &&
+      attestation_mode != AttestationMode::kDisabled) {
+    const auto &challenge = *config->attestation_challenge();
+    if (challenge.empty() || challenge.size() > 128) {
+      KeyCreationResult response;
+      response.set_error(
+          "attestationChallenge must be between 1 and 128 bytes");
+      response.set_code(BiometricError::kInvalidInput);
+      result(response);
+      return;
+    }
+    const std::string unsupported =
+        "Key attestation (attestationChallenge) is not supported on Windows.";
+    if (attestation_mode == AttestationMode::kEnforceOnChallenge) {
+      KeyCreationResult response;
+      response.set_error(unsupported);
+      response.set_code(BiometricError::kNotSupported);
+      result(response);
+      return;
+    }
+    result = [result, unsupported](ErrorOr<KeyCreationResult> reply) {
+      if (reply.has_error() || reply.value().code() == nullptr ||
+          *reply.value().code() != BiometricError::kSuccess) {
+        result(std::move(reply));
+        return;
+      }
+      KeyCreationResult created = reply.value();
+      created.set_attestation_error_code(BiometricError::kNotSupported);
+      created.set_attestation_error(unsupported);
+      result(created);
+    };
   }
 
   // Bring Flutter window to foreground so Windows Hello dialog appears properly

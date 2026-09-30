@@ -515,14 +515,25 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
 
         // Key attestation is Android-only: Apple has no public API to attest an
         // individual Secure Enclave key. Silently ignoring the challenge would
-        // hand back an unattested key the caller believes is attested, so this
-        // fails in-band before any existing key is touched.
-        if config?.attestationChallenge != nil {
-            completion(.success(KeyCreationResult(
-                error: "Key attestation (attestationChallenge) is only supported on Android",
-                code: .notSupported
-            )))
-            return
+        // hand back an unattested key the caller believes is attested, so unless
+        // the attestation mode allows falling back, this fails in-band before
+        // any existing key is touched.
+        var attestationFallbackReason: String? = nil
+        let attestationMode = config?.attestationMode ?? .enforceOnChallenge
+        if let challenge = config?.attestationChallenge, attestationMode != .disabled {
+            if challenge.data.isEmpty || challenge.data.count > 128 {
+                completion(.success(KeyCreationResult(
+                    error: "attestationChallenge must be between 1 and 128 bytes",
+                    code: .invalidInput
+                )))
+                return
+            }
+            let unsupported = "Key attestation (attestationChallenge) is only supported on Android"
+            if attestationMode == .enforceOnChallenge {
+                completion(.success(KeyCreationResult(error: unsupported, code: .notSupported)))
+                return
+            }
+            attestationFallbackReason = unsupported
         }
 
         // Extract config values with defaults
@@ -562,7 +573,15 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
                 authenticationType: authType,
                 requireAuthentication: requireAuthentication
             ) { result in
-                completion(result)
+                guard let reason = attestationFallbackReason,
+                      case .success(var created) = result,
+                      created.code == .success else {
+                    completion(result)
+                    return
+                }
+                created.attestationErrorCode = .notSupported
+                created.attestationError = reason
+                completion(.success(created))
             }
         }
 

@@ -185,7 +185,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^13.1.0
+  biometric_signature: ^13.2.0
 ```
 
 |             | Android | iOS   | macOS  | Windows |
@@ -476,7 +476,9 @@ if (result.code == BiometricError.success) {
 }
 ```
 
-Attestation is an explicit opt-in, so `createKeys` fails instead of returning an unattested key:
+Attestation is an explicit opt-in, so by default `createKeys` fails instead of returning an
+unattested key (see [Falling back to an unattested key](#falling-back-to-an-unattested-key) to
+relax this):
 
 | Code | Cause | Existing key under the alias |
 |------|-------|------------------------------|
@@ -500,7 +502,50 @@ Attestation is an explicit opt-in, so `createKeys` fails instead of returning an
   **Windows**: not implemented; Windows Hello's `KeyCredential.GetAttestationAsync` is TPM-based
   and takes no caller-supplied challenge. On these platforms setting `attestationChallenge`
   returns `notSupported` rather than being ignored, so an unattested key is never mistaken for an
-  attested one. Only set it on Android, as in the example above.
+  attested one. Only set it on Android, as in the example above, or pick an `attestationMode` that
+  falls back.
+
+### Falling back to an unattested key
+
+`CreateKeysConfig.attestationMode` decides what happens when a challenge is set but the key can't
+be attested. In the modes that fall back, the plugin creates the key without attestation in the
+same call, after the same prompt, and reports why in `KeyCreationResult.attestationErrorCode`
+(`notSupported` or `notAvailable`) and `attestationError`.
+
+| Mode | Can't attest (`notSupported`) | Transient failure (`notAvailable`) | Invalid challenge |
+|------|-------------------------------|------------------------------------|-------------------|
+| `enforceOnChallenge` (default) | Fails | Fails | `invalidInput` |
+| `enforceOnChallengeIfSupported` | Unattested key | Fails | `invalidInput` |
+| `preferred` | Unattested key | Unattested key | `invalidInput` |
+| `disabled` | Challenge ignored, unattested key | Challenge ignored, unattested key | Ignored |
+
+```dart
+final result = await biometricSignature.createKeys(
+  keyAlias: 'payment_key',
+  config: CreateKeysConfig(
+    signatureType: SignatureType.ecdsa,
+    attestationChallenge: challenge, // on every platform
+    attestationMode: AttestationMode.enforceOnChallengeIfSupported,
+  ),
+);
+
+if (result.code == BiometricError.success) {
+  await api.registerKey(
+    publicKey: result.publicKey,
+    attestationChain: result.attestationCertificateChain?.map(base64Encode).toList(),
+    // null when attested; notSupported on iOS/macOS/Windows and non-attesting Android keystores.
+    attestationErrorCode: result.attestationErrorCode?.name,
+  );
+}
+```
+
+- Falling back only changes what the client returns. Your server still decides whether an
+  unattested key is acceptable, so enforce that policy there.
+- Android 7–12 can't tell a transient failure from an unsupported keystore and report both as
+  `notSupported`, so `enforceOnChallengeIfSupported` falls back on transient failures there.
+- `disabled` lets you keep passing the challenge and switch attestation off remotely, e.g. from a
+  feature flag.
+- More modes may be added in minor releases, so avoid exhaustive switches over `AttestationMode`.
 
 ### Verifying the chain on your server
 
@@ -556,6 +601,7 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
   - `code`: `BiometricError` code (e.g., `success`, `userCanceled`, `keyAlreadyExists`).
   - `error`: Descriptive error message.
   - `attestationCertificateChain`: DER X.509 attestation chain of the new key, leaf first. Android only, and only when `attestationChallenge` was set; see [Hardware Key Attestation](#hardware-key-attestation).
+  - `attestationErrorCode` / `attestationError`: why the key was created without attestation although `attestationChallenge` was set. Only when `attestationMode` fell back; see [Falling back to an unattested key](#falling-back-to-an-unattested-key).
 
 #### CreateKeysConfig Options
 
@@ -571,7 +617,8 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
 | `promptSubtitle` | Android | none | Subtitle for biometric prompt |
 | `promptDescription` | Android | none | Description for biometric prompt |
 | `cancelButtonText` | Android | `"Cancel"` | Cancel button text |
-| `attestationChallenge` | Android 7.0+ | none | Server challenge (1–128 bytes) for [hardware key attestation](#hardware-key-attestation); the chain is returned in `attestationCertificateChain`. Returns `notSupported` on iOS/macOS/Windows |
+| `attestationChallenge` | Android 7.0+ | none | Server challenge (1–128 bytes) for [hardware key attestation](#hardware-key-attestation); the chain is returned in `attestationCertificateChain`. Returns `notSupported` on iOS/macOS/Windows unless `attestationMode` falls back |
+| `attestationMode` | All | `AttestationMode.enforceOnChallenge` | Whether a key that can't be attested fails or is created unattested; see [Falling back to an unattested key](#falling-back-to-an-unattested-key) |
 
 **On `setInvalidatedByBiometricEnrollment`:** the default is `true` on every platform that
 supports it — a key created without the flag is bound to the biometric set enrolled at

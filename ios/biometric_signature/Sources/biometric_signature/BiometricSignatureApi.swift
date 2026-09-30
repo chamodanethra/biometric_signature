@@ -246,6 +246,38 @@ enum SignatureType: Int {
   case ecdsa = 1
 }
 
+/// How `createKeys` treats [CreateKeysConfig.attestationChallenge] when the
+/// key cannot be attested.
+///
+/// Every mode fails with [BiometricError.invalidInput] for an empty or
+/// over-long challenge, except [disabled], which ignores the challenge. When a
+/// mode falls back, the key is created without attestation in the same call
+/// (no second prompt), and [KeyCreationResult.attestationErrorCode] says why.
+///
+/// Falling back only changes what the client returns: your server must still
+/// decide whether an unattested key is acceptable.
+///
+/// More modes may be added in minor releases, so avoid exhaustive switches
+/// over this enum.
+enum AttestationMode: Int {
+  /// Fail whenever a challenge is provided and the key cannot be attested.
+  /// The default.
+  case enforceOnChallenge = 0
+  /// Fall back to an unattested key when the device or platform cannot
+  /// attest keys ([BiometricError.notSupported]), but fail on transient
+  /// keystore failures ([BiometricError.notAvailable]).
+  ///
+  /// Transient failures are only detected on Android 13+. Android 7–12 report
+  /// every attestation failure as unsupported, so this mode falls back there.
+  case enforceOnChallengeIfSupported = 1
+  /// Fall back to an unattested key on any attestation failure, transient
+  /// ones included.
+  case preferred = 2
+  /// Ignore the challenge and create an unattested key, e.g. to switch
+  /// attestation off remotely without changing call sites.
+  case disabled = 3
+}
+
 /// Output format for public keys.
 enum KeyFormat: Int {
   /// Base64-encoded DER (SubjectPublicKeyInfo).
@@ -340,6 +372,17 @@ struct KeyCreationResult: Hashable {
   /// key creation succeeded; null otherwise and on all other platforms. The
   /// plugin does not parse or verify the chain — send it to your server.
   var attestationCertificateChain: [FlutterStandardTypedData]? = nil
+  /// Why the key was created without attestation although
+  /// [CreateKeysConfig.attestationChallenge] was provided.
+  ///
+  /// Set only when [CreateKeysConfig.attestationMode] allowed falling back to
+  /// an unattested key: [BiometricError.notSupported] when the device or
+  /// platform cannot attest keys, [BiometricError.notAvailable] when the
+  /// keystore reported a transient failure. Null when the key is attested,
+  /// when no challenge was provided, and for [AttestationMode.disabled].
+  var attestationErrorCode: BiometricError? = nil
+  /// Human-readable detail for [attestationErrorCode].
+  var attestationError: String? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -356,6 +399,8 @@ struct KeyCreationResult: Hashable {
     let isHybridMode: Bool? = nilOrValue(pigeonVar_list[9])
     let authenticationType: AuthenticationType? = nilOrValue(pigeonVar_list[10])
     let attestationCertificateChain: [FlutterStandardTypedData]? = nilOrValue(pigeonVar_list[11])
+    let attestationErrorCode: BiometricError? = nilOrValue(pigeonVar_list[12])
+    let attestationError: String? = nilOrValue(pigeonVar_list[13])
 
     return KeyCreationResult(
       publicKey: publicKey,
@@ -369,7 +414,9 @@ struct KeyCreationResult: Hashable {
       decryptingKeySize: decryptingKeySize,
       isHybridMode: isHybridMode,
       authenticationType: authenticationType,
-      attestationCertificateChain: attestationCertificateChain
+      attestationCertificateChain: attestationCertificateChain,
+      attestationErrorCode: attestationErrorCode,
+      attestationError: attestationError
     )
   }
   func toList() -> [Any?] {
@@ -386,6 +433,8 @@ struct KeyCreationResult: Hashable {
       isHybridMode,
       authenticationType,
       attestationCertificateChain,
+      attestationErrorCode,
+      attestationError,
     ]
   }
   static func == (lhs: KeyCreationResult, rhs: KeyCreationResult) -> Bool {
@@ -657,8 +706,9 @@ struct CreateKeysConfig: Hashable {
   /// verify that the key was generated in secure hardware (TEE or StrongBox).
   /// The plugin neither parses nor verifies the chain.
   ///
-  /// Attestation is an explicit opt-in, so it fails instead of silently
-  /// returning an unattested key:
+  /// Attestation is an explicit opt-in, so by default
+  /// ([AttestationMode.enforceOnChallenge]) it fails instead of silently
+  /// returning an unattested key ([attestationMode] can allow falling back):
   /// - [BiometricError.invalidInput]: the challenge is empty or longer than
   ///   128 bytes.
   /// - [BiometricError.notSupported]: Android 6 (API 23), or the device's
@@ -680,13 +730,18 @@ struct CreateKeysConfig: Hashable {
   /// `enableDecryption: true`) only the keystore EC *signing* key is attested;
   /// the software-generated decryption key cannot be.
   ///
-  /// **iOS/macOS/Windows**: setting this field makes `createKeys` return
-  /// [BiometricError.notSupported] without touching existing keys. This
-  /// deliberately departs from how other platform-specific fields are
-  /// ignored: ignoring it would hand back an unattested key the caller
-  /// believes is attested. Apple has no public API to attest an individual
-  /// Secure Enclave key, and Windows attestation is not implemented.
+  /// **iOS/macOS/Windows**: setting this field to a valid challenge makes
+  /// `createKeys` return [BiometricError.notSupported] without touching
+  /// existing keys, unless [attestationMode] allows falling back. This deliberately departs from
+  /// how other platform-specific fields are ignored: ignoring it would hand
+  /// back an unattested key the caller believes is attested. Apple has no
+  /// public API to attest an individual Secure Enclave key, and Windows
+  /// attestation is not implemented.
   var attestationChallenge: FlutterStandardTypedData? = nil
+  /// [All platforms] What `createKeys` does when [attestationChallenge] is
+  /// provided but the key cannot be attested. Defaults to
+  /// [AttestationMode.enforceOnChallenge]. Has no effect without a challenge.
+  var attestationMode: AttestationMode? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -702,6 +757,7 @@ struct CreateKeysConfig: Hashable {
     let failIfExists: Bool? = nilOrValue(pigeonVar_list[8])
     let requireAuthentication: Bool? = nilOrValue(pigeonVar_list[9])
     let attestationChallenge: FlutterStandardTypedData? = nilOrValue(pigeonVar_list[10])
+    let attestationMode: AttestationMode? = nilOrValue(pigeonVar_list[11])
 
     return CreateKeysConfig(
       signatureType: signatureType,
@@ -714,7 +770,8 @@ struct CreateKeysConfig: Hashable {
       cancelButtonText: cancelButtonText,
       failIfExists: failIfExists,
       requireAuthentication: requireAuthentication,
-      attestationChallenge: attestationChallenge
+      attestationChallenge: attestationChallenge,
+      attestationMode: attestationMode
     )
   }
   func toList() -> [Any?] {
@@ -730,6 +787,7 @@ struct CreateKeysConfig: Hashable {
       failIfExists,
       requireAuthentication,
       attestationChallenge,
+      attestationMode,
     ]
   }
   static func == (lhs: CreateKeysConfig, rhs: CreateKeysConfig) -> Bool {
@@ -983,40 +1041,46 @@ private class BiometricSignatureApiPigeonCodecReader: FlutterStandardReader {
     case 134:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return KeyFormat(rawValue: enumResultAsInt)
+        return AttestationMode(rawValue: enumResultAsInt)
       }
       return nil
     case 135:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return SignatureFormat(rawValue: enumResultAsInt)
+        return KeyFormat(rawValue: enumResultAsInt)
       }
       return nil
     case 136:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return PayloadFormat(rawValue: enumResultAsInt)
+        return SignatureFormat(rawValue: enumResultAsInt)
       }
       return nil
     case 137:
-      return BiometricAvailability.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return PayloadFormat(rawValue: enumResultAsInt)
+      }
+      return nil
     case 138:
-      return KeyCreationResult.fromList(self.readValue() as! [Any?])
+      return BiometricAvailability.fromList(self.readValue() as! [Any?])
     case 139:
-      return SignatureResult.fromList(self.readValue() as! [Any?])
+      return KeyCreationResult.fromList(self.readValue() as! [Any?])
     case 140:
-      return DecryptResult.fromList(self.readValue() as! [Any?])
+      return SignatureResult.fromList(self.readValue() as! [Any?])
     case 141:
-      return KeyInfo.fromList(self.readValue() as! [Any?])
+      return DecryptResult.fromList(self.readValue() as! [Any?])
     case 142:
-      return CreateKeysConfig.fromList(self.readValue() as! [Any?])
+      return KeyInfo.fromList(self.readValue() as! [Any?])
     case 143:
-      return CreateSignatureConfig.fromList(self.readValue() as! [Any?])
+      return CreateKeysConfig.fromList(self.readValue() as! [Any?])
     case 144:
-      return DecryptConfig.fromList(self.readValue() as! [Any?])
+      return CreateSignatureConfig.fromList(self.readValue() as! [Any?])
     case 145:
-      return SimplePromptConfig.fromList(self.readValue() as! [Any?])
+      return DecryptConfig.fromList(self.readValue() as! [Any?])
     case 146:
+      return SimplePromptConfig.fromList(self.readValue() as! [Any?])
+    case 147:
       return SimplePromptResult.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -1041,44 +1105,47 @@ private class BiometricSignatureApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? SignatureType {
       super.writeByte(133)
       super.writeValue(value.rawValue)
-    } else if let value = value as? KeyFormat {
+    } else if let value = value as? AttestationMode {
       super.writeByte(134)
       super.writeValue(value.rawValue)
-    } else if let value = value as? SignatureFormat {
+    } else if let value = value as? KeyFormat {
       super.writeByte(135)
       super.writeValue(value.rawValue)
-    } else if let value = value as? PayloadFormat {
+    } else if let value = value as? SignatureFormat {
       super.writeByte(136)
       super.writeValue(value.rawValue)
-    } else if let value = value as? BiometricAvailability {
+    } else if let value = value as? PayloadFormat {
       super.writeByte(137)
-      super.writeValue(value.toList())
-    } else if let value = value as? KeyCreationResult {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? BiometricAvailability {
       super.writeByte(138)
       super.writeValue(value.toList())
-    } else if let value = value as? SignatureResult {
+    } else if let value = value as? KeyCreationResult {
       super.writeByte(139)
       super.writeValue(value.toList())
-    } else if let value = value as? DecryptResult {
+    } else if let value = value as? SignatureResult {
       super.writeByte(140)
       super.writeValue(value.toList())
-    } else if let value = value as? KeyInfo {
+    } else if let value = value as? DecryptResult {
       super.writeByte(141)
       super.writeValue(value.toList())
-    } else if let value = value as? CreateKeysConfig {
+    } else if let value = value as? KeyInfo {
       super.writeByte(142)
       super.writeValue(value.toList())
-    } else if let value = value as? CreateSignatureConfig {
+    } else if let value = value as? CreateKeysConfig {
       super.writeByte(143)
       super.writeValue(value.toList())
-    } else if let value = value as? DecryptConfig {
+    } else if let value = value as? CreateSignatureConfig {
       super.writeByte(144)
       super.writeValue(value.toList())
-    } else if let value = value as? SimplePromptConfig {
+    } else if let value = value as? DecryptConfig {
       super.writeByte(145)
       super.writeValue(value.toList())
-    } else if let value = value as? SimplePromptResult {
+    } else if let value = value as? SimplePromptConfig {
       super.writeByte(146)
+      super.writeValue(value.toList())
+    } else if let value = value as? SimplePromptResult {
+      super.writeByte(147)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)

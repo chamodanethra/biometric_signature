@@ -15,7 +15,7 @@ dependencies:
 
   # The Explorer ships inside the plugin package, so it uses the plugin (and
   # the shared example helpers) by path. In your own app use:
-  #   biometric_signature: ^13.1.0
+  #   biometric_signature: ^13.2.0
   biometric_signature:
     path: ../
   examples_shared:

@@ -185,6 +185,19 @@ class KeyCreationResult {
   /// key creation succeeded; null otherwise and on all other platforms. The
   /// plugin does not parse or verify the chain — send it to your server.
   List<Uint8List>? attestationCertificateChain;
+
+  /// Why the key was created without attestation although
+  /// [CreateKeysConfig.attestationChallenge] was provided.
+  ///
+  /// Set only when [CreateKeysConfig.attestationMode] allowed falling back to
+  /// an unattested key: [BiometricError.notSupported] when the device or
+  /// platform cannot attest keys, [BiometricError.notAvailable] when the
+  /// keystore reported a transient failure. Null when the key is attested,
+  /// when no challenge was provided, and for [AttestationMode.disabled].
+  BiometricError? attestationErrorCode;
+
+  /// Human-readable detail for [attestationErrorCode].
+  String? attestationError;
 }
 
 class SignatureResult {
@@ -264,6 +277,41 @@ enum SignatureType {
 
   /// ECDSA P-256 (hardware-backed on all platforms).
   ecdsa,
+}
+
+/// How `createKeys` treats [CreateKeysConfig.attestationChallenge] when the
+/// key cannot be attested.
+///
+/// Every mode fails with [BiometricError.invalidInput] for an empty or
+/// over-long challenge, except [disabled], which ignores the challenge. When a
+/// mode falls back, the key is created without attestation in the same call
+/// (no second prompt), and [KeyCreationResult.attestationErrorCode] says why.
+///
+/// Falling back only changes what the client returns: your server must still
+/// decide whether an unattested key is acceptable.
+///
+/// More modes may be added in minor releases, so avoid exhaustive switches
+/// over this enum.
+enum AttestationMode {
+  /// Fail whenever a challenge is provided and the key cannot be attested.
+  /// The default.
+  enforceOnChallenge,
+
+  /// Fall back to an unattested key when the device or platform cannot
+  /// attest keys ([BiometricError.notSupported]), but fail on transient
+  /// keystore failures ([BiometricError.notAvailable]).
+  ///
+  /// Transient failures are only detected on Android 13+. Android 7–12 report
+  /// every attestation failure as unsupported, so this mode falls back there.
+  enforceOnChallengeIfSupported,
+
+  /// Fall back to an unattested key on any attestation failure, transient
+  /// ones included.
+  preferred,
+
+  /// Ignore the challenge and create an unattested key, e.g. to switch
+  /// attestation off remotely without changing call sites.
+  disabled,
 }
 
 /// Configuration for key creation (all platforms).
@@ -366,8 +414,9 @@ class CreateKeysConfig {
   /// verify that the key was generated in secure hardware (TEE or StrongBox).
   /// The plugin neither parses nor verifies the chain.
   ///
-  /// Attestation is an explicit opt-in, so it fails instead of silently
-  /// returning an unattested key:
+  /// Attestation is an explicit opt-in, so by default
+  /// ([AttestationMode.enforceOnChallenge]) it fails instead of silently
+  /// returning an unattested key ([attestationMode] can allow falling back):
   /// - [BiometricError.invalidInput]: the challenge is empty or longer than
   ///   128 bytes.
   /// - [BiometricError.notSupported]: Android 6 (API 23), or the device's
@@ -389,13 +438,19 @@ class CreateKeysConfig {
   /// `enableDecryption: true`) only the keystore EC *signing* key is attested;
   /// the software-generated decryption key cannot be.
   ///
-  /// **iOS/macOS/Windows**: setting this field makes `createKeys` return
-  /// [BiometricError.notSupported] without touching existing keys. This
-  /// deliberately departs from how other platform-specific fields are
-  /// ignored: ignoring it would hand back an unattested key the caller
-  /// believes is attested. Apple has no public API to attest an individual
-  /// Secure Enclave key, and Windows attestation is not implemented.
+  /// **iOS/macOS/Windows**: setting this field to a valid challenge makes
+  /// `createKeys` return [BiometricError.notSupported] without touching
+  /// existing keys, unless [attestationMode] allows falling back. This deliberately departs from
+  /// how other platform-specific fields are ignored: ignoring it would hand
+  /// back an unattested key the caller believes is attested. Apple has no
+  /// public API to attest an individual Secure Enclave key, and Windows
+  /// attestation is not implemented.
   Uint8List? attestationChallenge;
+
+  /// [All platforms] What `createKeys` does when [attestationChallenge] is
+  /// provided but the key cannot be attested. Defaults to
+  /// [AttestationMode.enforceOnChallenge]. Has no effect without a challenge.
+  AttestationMode? attestationMode;
 }
 
 /// Configuration for signature creation (all platforms).

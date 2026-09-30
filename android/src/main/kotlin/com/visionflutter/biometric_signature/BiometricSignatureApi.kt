@@ -240,6 +240,54 @@ enum class SignatureType(val raw: Int) {
   }
 }
 
+/**
+ * How `createKeys` treats [CreateKeysConfig.attestationChallenge] when the
+ * key cannot be attested.
+ *
+ * Every mode fails with [BiometricError.invalidInput] for an empty or
+ * over-long challenge, except [disabled], which ignores the challenge. When a
+ * mode falls back, the key is created without attestation in the same call
+ * (no second prompt), and [KeyCreationResult.attestationErrorCode] says why.
+ *
+ * Falling back only changes what the client returns: your server must still
+ * decide whether an unattested key is acceptable.
+ *
+ * More modes may be added in minor releases, so avoid exhaustive switches
+ * over this enum.
+ */
+enum class AttestationMode(val raw: Int) {
+  /**
+   * Fail whenever a challenge is provided and the key cannot be attested.
+   * The default.
+   */
+  ENFORCE_ON_CHALLENGE(0),
+  /**
+   * Fall back to an unattested key when the device or platform cannot
+   * attest keys ([BiometricError.notSupported]), but fail on transient
+   * keystore failures ([BiometricError.notAvailable]).
+   *
+   * Transient failures are only detected on Android 13+. Android 7–12 report
+   * every attestation failure as unsupported, so this mode falls back there.
+   */
+  ENFORCE_ON_CHALLENGE_IF_SUPPORTED(1),
+  /**
+   * Fall back to an unattested key on any attestation failure, transient
+   * ones included.
+   */
+  PREFERRED(2),
+  /**
+   * Ignore the challenge and create an unattested key, e.g. to switch
+   * attestation off remotely without changing call sites.
+   */
+  DISABLED(3);
+
+  companion object {
+    fun ofRaw(raw: Int): AttestationMode? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
 /** Output format for public keys. */
 enum class KeyFormat(val raw: Int) {
   /** Base64-encoded DER (SubjectPublicKeyInfo). */
@@ -355,7 +403,20 @@ data class KeyCreationResult (
    * key creation succeeded; null otherwise and on all other platforms. The
    * plugin does not parse or verify the chain — send it to your server.
    */
-  val attestationCertificateChain: List<ByteArray>? = null
+  val attestationCertificateChain: List<ByteArray>? = null,
+  /**
+   * Why the key was created without attestation although
+   * [CreateKeysConfig.attestationChallenge] was provided.
+   *
+   * Set only when [CreateKeysConfig.attestationMode] allowed falling back to
+   * an unattested key: [BiometricError.notSupported] when the device or
+   * platform cannot attest keys, [BiometricError.notAvailable] when the
+   * keystore reported a transient failure. Null when the key is attested,
+   * when no challenge was provided, and for [AttestationMode.disabled].
+   */
+  val attestationErrorCode: BiometricError? = null,
+  /** Human-readable detail for [attestationErrorCode]. */
+  val attestationError: String? = null
 )
  {
   companion object {
@@ -372,7 +433,9 @@ data class KeyCreationResult (
       val isHybridMode = pigeonVar_list[9] as Boolean?
       val authenticationType = pigeonVar_list[10] as AuthenticationType?
       val attestationCertificateChain = pigeonVar_list[11] as List<ByteArray>?
-      return KeyCreationResult(publicKey, publicKeyBytes, error, code, algorithm, keySize, decryptingPublicKey, decryptingAlgorithm, decryptingKeySize, isHybridMode, authenticationType, attestationCertificateChain)
+      val attestationErrorCode = pigeonVar_list[12] as BiometricError?
+      val attestationError = pigeonVar_list[13] as String?
+      return KeyCreationResult(publicKey, publicKeyBytes, error, code, algorithm, keySize, decryptingPublicKey, decryptingAlgorithm, decryptingKeySize, isHybridMode, authenticationType, attestationCertificateChain, attestationErrorCode, attestationError)
     }
   }
   fun toList(): List<Any?> {
@@ -389,6 +452,8 @@ data class KeyCreationResult (
       isHybridMode,
       authenticationType,
       attestationCertificateChain,
+      attestationErrorCode,
+      attestationError,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -682,8 +747,9 @@ data class CreateKeysConfig (
    * verify that the key was generated in secure hardware (TEE or StrongBox).
    * The plugin neither parses nor verifies the chain.
    *
-   * Attestation is an explicit opt-in, so it fails instead of silently
-   * returning an unattested key:
+   * Attestation is an explicit opt-in, so by default
+   * ([AttestationMode.enforceOnChallenge]) it fails instead of silently
+   * returning an unattested key ([attestationMode] can allow falling back):
    * - [BiometricError.invalidInput]: the challenge is empty or longer than
    *   128 bytes.
    * - [BiometricError.notSupported]: Android 6 (API 23), or the device's
@@ -705,14 +771,21 @@ data class CreateKeysConfig (
    * `enableDecryption: true`) only the keystore EC *signing* key is attested;
    * the software-generated decryption key cannot be.
    *
-   * **iOS/macOS/Windows**: setting this field makes `createKeys` return
-   * [BiometricError.notSupported] without touching existing keys. This
-   * deliberately departs from how other platform-specific fields are
-   * ignored: ignoring it would hand back an unattested key the caller
-   * believes is attested. Apple has no public API to attest an individual
-   * Secure Enclave key, and Windows attestation is not implemented.
+   * **iOS/macOS/Windows**: setting this field to a valid challenge makes
+   * `createKeys` return [BiometricError.notSupported] without touching
+   * existing keys, unless [attestationMode] allows falling back. This deliberately departs from
+   * how other platform-specific fields are ignored: ignoring it would hand
+   * back an unattested key the caller believes is attested. Apple has no
+   * public API to attest an individual Secure Enclave key, and Windows
+   * attestation is not implemented.
    */
-  val attestationChallenge: ByteArray? = null
+  val attestationChallenge: ByteArray? = null,
+  /**
+   * [All platforms] What `createKeys` does when [attestationChallenge] is
+   * provided but the key cannot be attested. Defaults to
+   * [AttestationMode.enforceOnChallenge]. Has no effect without a challenge.
+   */
+  val attestationMode: AttestationMode? = null
 )
  {
   companion object {
@@ -728,7 +801,8 @@ data class CreateKeysConfig (
       val failIfExists = pigeonVar_list[8] as Boolean?
       val requireAuthentication = pigeonVar_list[9] as Boolean?
       val attestationChallenge = pigeonVar_list[10] as ByteArray?
-      return CreateKeysConfig(signatureType, enforceBiometric, setInvalidatedByBiometricEnrollment, useDeviceCredentials, enableDecryption, promptSubtitle, promptDescription, cancelButtonText, failIfExists, requireAuthentication, attestationChallenge)
+      val attestationMode = pigeonVar_list[11] as AttestationMode?
+      return CreateKeysConfig(signatureType, enforceBiometric, setInvalidatedByBiometricEnrollment, useDeviceCredentials, enableDecryption, promptSubtitle, promptDescription, cancelButtonText, failIfExists, requireAuthentication, attestationChallenge, attestationMode)
     }
   }
   fun toList(): List<Any?> {
@@ -744,6 +818,7 @@ data class CreateKeysConfig (
       failIfExists,
       requireAuthentication,
       attestationChallenge,
+      attestationMode,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -1014,65 +1089,70 @@ private open class BiometricSignatureApiPigeonCodec : StandardMessageCodec() {
       }
       134.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          KeyFormat.ofRaw(it.toInt())
+          AttestationMode.ofRaw(it.toInt())
         }
       }
       135.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          SignatureFormat.ofRaw(it.toInt())
+          KeyFormat.ofRaw(it.toInt())
         }
       }
       136.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          PayloadFormat.ofRaw(it.toInt())
+          SignatureFormat.ofRaw(it.toInt())
         }
       }
       137.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          BiometricAvailability.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          PayloadFormat.ofRaw(it.toInt())
         }
       }
       138.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          KeyCreationResult.fromList(it)
+          BiometricAvailability.fromList(it)
         }
       }
       139.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          SignatureResult.fromList(it)
+          KeyCreationResult.fromList(it)
         }
       }
       140.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          DecryptResult.fromList(it)
+          SignatureResult.fromList(it)
         }
       }
       141.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          KeyInfo.fromList(it)
+          DecryptResult.fromList(it)
         }
       }
       142.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CreateKeysConfig.fromList(it)
+          KeyInfo.fromList(it)
         }
       }
       143.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CreateSignatureConfig.fromList(it)
+          CreateKeysConfig.fromList(it)
         }
       }
       144.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          DecryptConfig.fromList(it)
+          CreateSignatureConfig.fromList(it)
         }
       }
       145.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          SimplePromptConfig.fromList(it)
+          DecryptConfig.fromList(it)
         }
       }
       146.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          SimplePromptConfig.fromList(it)
+        }
+      }
+      147.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           SimplePromptResult.fromList(it)
         }
@@ -1102,56 +1182,60 @@ private open class BiometricSignatureApiPigeonCodec : StandardMessageCodec() {
         stream.write(133)
         writeValue(stream, value.raw)
       }
-      is KeyFormat -> {
+      is AttestationMode -> {
         stream.write(134)
         writeValue(stream, value.raw)
       }
-      is SignatureFormat -> {
+      is KeyFormat -> {
         stream.write(135)
         writeValue(stream, value.raw)
       }
-      is PayloadFormat -> {
+      is SignatureFormat -> {
         stream.write(136)
         writeValue(stream, value.raw)
       }
-      is BiometricAvailability -> {
+      is PayloadFormat -> {
         stream.write(137)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw)
       }
-      is KeyCreationResult -> {
+      is BiometricAvailability -> {
         stream.write(138)
         writeValue(stream, value.toList())
       }
-      is SignatureResult -> {
+      is KeyCreationResult -> {
         stream.write(139)
         writeValue(stream, value.toList())
       }
-      is DecryptResult -> {
+      is SignatureResult -> {
         stream.write(140)
         writeValue(stream, value.toList())
       }
-      is KeyInfo -> {
+      is DecryptResult -> {
         stream.write(141)
         writeValue(stream, value.toList())
       }
-      is CreateKeysConfig -> {
+      is KeyInfo -> {
         stream.write(142)
         writeValue(stream, value.toList())
       }
-      is CreateSignatureConfig -> {
+      is CreateKeysConfig -> {
         stream.write(143)
         writeValue(stream, value.toList())
       }
-      is DecryptConfig -> {
+      is CreateSignatureConfig -> {
         stream.write(144)
         writeValue(stream, value.toList())
       }
-      is SimplePromptConfig -> {
+      is DecryptConfig -> {
         stream.write(145)
         writeValue(stream, value.toList())
       }
-      is SimplePromptResult -> {
+      is SimplePromptConfig -> {
         stream.write(146)
+        writeValue(stream, value.toList())
+      }
+      is SimplePromptResult -> {
+        stream.write(147)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)

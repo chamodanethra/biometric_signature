@@ -29,12 +29,75 @@ class KeyAttestationException(
     message: String,
     cause: Throwable? = null,
     val isTransient: Boolean = false
-) : Exception(message, cause)
+) : Exception(message, cause) {
+    val errorCode: BiometricError
+        get() = if (isTransient) BiometricError.NOT_AVAILABLE else BiometricError.NOT_SUPPORTED
+}
 
-/** A generated keystore key plus its attestation chain (null when attestation was not requested). */
+fun attestationRequiresApi24Failure() =
+    KeyAttestationException("Key attestation requires Android 7.0 (API 24) or newer")
+
+/** Whether this mode accepts an unattested key after [failure]. */
+fun AttestationMode.allowsFallback(failure: KeyAttestationException): Boolean = when (this) {
+    AttestationMode.ENFORCE_ON_CHALLENGE -> false
+    AttestationMode.ENFORCE_ON_CHALLENGE_IF_SUPPORTED -> !failure.isTransient
+    AttestationMode.PREFERRED, AttestationMode.DISABLED -> true
+}
+
+/**
+ * Runs [generate] with StrongBox requested and, if that fails and the attempt
+ * was [strongBoxBacked], once more in the TEE. [cleanUp] runs after every failed
+ * attempt so a partial keystore entry never survives it. The last failure is
+ * rethrown unchanged.
+ */
+internal fun <T> generateWithTeeRetry(
+    strongBoxBacked: Boolean,
+    generate: (useStrongBox: Boolean) -> T,
+    cleanUp: () -> Unit
+): T {
+    try {
+        return generate(true)
+    } catch (strongBoxFailure: Exception) {
+        cleanUp()
+        if (!strongBoxBacked) throw strongBoxFailure
+    }
+    try {
+        return generate(false)
+    } catch (teeFailure: Exception) {
+        cleanUp()
+        throw teeFailure
+    }
+}
+
+/**
+ * Runs [generateAttested] and, if [attestationMode] accepts its
+ * [KeyAttestationException], generates an unattested key instead, reporting
+ * the failure alongside it. The unattested attempt gets the same TEE retry
+ * ([generateWithTeeRetry]): StrongBox may just have failed for reasons
+ * unrelated to attestation, and the fallback exists to still hand back a key.
+ */
+internal fun generateWithAttestationFallback(
+    attestationMode: AttestationMode,
+    generateAttested: () -> GeneratedKey,
+    unattestedStrongBoxBacked: Boolean,
+    generateUnattested: (useStrongBox: Boolean) -> KeyPair,
+    cleanUp: () -> Unit
+): GeneratedKey = try {
+    generateAttested()
+} catch (failure: KeyAttestationException) {
+    if (!attestationMode.allowsFallback(failure)) throw failure
+    GeneratedKey(generateWithTeeRetry(unattestedStrongBoxBacked, generateUnattested, cleanUp), null, failure)
+}
+
+/**
+ * A generated keystore key plus its attestation chain (null when attestation
+ * was not requested or fell back). [attestationFailure] is set when a
+ * challenge was provided but the [AttestationMode] accepted an unattested key.
+ */
 data class GeneratedKey(
     val keyPair: KeyPair,
-    val attestationCertChain: List<ByteArray>?
+    val attestationCertChain: List<ByteArray>?,
+    val attestationFailure: KeyAttestationException? = null
 )
 
 class KeyManager(private val appContext: Context, private val fileIO: FileIOHelper) {
@@ -45,7 +108,8 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
         invalidateOnEnrollment: Boolean,
         enableDecryption: Boolean,
         requireAuthentication: Boolean,
-        attestationChallenge: ByteArray? = null
+        attestationChallenge: ByteArray? = null,
+        attestationMode: AttestationMode = AttestationMode.ENFORCE_ON_CHALLENGE
     ): GeneratedKey {
         val purposes = if (enableDecryption) {
             KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_DECRYPT
@@ -55,7 +119,7 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
 
         val alias = Constants.biometricKeyAlias(keyAlias)
 
-        fun specFor(useStrongBox: Boolean): KeyGenParameterSpec {
+        fun specFor(useStrongBox: Boolean, challenge: ByteArray?): KeyGenParameterSpec {
             val builder = KeyGenParameterSpec.Builder(alias, purposes)
                 .setDigests(KeyProperties.DIGEST_SHA256)
                 .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
@@ -72,12 +136,12 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
                 configureInvalidation(builder, invalidateOnEnrollment)
             }
             if (useStrongBox) tryEnableStrongBox(builder)
-            applyAttestationChallenge(builder, attestationChallenge)
+            applyAttestationChallenge(builder, challenge)
             return builder.build()
         }
 
         return generateKeyPairWithOptionalAttestation(
-            KeyProperties.KEY_ALGORITHM_RSA, alias, attestationChallenge, ::specFor
+            KeyProperties.KEY_ALGORITHM_RSA, alias, attestationChallenge, attestationMode, ::specFor
         )
     }
 
@@ -86,11 +150,12 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
         useDeviceCredentials: Boolean,
         invalidateOnEnrollment: Boolean,
         requireAuthentication: Boolean,
-        attestationChallenge: ByteArray? = null
+        attestationChallenge: ByteArray? = null,
+        attestationMode: AttestationMode = AttestationMode.ENFORCE_ON_CHALLENGE
     ): GeneratedKey {
         val alias = Constants.biometricKeyAlias(keyAlias)
 
-        fun specFor(useStrongBox: Boolean): KeyGenParameterSpec {
+        fun specFor(useStrongBox: Boolean, challenge: ByteArray?): KeyGenParameterSpec {
             val builder = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
                 .setDigests(KeyProperties.DIGEST_SHA256)
                 .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
@@ -101,12 +166,12 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
                 configureInvalidation(builder, invalidateOnEnrollment)
             }
             if (useStrongBox) tryEnableStrongBox(builder)
-            applyAttestationChallenge(builder, attestationChallenge)
+            applyAttestationChallenge(builder, challenge)
             return builder.build()
         }
 
         return generateKeyPairWithOptionalAttestation(
-            KeyProperties.KEY_ALGORITHM_EC, alias, attestationChallenge, ::specFor
+            KeyProperties.KEY_ALGORITHM_EC, alias, attestationChallenge, attestationMode, ::specFor
         )
     }
 
@@ -126,12 +191,16 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
      * requested, since it would only repeat the same (slow) TEE attempt. A
      * final failure removes any partial keystore entry so an unattested key
      * never shadows the alias.
+     *
+     * If [attestationMode] accepts the attestation failure, the key is
+     * generated again without a challenge; see [generateWithAttestationFallback].
      */
     private fun generateKeyPairWithOptionalAttestation(
         keyAlgorithm: String,
         alias: String,
         attestationChallenge: ByteArray?,
-        specFor: (useStrongBox: Boolean) -> KeyGenParameterSpec
+        attestationMode: AttestationMode,
+        specFor: (useStrongBox: Boolean, challenge: ByteArray?) -> KeyGenParameterSpec
     ): GeneratedKey {
         fun generate(spec: KeyGenParameterSpec): KeyPair {
             val kpg = KeyPairGenerator.getInstance(keyAlgorithm, Constants.KEYSTORE_PROVIDER)
@@ -139,22 +208,39 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
             return kpg.generateKeyPair()
         }
 
-        val spec = specFor(true)
         if (attestationChallenge == null) {
-            return GeneratedKey(generate(spec), null)
+            return GeneratedKey(generate(specFor(true, null)), null)
         }
 
+        val unattestedSpec = specFor(true, null)
+        return generateWithAttestationFallback(
+            attestationMode,
+            { generateAttestedKeyPair(alias, attestationChallenge, ::generate, specFor) },
+            isStrongBoxBacked(unattestedSpec),
+            { useStrongBox -> generate(if (useStrongBox) unattestedSpec else specFor(false, null)) },
+            { deleteEntryQuietly(alias) }
+        )
+    }
+
+    private fun generateAttestedKeyPair(
+        alias: String,
+        attestationChallenge: ByteArray,
+        generate: (KeyGenParameterSpec) -> KeyPair,
+        specFor: (useStrongBox: Boolean, challenge: ByteArray?) -> KeyGenParameterSpec
+    ): GeneratedKey {
+        // applyAttestationChallenge skips the setter below API 24, so without
+        // this the keystore would generate a key only to reject it as unattested.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) throw attestationRequiresApi24Failure()
+
+        val spec = specFor(true, attestationChallenge)
         val keyPair = try {
-            generate(spec)
-        } catch (firstFailure: Exception) {
-            deleteEntryQuietly(alias)
-            if (!isStrongBoxBacked(spec)) throw attestationFailure(firstFailure)
-            try {
-                generate(specFor(false))
-            } catch (teeFailure: Exception) {
-                deleteEntryQuietly(alias)
-                throw attestationFailure(teeFailure)
-            }
+            generateWithTeeRetry(
+                isStrongBoxBacked(spec),
+                { useStrongBox -> generate(if (useStrongBox) spec else specFor(false, attestationChallenge)) },
+                { deleteEntryQuietly(alias) }
+            )
+        } catch (e: Exception) {
+            throw attestationFailure(e)
         }
 
         val chain = runCatching {
@@ -250,9 +336,9 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
     }
 
     /**
-     * Requests an attestation certificate chain for the key. The plugin
-     * pre-validates API 24 and rejects older devices; the guard here keeps
-     * the setter call itself legal on API 23.
+     * Requests an attestation certificate chain for the key. Attested
+     * generation rejects API 23 before building a spec; the guard here keeps
+     * the setter call itself legal there.
      */
     private fun applyAttestationChallenge(
         builder: KeyGenParameterSpec.Builder,

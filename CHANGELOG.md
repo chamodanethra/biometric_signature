@@ -1,3 +1,16 @@
+## [13.2.0] - 2026-09-30
+
+### Added
+* **Optional key attestation.** New `CreateKeysConfig.attestationMode` decides what `createKeys` does when `attestationChallenge` is set but the key can't be attested:
+  * `enforceOnChallenge` (default): fails, as in 13.1.0.
+  * `enforceOnChallengeIfSupported`: creates an unattested key when the device or platform can't attest keys (`notSupported`, including iOS, macOS and Windows), but still fails on transient keystore failures (`notAvailable`). Android 7–12 report transient failures as `notSupported`, so this mode falls back there.
+  * `preferred`: creates an unattested key on any attestation failure.
+  * `disabled`: ignores the challenge.
+  * When a mode falls back, the key is created in the same call, with no second prompt, and the new `KeyCreationResult.attestationErrorCode` (`notSupported` or `notAvailable`) and `attestationError` say why. Every mode except `disabled` still returns `invalidInput` for an empty or over-128-byte challenge.
+
+### Changed
+* **An invalid `attestationChallenge` now returns `invalidInput` on every platform.** An empty or over-128-byte challenge used to return `notSupported` on Android 6 (API 23), iOS, macOS and Windows. The challenge length is now checked first, in every mode except `disabled`.
+
 ## [13.1.0] - 2026-09-27
 
 ### Added

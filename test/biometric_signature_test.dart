@@ -859,6 +859,64 @@ void main() {
       expect(result.attestationCertificateChain, chain);
     });
 
+    test('createKeys sends every attestationMode', () async {
+      final sentModes = <AttestationMode?>[];
+      messenger().setMockMessageHandler('$channelPrefix.createKeys', (
+        ByteData? message,
+      ) async {
+        final args = codec.decodeMessage(message)! as List<Object?>;
+        sentModes.add((args[1] as CreateKeysConfig?)?.attestationMode);
+        return codec.encodeMessage(<Object?>[
+          KeyCreationResult(code: BiometricError.success),
+        ]);
+      });
+
+      for (final mode in AttestationMode.values) {
+        await BiometricSignature().createKeys(
+          config: CreateKeysConfig(
+            attestationChallenge: challenge,
+            attestationMode: mode,
+          ),
+        );
+      }
+      await BiometricSignature().createKeys(
+        config: CreateKeysConfig(attestationChallenge: challenge),
+      );
+
+      expect(sentModes, [...AttestationMode.values, null]);
+    });
+
+    test('createKeys decodes the attestation fallback reason', () async {
+      messenger().setMockMessageHandler('$channelPrefix.createKeys', (
+        ByteData? message,
+      ) async {
+        return codec.encodeMessage(<Object?>[
+          KeyCreationResult(
+            code: BiometricError.success,
+            publicKey: 'unattested',
+            attestationErrorCode: BiometricError.notAvailable,
+            attestationError: 'Key attestation is temporarily unavailable',
+          ),
+        ]);
+      });
+
+      final result = await BiometricSignature().createKeys(
+        config: CreateKeysConfig(
+          attestationChallenge: challenge,
+          attestationMode: AttestationMode.preferred,
+        ),
+      );
+
+      expect(result.code, BiometricError.success);
+      expect(result.publicKey, 'unattested');
+      expect(result.attestationCertificateChain, isNull);
+      expect(result.attestationErrorCode, BiometricError.notAvailable);
+      expect(
+        result.attestationError,
+        'Key attestation is temporarily unavailable',
+      );
+    });
+
     test('getKeyInfo decodes the chain', () async {
       messenger().setMockMessageHandler('$channelPrefix.getKeyInfo', (
         ByteData? message,

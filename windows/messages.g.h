@@ -174,6 +174,38 @@ enum class SignatureType {
   kEcdsa = 1
 };
 
+// How `createKeys` treats [CreateKeysConfig.attestationChallenge] when the
+// key cannot be attested.
+//
+// Every mode fails with [BiometricError.invalidInput] for an empty or
+// over-long challenge, except [disabled], which ignores the challenge. When a
+// mode falls back, the key is created without attestation in the same call
+// (no second prompt), and [KeyCreationResult.attestationErrorCode] says why.
+//
+// Falling back only changes what the client returns: your server must still
+// decide whether an unattested key is acceptable.
+//
+// More modes may be added in minor releases, so avoid exhaustive switches
+// over this enum.
+enum class AttestationMode {
+  // Fail whenever a challenge is provided and the key cannot be attested.
+  // The default.
+  kEnforceOnChallenge = 0,
+  // Fall back to an unattested key when the device or platform cannot
+  // attest keys ([BiometricError.notSupported]), but fail on transient
+  // keystore failures ([BiometricError.notAvailable]).
+  //
+  // Transient failures are only detected on Android 13+. Android 7–12 report
+  // every attestation failure as unsupported, so this mode falls back there.
+  kEnforceOnChallengeIfSupported = 1,
+  // Fall back to an unattested key on any attestation failure, transient
+  // ones included.
+  kPreferred = 2,
+  // Ignore the challenge and create an unattested key, e.g. to switch
+  // attestation off remotely without changing call sites.
+  kDisabled = 3
+};
+
 // Output format for public keys.
 enum class KeyFormat {
   // Base64-encoded DER (SubjectPublicKeyInfo).
@@ -267,7 +299,9 @@ class KeyCreationResult {
     const int64_t* decrypting_key_size,
     const bool* is_hybrid_mode,
     const AuthenticationType* authentication_type,
-    const flutter::EncodableList* attestation_certificate_chain);
+    const flutter::EncodableList* attestation_certificate_chain,
+    const BiometricError* attestation_error_code,
+    const std::string* attestation_error);
 
   const std::string* public_key() const;
   void set_public_key(const std::string_view* value_arg);
@@ -328,6 +362,23 @@ class KeyCreationResult {
   void set_attestation_certificate_chain(const flutter::EncodableList* value_arg);
   void set_attestation_certificate_chain(const flutter::EncodableList& value_arg);
 
+  // Why the key was created without attestation although
+  // [CreateKeysConfig.attestationChallenge] was provided.
+  //
+  // Set only when [CreateKeysConfig.attestationMode] allowed falling back to
+  // an unattested key: [BiometricError.notSupported] when the device or
+  // platform cannot attest keys, [BiometricError.notAvailable] when the
+  // keystore reported a transient failure. Null when the key is attested,
+  // when no challenge was provided, and for [AttestationMode.disabled].
+  const BiometricError* attestation_error_code() const;
+  void set_attestation_error_code(const BiometricError* value_arg);
+  void set_attestation_error_code(const BiometricError& value_arg);
+
+  // Human-readable detail for [attestationErrorCode].
+  const std::string* attestation_error() const;
+  void set_attestation_error(const std::string_view* value_arg);
+  void set_attestation_error(std::string_view value_arg);
+
  private:
   static KeyCreationResult FromEncodableList(const flutter::EncodableList& list);
   flutter::EncodableList ToEncodableList() const;
@@ -345,6 +396,8 @@ class KeyCreationResult {
   std::optional<bool> is_hybrid_mode_;
   std::optional<AuthenticationType> authentication_type_;
   std::optional<flutter::EncodableList> attestation_certificate_chain_;
+  std::optional<BiometricError> attestation_error_code_;
+  std::optional<std::string> attestation_error_;
 };
 
 
@@ -584,7 +637,8 @@ class CreateKeysConfig {
     const std::string* cancel_button_text,
     const bool* fail_if_exists,
     const bool* require_authentication,
-    const std::vector<uint8_t>* attestation_challenge);
+    const std::vector<uint8_t>* attestation_challenge,
+    const AttestationMode* attestation_mode);
 
   // [Android/iOS/macOS] The cryptographic algorithm to use.
   // Windows only supports RSA and ignores this field.
@@ -690,8 +744,9 @@ class CreateKeysConfig {
   // verify that the key was generated in secure hardware (TEE or StrongBox).
   // The plugin neither parses nor verifies the chain.
   //
-  // Attestation is an explicit opt-in, so it fails instead of silently
-  // returning an unattested key:
+  // Attestation is an explicit opt-in, so by default
+  // ([AttestationMode.enforceOnChallenge]) it fails instead of silently
+  // returning an unattested key ([attestationMode] can allow falling back):
   // - [BiometricError.invalidInput]: the challenge is empty or longer than
   //   128 bytes.
   // - [BiometricError.notSupported]: Android 6 (API 23), or the device's
@@ -713,15 +768,23 @@ class CreateKeysConfig {
   // `enableDecryption: true`) only the keystore EC *signing* key is attested;
   // the software-generated decryption key cannot be.
   //
-  // **iOS/macOS/Windows**: setting this field makes `createKeys` return
-  // [BiometricError.notSupported] without touching existing keys. This
-  // deliberately departs from how other platform-specific fields are
-  // ignored: ignoring it would hand back an unattested key the caller
-  // believes is attested. Apple has no public API to attest an individual
-  // Secure Enclave key, and Windows attestation is not implemented.
+  // **iOS/macOS/Windows**: setting this field to a valid challenge makes
+  // `createKeys` return [BiometricError.notSupported] without touching
+  // existing keys, unless [attestationMode] allows falling back. This deliberately departs from
+  // how other platform-specific fields are ignored: ignoring it would hand
+  // back an unattested key the caller believes is attested. Apple has no
+  // public API to attest an individual Secure Enclave key, and Windows
+  // attestation is not implemented.
   const std::vector<uint8_t>* attestation_challenge() const;
   void set_attestation_challenge(const std::vector<uint8_t>* value_arg);
   void set_attestation_challenge(const std::vector<uint8_t>& value_arg);
+
+  // [All platforms] What `createKeys` does when [attestationChallenge] is
+  // provided but the key cannot be attested. Defaults to
+  // [AttestationMode.enforceOnChallenge]. Has no effect without a challenge.
+  const AttestationMode* attestation_mode() const;
+  void set_attestation_mode(const AttestationMode* value_arg);
+  void set_attestation_mode(const AttestationMode& value_arg);
 
  private:
   static CreateKeysConfig FromEncodableList(const flutter::EncodableList& list);
@@ -739,6 +802,7 @@ class CreateKeysConfig {
   std::optional<bool> fail_if_exists_;
   std::optional<bool> require_authentication_;
   std::optional<std::vector<uint8_t>> attestation_challenge_;
+  std::optional<AttestationMode> attestation_mode_;
 };
 
 
