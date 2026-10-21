@@ -534,18 +534,6 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         promptMessage: String?,
         callback: (Result<SignatureResult>) -> Unit
     ) {
-        val act = activity
-        if (act == null) {
-            callback(
-                Result.success(
-                    SignatureResult(
-                        code = BiometricError.UNKNOWN,
-                        error = "Foreground activity required"
-                    )
-                )
-            )
-            return
-        }
         if (payloadBytes.isEmpty()) {
             callback(
                 Result.success(
@@ -606,6 +594,22 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                         AuthenticationType.UNKNOWN
                     )
                     callback(Result.success(response))
+                    return@launch
+                }
+
+                // Only the BiometricPrompt path below needs an activity. A key without a
+                // user-authentication requirement is signed above, which also works from a
+                // background engine with no activity attached.
+                val act = activity
+                if (act == null) {
+                    callback(
+                        Result.success(
+                            SignatureResult(
+                                code = BiometricError.UNKNOWN,
+                                error = "Foreground activity required"
+                            )
+                        )
+                    )
                     return@launch
                 }
 
