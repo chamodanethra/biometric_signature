@@ -850,7 +850,7 @@ for (final alias in aliases) {
 Checks if biometric authentication is available on the device and returns a structured response.
 
 - **Parameters**:
-  - `biometricStrength` (Android): the class of biometric to check for. The default, `BiometricStrength.strong` (Class 3), is what keys need. Pass `BiometricStrength.weak` before a `simplePrompt` that accepts weak biometrics: on a device whose only biometric is Class 2, such as some face unlock implementations, only that check reports `canAuthenticate: true`. iOS, macOS and Windows ignore it.
+  - `biometricStrength` (Android): the class of biometric to check for. Keep the default, `BiometricStrength.strong` (Class 3), before creating or using keys. **`BiometricStrength.weak` is only for `simplePrompt`:** a Class 2 biometric, such as some face unlock implementations, can never unlock a key. Signing, decryption, and the prompt `createKeys` shows with `enforceBiometric` always need a strong biometric, or the device credential where allowed. So a `weak` check that reports `canAuthenticate: true` doesn't mean keys can be used. iOS, macOS and Windows ignore the parameter.
 - **Returns**: `Future<BiometricAvailability>`.
   - `canAuthenticate`: `bool` indicating if auth is possible.
   - `hasEnrolledBiometrics`: `bool` indicating if user has enrolled biometrics.
@@ -951,7 +951,7 @@ Performs biometric authentication without performing any cryptographic operation
 | `description` | Android | Description for biometric prompt |
 | `cancelButtonText` | Android/iOS/macOS | Cancel button text (`"Cancel"` on Android, the system default on iOS/macOS when unset) |
 | `allowDeviceCredentials` | Android/iOS/macOS | Allow PIN/pattern/passcode fallback |
-| `biometricStrength` | Android | `BiometricStrength.strong` or `BiometricStrength.weak` |
+| `biometricStrength` | Android | `BiometricStrength.strong` or `BiometricStrength.weak`. `simplePrompt` is the only call that accepts `weak`: a Class 2 biometric can never unlock a key |
 
 ```dart
 final result = await biometricSignature.simplePrompt(

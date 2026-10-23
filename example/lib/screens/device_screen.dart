@@ -61,8 +61,9 @@ class DeviceScreen extends StatelessWidget {
                     values: BiometricStrength.values,
                     selected: c.biometricStrength,
                     description: 'strong (Class 3) is what keys need. weak '
-                        '(Class 2) also counts biometrics such as some face '
-                        'unlock implementations, for simplePrompt.',
+                        '(Class 2) is only for simplePrompt: a Class 2 '
+                        'biometric, such as some face unlock implementations, '
+                        'can never unlock a key.',
                     onChanged: (v) => c.update(() => c.biometricStrength = v),
                   ),
                   const SizedBox(height: 8),

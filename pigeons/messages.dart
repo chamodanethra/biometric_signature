@@ -55,16 +55,22 @@ enum BiometricType {
 
 /// Biometric authentication strength level.
 ///
-/// This affects which biometric sensors can be used for authentication.
-/// Note: On iOS/macOS, only strong biometrics are available (Face ID, Touch ID, Optic ID).
-/// On Windows, Windows Hello always uses strong authentication.
+/// Only Android distinguishes these. iOS/macOS only have strong biometrics
+/// (Face ID, Touch ID, Optic ID), and Windows Hello always authenticates
+/// strongly.
 enum BiometricStrength {
-  /// Strong biometrics only (e.g., fingerprint, face recognition with depth sensing).
-  /// This is the most secure option and is required for cryptographic operations.
+  /// Class 3 biometrics only (e.g. fingerprint, or face recognition with depth
+  /// sensing). Every prompt that unlocks a key requires this class.
   strong,
 
-  /// Weak biometrics allowed (e.g., face recognition without depth sensing).
-  /// This option provides more device compatibility but lower security.
+  /// Class 2 biometrics too (e.g. face unlock without depth sensing).
+  ///
+  /// **Only for `simplePrompt`, and the `biometricAuthAvailable` check before
+  /// it. A Class 2 biometric can never unlock a key:** signing, decryption,
+  /// and the prompt `createKeys` shows with `enforceBiometric` always need a
+  /// strong biometric, or the device credential where allowed. A `weak` check
+  /// that reports `canAuthenticate: true` therefore doesn't mean keys can be
+  /// used; check with [strong] for that.
   weak,
 }
 
@@ -626,6 +632,7 @@ abstract class BiometricSignatureApi {
   ///
   /// [biometricStrength] is the class of biometric to check for on Android
   /// (`null` means [BiometricStrength.strong]). Other platforms ignore it.
+  /// [BiometricStrength.weak] only applies to `simplePrompt`; see its docs.
   /// It is a named parameter so that existing calls without it still compile.
   @async
   BiometricAvailability biometricAuthAvailable({
@@ -803,7 +810,9 @@ class SimplePromptConfig {
   /// [Android] The required biometric strength level.
   ///
   /// - strong: Only Class 3 biometrics (e.g., fingerprint, in-screen fingerprint)
-  /// - weak: Class 2 biometrics allowed (e.g., face unlock without depth)
+  /// - weak: Class 2 biometrics allowed (e.g., face unlock without depth).
+  ///   `simplePrompt` is the only call that accepts them: a Class 2
+  ///   biometric can never unlock a key. See [BiometricStrength.weak].
   ///
   /// Note: iOS/macOS always use strong biometrics. Windows Hello also uses strong.
   /// If strong biometrics are not available but weak are, and strength is set to

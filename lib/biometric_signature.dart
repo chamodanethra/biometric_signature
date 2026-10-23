@@ -179,12 +179,12 @@ class BiometricSignature {
 
   /// Determines whether biometric authentication is available on the device.
   ///
-  /// [biometricStrength] is the class of biometric to check for on Android.
-  /// The default, [BiometricStrength.strong], is what keys need. Pass
-  /// [BiometricStrength.weak] to check before a [simplePrompt] that accepts
-  /// weak biometrics: on a device whose only biometric is Class 2 (e.g. some
-  /// face unlock implementations), only that check reports
-  /// `canAuthenticate: true`. iOS, macOS and Windows ignore it.
+  /// [biometricStrength] is the class of biometric to check for on Android;
+  /// iOS, macOS and Windows ignore it. Keep the default,
+  /// [BiometricStrength.strong], before creating or using keys. Pass
+  /// [BiometricStrength.weak] only before a [simplePrompt] that accepts weak
+  /// biometrics: a Class 2 biometric can never unlock a key (see
+  /// [BiometricStrength.weak]).
   ///
   /// Returns a [BiometricAvailability] with details about available biometrics.
   Future<BiometricAvailability> biometricAuthAvailable({
