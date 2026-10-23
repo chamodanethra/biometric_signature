@@ -31,6 +31,7 @@ class MockBiometricSignaturePlatform
     Uint8List.fromList([0x30, 0x82, 0x02, 0x02]),
   ];
   CreateKeysConfig? lastCreateKeysConfig;
+  BiometricStrength? lastBiometricStrength;
 
   void setAuthAvailableResult(BiometricAvailability result) {
     _authAvailableResult = result;
@@ -49,8 +50,11 @@ class MockBiometricSignaturePlatform
   }
 
   @override
-  Future<BiometricAvailability> biometricAuthAvailable() async {
+  Future<BiometricAvailability> biometricAuthAvailable([
+    BiometricStrength? biometricStrength,
+  ]) async {
     if (_shouldThrowError) throw Exception('Auth check failed');
+    lastBiometricStrength = biometricStrength;
     return _authAvailableResult;
   }
 
@@ -174,6 +178,13 @@ class MockBiometricSignaturePlatform
   }
 
   @override
+  Future<List<String?>> listKeyAliases() async {
+    final named = _createdAliases.where((a) => a != 'biometric_key').toList()
+      ..sort();
+    return [if (_createdAliases.contains('biometric_key')) null, ...named];
+  }
+
+  @override
   Future<DecryptResult> decrypt(
     String payload,
     String? keyAlias,
@@ -252,6 +263,55 @@ void main() {
       final result = await biometricSignature.biometricAuthAvailable();
       expect(result.canAuthenticate, false);
       expect(result.reason, 'No biometric hardware');
+    });
+
+    test('checks strong biometrics unless asked for weak', () async {
+      final biometricSignature = BiometricSignature();
+      final fakePlatform = MockBiometricSignaturePlatform();
+      BiometricSignaturePlatform.instance = fakePlatform;
+
+      await biometricSignature.biometricAuthAvailable();
+      expect(fakePlatform.lastBiometricStrength, BiometricStrength.strong);
+
+      await biometricSignature.biometricAuthAvailable(
+        biometricStrength: BiometricStrength.weak,
+      );
+      expect(fakePlatform.lastBiometricStrength, BiometricStrength.weak);
+    });
+  });
+
+  group('listKeyAliases', () {
+    late BiometricSignature biometricSignature;
+
+    setUp(() {
+      biometricSignature = BiometricSignature();
+      BiometricSignaturePlatform.instance = MockBiometricSignaturePlatform();
+    });
+
+    test('is empty without keys', () async {
+      expect(await biometricSignature.listKeyAliases(), isEmpty);
+    });
+
+    test('lists the default alias as null, then named aliases', () async {
+      await biometricSignature.createKeys(keyAlias: 'payment');
+      await biometricSignature.createKeys();
+      await biometricSignature.createKeys(keyAlias: 'auth');
+
+      expect(
+        await biometricSignature.listKeyAliases(),
+        [null, 'auth', 'payment'],
+      );
+    });
+
+    test('drops deleted aliases', () async {
+      await biometricSignature.createKeys(keyAlias: 'payment');
+      await biometricSignature.createKeys(keyAlias: 'auth');
+      await biometricSignature.deleteKeys(keyAlias: 'payment');
+
+      expect(await biometricSignature.listKeyAliases(), ['auth']);
+
+      await biometricSignature.deleteAllKeys();
+      expect(await biometricSignature.listKeyAliases(), isEmpty);
     });
   });
 
@@ -830,8 +890,14 @@ void main() {
     });
 
     tearDown(() {
-      messenger().setMockMessageHandler('$channelPrefix.createKeys', null);
-      messenger().setMockMessageHandler('$channelPrefix.getKeyInfo', null);
+      for (final method in [
+        'createKeys',
+        'getKeyInfo',
+        'biometricAuthAvailable',
+        'listKeyAliases',
+      ]) {
+        messenger().setMockMessageHandler('$channelPrefix.$method', null);
+      }
     });
 
     test('createKeys sends attestationChallenge and decodes the chain',
@@ -930,6 +996,85 @@ void main() {
 
       expect(info.exists, isTrue);
       expect(info.attestationCertificateChain, chain);
+    });
+
+    test('createKeys decodes the security level', () async {
+      messenger().setMockMessageHandler('$channelPrefix.createKeys', (
+        ByteData? message,
+      ) async {
+        return codec.encodeMessage(<Object?>[
+          KeyCreationResult(
+            code: BiometricError.success,
+            securityLevel: KeySecurityLevel.strongBox,
+          ),
+        ]);
+      });
+
+      final result = await BiometricSignature().createKeys();
+
+      expect(result.securityLevel, KeySecurityLevel.strongBox);
+    });
+
+    test('getKeyInfo decodes the security level and policy', () async {
+      for (final level in KeySecurityLevel.values) {
+        messenger().setMockMessageHandler('$channelPrefix.getKeyInfo', (
+          ByteData? message,
+        ) async {
+          return codec.encodeMessage(<Object?>[
+            KeyInfo(
+              exists: true,
+              attestationCertificateChain: chain,
+              securityLevel: level,
+              requiresAuthentication: true,
+              invalidatedByBiometricEnrollment: false,
+              allowsDeviceCredentials: true,
+            ),
+          ]);
+        });
+
+        final info = await BiometricSignature().getKeyInfo();
+
+        expect(info.securityLevel, level);
+        expect(info.attestationCertificateChain, chain);
+        expect(info.requiresAuthentication, isTrue);
+        expect(info.invalidatedByBiometricEnrollment, isFalse);
+        expect(info.allowsDeviceCredentials, isTrue);
+      }
+    });
+
+    test('biometricAuthAvailable sends the strength', () async {
+      final sent = <Object?>[];
+      messenger().setMockMessageHandler('$channelPrefix.biometricAuthAvailable',
+          (ByteData? message) async {
+        final args = codec.decodeMessage(message)! as List<Object?>;
+        sent.add(args[0]);
+        return codec.encodeMessage(<Object?>[
+          BiometricAvailability(canAuthenticate: true),
+        ]);
+      });
+
+      await BiometricSignature().biometricAuthAvailable();
+      final weak = await BiometricSignature().biometricAuthAvailable(
+        biometricStrength: BiometricStrength.weak,
+      );
+
+      expect(sent, [BiometricStrength.strong, BiometricStrength.weak]);
+      expect(weak.canAuthenticate, isTrue);
+    });
+
+    test('listKeyAliases decodes null for the default alias', () async {
+      messenger().setMockMessageHandler('$channelPrefix.listKeyAliases', (
+        ByteData? message,
+      ) async {
+        return codec.encodeMessage(<Object?>[
+          <Object?>[null, 'auth', 'payment'],
+        ]);
+      });
+
+      expect(
+        await BiometricSignature().listKeyAliases(),
+        [null, 'auth', 'payment'],
+      );
     });
   });
 }

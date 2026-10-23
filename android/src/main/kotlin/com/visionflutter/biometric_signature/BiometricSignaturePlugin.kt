@@ -59,7 +59,10 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
 
     // ==================== BiometricSignatureApi Implementation ====================
 
-    override fun biometricAuthAvailable(callback: (Result<BiometricAvailability>) -> Unit) {
+    override fun biometricAuthAvailable(
+        biometricStrength: BiometricStrength?,
+        callback: (Result<BiometricAvailability>) -> Unit
+    ) {
         val act = activity
         if (act == null) {
             callback(
@@ -75,15 +78,19 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             return
         }
 
+        val authenticators = biometricPromptHelper.getAuthenticators(
+            allowDeviceCredentials = false,
+            biometricStrength = biometricStrength ?: BiometricStrength.STRONG
+        )
         val manager = androidx.biometric.BiometricManager.from(act)
-        val canAuth = manager.canAuthenticate(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        val canAuth = manager.canAuthenticate(authenticators)
 
         val canAuthenticate = canAuth == androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS
         val hasEnrolledBiometrics = canAuth != androidx.biometric.BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED &&
                 canAuth != androidx.biometric.BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE &&
                 canAuth != androidx.biometric.BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE
 
-        val biometricTypes = biometricPromptHelper.detectBiometricTypes()
+        val biometricTypes = biometricPromptHelper.detectBiometricTypes(authenticators)
         val reason = if (!canAuthenticate) ErrorMapper.biometricErrorName(canAuth) else null
 
         callback(
@@ -315,12 +322,17 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             )
         }
 
+        val securityLevel = withContext(Dispatchers.IO) {
+            keyManager.describeKey(generated.keyPair.private).securityLevel
+        }
+
         val response = buildKeyResponse(
             generated.keyPair.public,
             keyFormat,
             authenticationType = authType,
             attestationCertificateChain = generated.attestationCertChain,
-            attestationFailure = generated.attestationFailure
+            attestationFailure = generated.attestationFailure,
+            securityLevel = securityLevel
         )
         callback(Result.success(response))
     }
@@ -363,12 +375,17 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             )
         }
 
+        val securityLevel = withContext(Dispatchers.IO) {
+            keyManager.describeKey(generated.keyPair.private).securityLevel
+        }
+
         val response = buildKeyResponse(
             generated.keyPair.public,
             keyFormat,
             authenticationType = authType,
             attestationCertificateChain = generated.attestationCertChain,
-            attestationFailure = generated.attestationFailure
+            attestationFailure = generated.attestationFailure,
+            securityLevel = securityLevel
         )
         callback(Result.success(response))
     }
@@ -449,6 +466,9 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             fileIOHelper.writeFileAtomic(Constants.ecPubFilename(keyAlias), publicKeyBytes)
 
             val decryptingPublicKey = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(publicKeyBytes))
+            val securityLevel = withContext(Dispatchers.IO) {
+                keyManager.describeKey(signingKey.keyPair.private).securityLevel
+            }
 
             val response = buildKeyResponse(
                 publicKey = signingKey.keyPair.public,
@@ -456,7 +476,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                 decryptingKey = decryptingPublicKey,
                 authenticationType = wrapAuthType,
                 attestationCertificateChain = signingKey.attestationCertChain,
-                attestationFailure = signingKey.attestationFailure
+                attestationFailure = signingKey.attestationFailure,
+                securityLevel = securityLevel
             )
 
             callback(Result.success(response))
@@ -931,6 +952,19 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         }
     }
 
+    override fun listKeyAliases(callback: (Result<List<String?>>) -> Unit) {
+        pluginScope.launch {
+            val aliases = try {
+                withContext(Dispatchers.IO) { keyManager.listUserAliases() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+            callback(Result.success(aliases))
+        }
+    }
+
     override fun getKeyInfo(
         keyAlias: String?,
         checkValidity: Boolean,
@@ -976,8 +1010,9 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                     // Null for unattested keys (a single self-signed keystore
                     // certificate). attestationChainOf never throws, so a chain
                     // encoding failure can't collapse the whole result into the
-                    // catch below (exists = false).
+                    // catch below (exists = false). Neither does describeKey.
                     val attestationChain = keyManager.attestationChainOf(entry.certificateChain)
+                    val description = keyManager.describeKey(entry.privateKey)
 
                     KeyInfo(
                         exists = true,
@@ -989,7 +1024,11 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                         decryptingPublicKey = decryptingInfo?.first,
                         decryptingAlgorithm = decryptingInfo?.second,
                         decryptingKeySize = decryptingInfo?.third,
-                        attestationCertificateChain = attestationChain
+                        attestationCertificateChain = attestationChain,
+                        securityLevel = description.securityLevel,
+                        requiresAuthentication = description.requiresAuthentication,
+                        invalidatedByBiometricEnrollment = description.invalidatedByBiometricEnrollment,
+                        allowsDeviceCredentials = description.allowsDeviceCredentials
                     )
                 }
                 callback(Result.success(keyInfo))
@@ -1122,7 +1161,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
         decryptingKey: PublicKey? = null,
         authenticationType: AuthenticationType? = null,
         attestationCertificateChain: List<ByteArray>? = null,
-        attestationFailure: KeyAttestationException? = null
+        attestationFailure: KeyAttestationException? = null,
+        securityLevel: KeySecurityLevel? = null
     ): KeyCreationResult {
         val formatted = FormatUtils.formatOutput(publicKey.encoded, format)
         val keySize = (publicKey as? java.security.interfaces.RSAKey)?.modulus?.bitLength()
@@ -1152,7 +1192,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             authenticationType = authenticationType,
             attestationCertificateChain = attestationCertificateChain,
             attestationErrorCode = attestationFailure?.errorCode,
-            attestationError = attestationFailure?.message
+            attestationError = attestationFailure?.message,
+            securityLevel = securityLevel
         )
     }
 

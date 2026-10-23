@@ -1,3 +1,16 @@
+## [Unreleased]
+
+### Added
+* **Where a key lives, and its effective policy.** New `KeySecurityLevel` enum (`strongBox`, `trustedEnvironment`, `secureEnclave`, `secureHardware`, `software`).
+  * `KeyInfo` and `KeyCreationResult` gain `securityLevel`, so apps can tell whether a key ended up in StrongBox, the TEE, the Secure Enclave or software. Before, that depended on the device and wasn't reported. Android reads it from the keystore's `KeyInfo`. Android 9–11 can't tell StrongBox from the TEE, so keys on devices with StrongBox report `secureHardware` there. iOS/macOS report `secureEnclave` for EC keys and `software` for RSA keys, whose private key is stored encrypted by the Secure Enclave but signs in app memory. Windows reports `null`.
+  * `KeyInfo` also gains `requiresAuthentication`, `invalidatedByBiometricEnrollment` and `allowsDeviceCredentials`: the key's effective policy, which can differ from what `CreateKeysConfig` asked for. For example, Android 10 and older ignore `useDeviceCredentials`, and an iOS/macOS key that accepts the passcode is never invalidated by enrollment changes.
+* **`listKeyAliases()`** lists the aliases that have a key, without a prompt, with the default alias as `null`. Use it to find keys your app's records have lost, e.g. iOS/macOS keychain keys that survived an uninstall. On Windows it only finds aliases tracked in the app's settings, which an uninstall deletes, so after a reinstall only the default key is found.
+* **`cancelButtonText` now works on iOS and macOS** for `createKeys` (with `enforceBiometric`), `createSignature`, `createSignatureFromBytes`, `decrypt` and `simplePrompt`, through `LAContext.localizedCancelTitle`. It used to be Android-only.
+* **`biometricAuthAvailable(biometricStrength:)`.** Android checked only for strong (Class 3) biometrics, so a device whose only biometric is Class 2 reported `canAuthenticate: false` even though `simplePrompt` with `BiometricStrength.weak` works there. The default stays `strong`; iOS, macOS and Windows ignore it.
+
+### Changed
+* **Custom platform implementations must be updated.** `BiometricSignaturePlatform.biometricAuthAvailable` takes an optional `BiometricStrength`, and `BiometricSignaturePlatform` has a new `listKeyAliases` method. App code that calls `BiometricSignature` is unaffected, but classes that extend or implement `BiometricSignaturePlatform`, such as test fakes, have to add both.
+
 ## [13.2.0] - 2026-09-30
 
 ### Added

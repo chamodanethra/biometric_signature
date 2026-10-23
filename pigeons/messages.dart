@@ -152,6 +152,45 @@ enum BiometricError {
   notInteractive,
 }
 
+/// Where a key's private material is stored and used.
+///
+/// Reported for the signing key in [KeyInfo.securityLevel] and
+/// [KeyCreationResult.securityLevel]. Those fields are null when the platform
+/// can't tell: on Windows, Windows Hello doesn't say whether the TPM holds
+/// the key.
+///
+/// More values may be added in minor releases, so avoid exhaustive switches
+/// over this enum.
+enum KeySecurityLevel {
+  /// [Android] A StrongBox secure element, a separate chip with its own CPU
+  /// and storage (Android 9+ on devices that have one).
+  strongBox,
+
+  /// [Android] The Trusted Execution Environment of the main processor.
+  trustedEnvironment,
+
+  /// [iOS/macOS] The Secure Enclave. EC keys only; RSA keys report
+  /// [software].
+  secureEnclave,
+
+  /// [Android] Secure hardware that can't be told apart further.
+  ///
+  /// Android 9–11 (API 28–30) don't report whether a key is in StrongBox or
+  /// the TEE, so keys on devices that have StrongBox report this there.
+  /// Newer Android versions report it for secure hardware that is neither.
+  secureHardware,
+
+  /// The private key is used outside secure hardware.
+  ///
+  /// - **Android**: the keystore has no secure hardware (e.g. some
+  ///   emulators).
+  /// - **iOS/macOS**: RSA keys. The Secure Enclave can't hold RSA keys, so
+  ///   the RSA private key is stored encrypted by a Secure Enclave EC key,
+  ///   which needs user authentication to unwrap it, but signing and
+  ///   decryption run in app memory.
+  software,
+}
+
 class BiometricAvailability {
   bool? canAuthenticate;
   bool? hasEnrolledBiometrics;
@@ -198,6 +237,12 @@ class KeyCreationResult {
 
   /// Human-readable detail for [attestationErrorCode].
   String? attestationError;
+
+  /// Where the new signing key is stored and used. See [KeySecurityLevel].
+  ///
+  /// Null on Windows, and on Android if the key's metadata can't be read.
+  /// The same value [KeyInfo.securityLevel] reports for the key later.
+  KeySecurityLevel? securityLevel;
 }
 
 class SignatureResult {
@@ -268,6 +313,44 @@ class KeyInfo {
   /// 1.3.6.1.4.1.11129.2.1.17). Null for unattested keys and on all other
   /// platforms.
   List<Uint8List>? attestationCertificateChain;
+
+  /// Where the signing key is stored and used. See [KeySecurityLevel].
+  ///
+  /// In Android hybrid mode this describes the signing key only; the
+  /// decryption key is a software key wrapped by a keystore AES key. Null on
+  /// Windows, and on Android if the key's metadata can't be read.
+  KeySecurityLevel? securityLevel;
+
+  /// Whether signing and decryption require user authentication.
+  ///
+  /// `false` for keys created with [CreateKeysConfig.requireAuthentication]
+  /// set to `false`. Always `true` on Windows.
+  bool? requiresAuthentication;
+
+  /// Whether enrolling or removing a fingerprint or face permanently
+  /// invalidates the key.
+  ///
+  /// This is the key's effective setting, which can differ from
+  /// [CreateKeysConfig.setInvalidatedByBiometricEnrollment]: Android 6
+  /// (API 23) always invalidates, and on iOS/macOS a key that accepts the
+  /// device passcode is never invalidated.
+  ///
+  /// Null when [requiresAuthentication] is `false`, on Windows, and on
+  /// iOS/macOS for keys whose setting wasn't recorded.
+  bool? invalidatedByBiometricEnrollment;
+
+  /// Whether the device PIN, pattern, password or passcode can unlock the
+  /// key, besides a biometric.
+  ///
+  /// This is the key's effective setting, which can differ from
+  /// [CreateKeysConfig.useDeviceCredentials]: Android 10 (API 29) and older
+  /// can't bind a key to both, so the option is ignored there and this is
+  /// `false`.
+  ///
+  /// Null when [requiresAuthentication] is `false`, on Windows, and on
+  /// iOS/macOS for keys created before version 11.1.0, which didn't record
+  /// the setting.
+  bool? allowsDeviceCredentials;
 }
 
 /// The cryptographic algorithm to use for key generation.
@@ -358,7 +441,7 @@ class CreateKeysConfig {
   /// On iOS/macOS, decryption is always available with EC keys.
   bool? enableDecryption;
 
-  // === Android prompt customization ===
+  // === Prompt customization ===
 
   /// [Android] Subtitle text for the biometric prompt.
   String? promptSubtitle;
@@ -366,7 +449,9 @@ class CreateKeysConfig {
   /// [Android] Description text for the biometric prompt.
   String? promptDescription;
 
-  /// [Android] Text for the cancel button in the biometric prompt.
+  /// [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+  /// Android shows "Cancel" when null; iOS/macOS use the system's default.
+  /// On iOS/macOS key creation only prompts when [enforceBiometric] is set.
   String? cancelButtonText;
 
   // === Key overwrite protection ===
@@ -457,7 +542,7 @@ class CreateKeysConfig {
 ///
 /// Fields are documented with which platform(s) they apply to.
 class CreateSignatureConfig {
-  // === Android prompt customization ===
+  // === Prompt customization ===
 
   /// [Android] Subtitle text for the biometric prompt.
   String? promptSubtitle;
@@ -465,7 +550,8 @@ class CreateSignatureConfig {
   /// [Android] Description text for the biometric prompt.
   String? promptDescription;
 
-  /// [Android] Text for the cancel button in the biometric prompt.
+  /// [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+  /// Android shows "Cancel" when null; iOS/macOS use the system's default.
   String? cancelButtonText;
 
   /// [Android] Whether to allow device credentials (PIN/pattern) as fallback.
@@ -477,7 +563,7 @@ class CreateSignatureConfig {
 /// Fields are documented with which platform(s) they apply to.
 /// Note: Decryption is not supported on Windows.
 class DecryptConfig {
-  // === Android prompt customization ===
+  // === Prompt customization ===
 
   /// [Android] Subtitle text for the biometric prompt.
   String? promptSubtitle;
@@ -485,7 +571,8 @@ class DecryptConfig {
   /// [Android] Description text for the biometric prompt.
   String? promptDescription;
 
-  /// [Android] Text for the cancel button in the biometric prompt.
+  /// [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+  /// Android shows "Cancel" when null; iOS/macOS use the system's default.
   String? cancelButtonText;
 
   /// [Android] Whether to allow device credentials (PIN/pattern) as fallback.
@@ -534,8 +621,13 @@ enum PayloadFormat {
 @HostApi()
 abstract class BiometricSignatureApi {
   /// Checks if biometric authentication is available.
+  ///
+  /// [biometricStrength] is the class of biometric to check for on Android
+  /// (`null` means [BiometricStrength.strong]). Other platforms ignore it.
   @async
-  BiometricAvailability biometricAuthAvailable();
+  BiometricAvailability biometricAuthAvailable(
+    BiometricStrength? biometricStrength,
+  );
 
   /// Creates a new key pair.
   ///
@@ -619,6 +711,14 @@ abstract class BiometricSignatureApi {
   @async
   bool deleteAllKeys();
 
+  /// Lists the aliases that currently have a key, without prompting.
+  ///
+  /// The default alias is returned as `null`. On Windows, aliases are
+  /// tracked in app settings, which are deleted on uninstall while Windows
+  /// Hello keys are not, so after a reinstall only the default key is found.
+  @async
+  List<String?> listKeyAliases();
+
   /// Gets detailed information about existing biometric keys.
   ///
   /// [keyAlias] specifies which key to query. Defaults to the default alias.
@@ -682,7 +782,7 @@ class SimplePromptConfig {
   /// [Android] Description text displayed in the biometric prompt body.
   String? description;
 
-  /// [Android] Text for the cancel/negative button.
+  /// [Android/iOS/macOS] Text for the cancel/negative button.
   /// Default: "Cancel" on Android, system default on iOS/macOS.
   String? cancelButtonText;
 

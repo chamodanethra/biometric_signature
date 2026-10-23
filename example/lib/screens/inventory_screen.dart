@@ -14,7 +14,8 @@ import '../widgets/form_widgets.dart';
 import '../widgets/result_card.dart';
 import 'keys_screen.dart';
 
-/// `getKeyInfo`, `biometricKeyExists`, `deleteKeys` and `deleteAllKeys`.
+/// `listKeyAliases`, `getKeyInfo`, `biometricKeyExists`, `deleteKeys` and
+/// `deleteAllKeys`.
 class InventoryScreen extends StatelessWidget {
   /// Creates the screen.
   const InventoryScreen({super.key});
@@ -30,12 +31,48 @@ class InventoryScreen extends StatelessWidget {
         return ScreenList(
           children: [
             const ScreenIntro(
-              'The plugin cannot list aliases, so the Explorer probes a '
-              'fixed set plus one custom alias. Use getKeyInfo on launch and '
-              'after unexpected failures: it reports missing and invalidated '
-              'keys without a prompt.',
+              'listKeyAliases shows which aliases have a key; the cards '
+              'below probe a fixed set plus one custom alias. Use getKeyInfo '
+              'on launch and after unexpected failures: it reports missing '
+              'and invalidated keys, and where a key is stored, without a '
+              'prompt.',
             ),
             UnexpectedErrorBanner(controller: c),
+            SectionCard(
+              title: 'listKeyAliases()',
+              subtitle: 'Aliases with a key on this device, without a prompt',
+              trailing: RunButton(
+                key: const ValueKey('inventory.listAliases'),
+                label: 'List',
+                icon: Icons.list,
+                tonal: true,
+                busy: c.isBusy(InventoryController.listAliasesOp),
+                onPressed: c.listAliases,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (c.deviceAliases == null)
+                    const Text('Not listed yet.')
+                  else if (c.deviceAliases!.isEmpty)
+                    const Text('No keys on this device.')
+                  else
+                    for (final alias in c.deviceAliases!)
+                      KeyValueRow(
+                        label: alias == null ? 'default' : 'alias',
+                        value: alias ?? 'null',
+                        copyable: false,
+                      ),
+                  const SizedBox(height: 8),
+                  const NoteList([
+                    'The default alias (keyAlias: null) is listed as null.',
+                    'On Windows the plugin tracks aliases in the app\'s '
+                        'settings, which an uninstall deletes while Windows '
+                        'Hello keys survive it.',
+                  ]),
+                ],
+              ),
+            ),
             SectionCard(
               title: 'Options',
               child: Column(

@@ -166,6 +166,41 @@ enum class BiometricError {
   kNotInteractive = 17
 };
 
+// Where a key's private material is stored and used.
+//
+// Reported for the signing key in [KeyInfo.securityLevel] and
+// [KeyCreationResult.securityLevel]. Those fields are null when the platform
+// can't tell: on Windows, Windows Hello doesn't say whether the TPM holds
+// the key.
+//
+// More values may be added in minor releases, so avoid exhaustive switches
+// over this enum.
+enum class KeySecurityLevel {
+  // [Android] A StrongBox secure element, a separate chip with its own CPU
+  // and storage (Android 9+ on devices that have one).
+  kStrongBox = 0,
+  // [Android] The Trusted Execution Environment of the main processor.
+  kTrustedEnvironment = 1,
+  // [iOS/macOS] The Secure Enclave. EC keys only; RSA keys report
+  // [software].
+  kSecureEnclave = 2,
+  // [Android] Secure hardware that can't be told apart further.
+  //
+  // Android 9–11 (API 28–30) don't report whether a key is in StrongBox or
+  // the TEE, so keys on devices that have StrongBox report this there.
+  // Newer Android versions report it for secure hardware that is neither.
+  kSecureHardware = 3,
+  // The private key is used outside secure hardware.
+  //
+  // - **Android**: the keystore has no secure hardware (e.g. some
+  //   emulators).
+  // - **iOS/macOS**: RSA keys. The Secure Enclave can't hold RSA keys, so
+  //   the RSA private key is stored encrypted by a Secure Enclave EC key,
+  //   which needs user authentication to unwrap it, but signing and
+  //   decryption run in app memory.
+  kSoftware = 4
+};
+
 // The cryptographic algorithm to use for key generation.
 enum class SignatureType {
   // RSA-2048 (Android: native, iOS/macOS: hybrid mode with Secure Enclave EC).
@@ -301,7 +336,8 @@ class KeyCreationResult {
     const AuthenticationType* authentication_type,
     const flutter::EncodableList* attestation_certificate_chain,
     const BiometricError* attestation_error_code,
-    const std::string* attestation_error);
+    const std::string* attestation_error,
+    const KeySecurityLevel* security_level);
 
   const std::string* public_key() const;
   void set_public_key(const std::string_view* value_arg);
@@ -379,6 +415,14 @@ class KeyCreationResult {
   void set_attestation_error(const std::string_view* value_arg);
   void set_attestation_error(std::string_view value_arg);
 
+  // Where the new signing key is stored and used. See [KeySecurityLevel].
+  //
+  // Null on Windows, and on Android if the key's metadata can't be read.
+  // The same value [KeyInfo.securityLevel] reports for the key later.
+  const KeySecurityLevel* security_level() const;
+  void set_security_level(const KeySecurityLevel* value_arg);
+  void set_security_level(const KeySecurityLevel& value_arg);
+
  private:
   static KeyCreationResult FromEncodableList(const flutter::EncodableList& list);
   flutter::EncodableList ToEncodableList() const;
@@ -398,6 +442,7 @@ class KeyCreationResult {
   std::optional<flutter::EncodableList> attestation_certificate_chain_;
   std::optional<BiometricError> attestation_error_code_;
   std::optional<std::string> attestation_error_;
+  std::optional<KeySecurityLevel> security_level_;
 };
 
 
@@ -536,7 +581,11 @@ class KeyInfo {
     const std::string* decrypting_public_key,
     const std::string* decrypting_algorithm,
     const int64_t* decrypting_key_size,
-    const flutter::EncodableList* attestation_certificate_chain);
+    const flutter::EncodableList* attestation_certificate_chain,
+    const KeySecurityLevel* security_level,
+    const bool* requires_authentication,
+    const bool* invalidated_by_biometric_enrollment,
+    const bool* allows_device_credentials);
 
   // Whether any biometric key exists on the device.
   const bool* exists() const;
@@ -595,6 +644,52 @@ class KeyInfo {
   void set_attestation_certificate_chain(const flutter::EncodableList* value_arg);
   void set_attestation_certificate_chain(const flutter::EncodableList& value_arg);
 
+  // Where the signing key is stored and used. See [KeySecurityLevel].
+  //
+  // In Android hybrid mode this describes the signing key only; the
+  // decryption key is a software key wrapped by a keystore AES key. Null on
+  // Windows, and on Android if the key's metadata can't be read.
+  const KeySecurityLevel* security_level() const;
+  void set_security_level(const KeySecurityLevel* value_arg);
+  void set_security_level(const KeySecurityLevel& value_arg);
+
+  // Whether signing and decryption require user authentication.
+  //
+  // `false` for keys created with [CreateKeysConfig.requireAuthentication]
+  // set to `false`. Always `true` on Windows.
+  const bool* requires_authentication() const;
+  void set_requires_authentication(const bool* value_arg);
+  void set_requires_authentication(bool value_arg);
+
+  // Whether enrolling or removing a fingerprint or face permanently
+  // invalidates the key.
+  //
+  // This is the key's effective setting, which can differ from
+  // [CreateKeysConfig.setInvalidatedByBiometricEnrollment]: Android 6
+  // (API 23) always invalidates, and on iOS/macOS a key that accepts the
+  // device passcode is never invalidated.
+  //
+  // Null when [requiresAuthentication] is `false`, on Windows, and on
+  // iOS/macOS for keys whose setting wasn't recorded.
+  const bool* invalidated_by_biometric_enrollment() const;
+  void set_invalidated_by_biometric_enrollment(const bool* value_arg);
+  void set_invalidated_by_biometric_enrollment(bool value_arg);
+
+  // Whether the device PIN, pattern, password or passcode can unlock the
+  // key, besides a biometric.
+  //
+  // This is the key's effective setting, which can differ from
+  // [CreateKeysConfig.useDeviceCredentials]: Android 10 (API 29) and older
+  // can't bind a key to both, so the option is ignored there and this is
+  // `false`.
+  //
+  // Null when [requiresAuthentication] is `false`, on Windows, and on
+  // iOS/macOS for keys created before version 11.1.0, which didn't record
+  // the setting.
+  const bool* allows_device_credentials() const;
+  void set_allows_device_credentials(const bool* value_arg);
+  void set_allows_device_credentials(bool value_arg);
+
  private:
   static KeyInfo FromEncodableList(const flutter::EncodableList& list);
   flutter::EncodableList ToEncodableList() const;
@@ -610,6 +705,10 @@ class KeyInfo {
   std::optional<std::string> decrypting_algorithm_;
   std::optional<int64_t> decrypting_key_size_;
   std::optional<flutter::EncodableList> attestation_certificate_chain_;
+  std::optional<KeySecurityLevel> security_level_;
+  std::optional<bool> requires_authentication_;
+  std::optional<bool> invalidated_by_biometric_enrollment_;
+  std::optional<bool> allows_device_credentials_;
 };
 
 
@@ -696,7 +795,9 @@ class CreateKeysConfig {
   void set_prompt_description(const std::string_view* value_arg);
   void set_prompt_description(std::string_view value_arg);
 
-  // [Android] Text for the cancel button in the biometric prompt.
+  // [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+  // Android shows "Cancel" when null; iOS/macOS use the system's default.
+  // On iOS/macOS key creation only prompts when [enforceBiometric] is set.
   const std::string* cancel_button_text() const;
   void set_cancel_button_text(const std::string_view* value_arg);
   void set_cancel_button_text(std::string_view value_arg);
@@ -833,7 +934,8 @@ class CreateSignatureConfig {
   void set_prompt_description(const std::string_view* value_arg);
   void set_prompt_description(std::string_view value_arg);
 
-  // [Android] Text for the cancel button in the biometric prompt.
+  // [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+  // Android shows "Cancel" when null; iOS/macOS use the system's default.
   const std::string* cancel_button_text() const;
   void set_cancel_button_text(const std::string_view* value_arg);
   void set_cancel_button_text(std::string_view value_arg);
@@ -883,7 +985,8 @@ class DecryptConfig {
   void set_prompt_description(const std::string_view* value_arg);
   void set_prompt_description(std::string_view value_arg);
 
-  // [Android] Text for the cancel button in the biometric prompt.
+  // [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+  // Android shows "Cancel" when null; iOS/macOS use the system's default.
   const std::string* cancel_button_text() const;
   void set_cancel_button_text(const std::string_view* value_arg);
   void set_cancel_button_text(std::string_view value_arg);
@@ -933,7 +1036,7 @@ class SimplePromptConfig {
   void set_description(const std::string_view* value_arg);
   void set_description(std::string_view value_arg);
 
-  // [Android] Text for the cancel/negative button.
+  // [Android/iOS/macOS] Text for the cancel/negative button.
   // Default: "Cancel" on Android, system default on iOS/macOS.
   const std::string* cancel_button_text() const;
   void set_cancel_button_text(const std::string_view* value_arg);
@@ -1056,7 +1159,12 @@ class BiometricSignatureApi {
   BiometricSignatureApi& operator=(const BiometricSignatureApi&) = delete;
   virtual ~BiometricSignatureApi() {}
   // Checks if biometric authentication is available.
-  virtual void BiometricAuthAvailable(std::function<void(ErrorOr<BiometricAvailability> reply)> result) = 0;
+  //
+  // [biometricStrength] is the class of biometric to check for on Android
+  // (`null` means [BiometricStrength.strong]). Other platforms ignore it.
+  virtual void BiometricAuthAvailable(
+    const BiometricStrength* biometric_strength,
+    std::function<void(ErrorOr<BiometricAvailability> reply)> result) = 0;
   // Creates a new key pair.
   //
   // [keyAlias] is an optional alias for the key. When null, the default
@@ -1129,6 +1237,12 @@ class BiometricSignatureApi {
   // This is a destructive operation that removes every key managed by
   // this plugin. Use [deleteKeys] for targeted deletion.
   virtual void DeleteAllKeys(std::function<void(ErrorOr<bool> reply)> result) = 0;
+  // Lists the aliases that currently have a key, without prompting.
+  //
+  // The default alias is returned as `null`. On Windows, aliases are
+  // tracked in app settings, which are deleted on uninstall while Windows
+  // Hello keys are not, so after a reinstall only the default key is found.
+  virtual void ListKeyAliases(std::function<void(ErrorOr<flutter::EncodableList> reply)> result) = 0;
   // Gets detailed information about existing biometric keys.
   //
   // [keyAlias] specifies which key to query. Defaults to the default alias.

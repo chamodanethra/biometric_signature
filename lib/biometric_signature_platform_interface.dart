@@ -28,7 +28,12 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
   }
 
   /// Checks if biometric authentication is available.
-  Future<BiometricAvailability> biometricAuthAvailable() {
+  ///
+  /// [biometricStrength] is the class of biometric to check for on Android;
+  /// `null` means [BiometricStrength.strong].
+  Future<BiometricAvailability> biometricAuthAvailable([
+    BiometricStrength? biometricStrength,
+  ]) {
     throw UnimplementedError(
       'biometricAuthAvailable() has not been implemented.',
     );
@@ -90,6 +95,11 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
     throw UnimplementedError('deleteAllKeys() has not been implemented.');
   }
 
+  /// Lists the aliases that have a key (`null` for the default alias).
+  Future<List<String?>> listKeyAliases() {
+    throw UnimplementedError('listKeyAliases() has not been implemented.');
+  }
+
   /// Gets detailed information about existing biometric keys.
   Future<KeyInfo> getKeyInfo(
     String? keyAlias,
@@ -117,8 +127,10 @@ class _PigeonBiometricSignature extends BiometricSignaturePlatform {
   final BiometricSignatureApi _api = BiometricSignatureApi();
 
   @override
-  Future<BiometricAvailability> biometricAuthAvailable() {
-    return _api.biometricAuthAvailable();
+  Future<BiometricAvailability> biometricAuthAvailable([
+    BiometricStrength? biometricStrength,
+  ]) {
+    return _api.biometricAuthAvailable(biometricStrength);
   }
 
   @override
@@ -194,6 +206,11 @@ class _PigeonBiometricSignature extends BiometricSignaturePlatform {
   @override
   Future<bool> deleteAllKeys() {
     return _api.deleteAllKeys();
+  }
+
+  @override
+  Future<List<String?>> listKeyAliases() {
+    return _api.listKeyAliases();
   }
 
   @override

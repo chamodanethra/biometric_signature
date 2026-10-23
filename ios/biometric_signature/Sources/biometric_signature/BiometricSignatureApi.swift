@@ -238,6 +238,41 @@ enum BiometricError: Int {
   case notInteractive = 17
 }
 
+/// Where a key's private material is stored and used.
+///
+/// Reported for the signing key in [KeyInfo.securityLevel] and
+/// [KeyCreationResult.securityLevel]. Those fields are null when the platform
+/// can't tell: on Windows, Windows Hello doesn't say whether the TPM holds
+/// the key.
+///
+/// More values may be added in minor releases, so avoid exhaustive switches
+/// over this enum.
+enum KeySecurityLevel: Int {
+  /// [Android] A StrongBox secure element, a separate chip with its own CPU
+  /// and storage (Android 9+ on devices that have one).
+  case strongBox = 0
+  /// [Android] The Trusted Execution Environment of the main processor.
+  case trustedEnvironment = 1
+  /// [iOS/macOS] The Secure Enclave. EC keys only; RSA keys report
+  /// [software].
+  case secureEnclave = 2
+  /// [Android] Secure hardware that can't be told apart further.
+  ///
+  /// Android 9–11 (API 28–30) don't report whether a key is in StrongBox or
+  /// the TEE, so keys on devices that have StrongBox report this there.
+  /// Newer Android versions report it for secure hardware that is neither.
+  case secureHardware = 3
+  /// The private key is used outside secure hardware.
+  ///
+  /// - **Android**: the keystore has no secure hardware (e.g. some
+  ///   emulators).
+  /// - **iOS/macOS**: RSA keys. The Secure Enclave can't hold RSA keys, so
+  ///   the RSA private key is stored encrypted by a Secure Enclave EC key,
+  ///   which needs user authentication to unwrap it, but signing and
+  ///   decryption run in app memory.
+  case software = 4
+}
+
 /// The cryptographic algorithm to use for key generation.
 enum SignatureType: Int {
   /// RSA-2048 (Android: native, iOS/macOS: hybrid mode with Secure Enclave EC).
@@ -383,6 +418,11 @@ struct KeyCreationResult: Hashable {
   var attestationErrorCode: BiometricError? = nil
   /// Human-readable detail for [attestationErrorCode].
   var attestationError: String? = nil
+  /// Where the new signing key is stored and used. See [KeySecurityLevel].
+  ///
+  /// Null on Windows, and on Android if the key's metadata can't be read.
+  /// The same value [KeyInfo.securityLevel] reports for the key later.
+  var securityLevel: KeySecurityLevel? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -401,6 +441,7 @@ struct KeyCreationResult: Hashable {
     let attestationCertificateChain: [FlutterStandardTypedData]? = nilOrValue(pigeonVar_list[11])
     let attestationErrorCode: BiometricError? = nilOrValue(pigeonVar_list[12])
     let attestationError: String? = nilOrValue(pigeonVar_list[13])
+    let securityLevel: KeySecurityLevel? = nilOrValue(pigeonVar_list[14])
 
     return KeyCreationResult(
       publicKey: publicKey,
@@ -416,7 +457,8 @@ struct KeyCreationResult: Hashable {
       authenticationType: authenticationType,
       attestationCertificateChain: attestationCertificateChain,
       attestationErrorCode: attestationErrorCode,
-      attestationError: attestationError
+      attestationError: attestationError,
+      securityLevel: securityLevel
     )
   }
   func toList() -> [Any?] {
@@ -435,6 +477,7 @@ struct KeyCreationResult: Hashable {
       attestationCertificateChain,
       attestationErrorCode,
       attestationError,
+      securityLevel,
     ]
   }
   static func == (lhs: KeyCreationResult, rhs: KeyCreationResult) -> Bool {
@@ -575,6 +618,40 @@ struct KeyInfo: Hashable {
   /// 1.3.6.1.4.1.11129.2.1.17). Null for unattested keys and on all other
   /// platforms.
   var attestationCertificateChain: [FlutterStandardTypedData]? = nil
+  /// Where the signing key is stored and used. See [KeySecurityLevel].
+  ///
+  /// In Android hybrid mode this describes the signing key only; the
+  /// decryption key is a software key wrapped by a keystore AES key. Null on
+  /// Windows, and on Android if the key's metadata can't be read.
+  var securityLevel: KeySecurityLevel? = nil
+  /// Whether signing and decryption require user authentication.
+  ///
+  /// `false` for keys created with [CreateKeysConfig.requireAuthentication]
+  /// set to `false`. Always `true` on Windows.
+  var requiresAuthentication: Bool? = nil
+  /// Whether enrolling or removing a fingerprint or face permanently
+  /// invalidates the key.
+  ///
+  /// This is the key's effective setting, which can differ from
+  /// [CreateKeysConfig.setInvalidatedByBiometricEnrollment]: Android 6
+  /// (API 23) always invalidates, and on iOS/macOS a key that accepts the
+  /// device passcode is never invalidated.
+  ///
+  /// Null when [requiresAuthentication] is `false`, on Windows, and on
+  /// iOS/macOS for keys whose setting wasn't recorded.
+  var invalidatedByBiometricEnrollment: Bool? = nil
+  /// Whether the device PIN, pattern, password or passcode can unlock the
+  /// key, besides a biometric.
+  ///
+  /// This is the key's effective setting, which can differ from
+  /// [CreateKeysConfig.useDeviceCredentials]: Android 10 (API 29) and older
+  /// can't bind a key to both, so the option is ignored there and this is
+  /// `false`.
+  ///
+  /// Null when [requiresAuthentication] is `false`, on Windows, and on
+  /// iOS/macOS for keys created before version 11.1.0, which didn't record
+  /// the setting.
+  var allowsDeviceCredentials: Bool? = nil
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -589,6 +666,10 @@ struct KeyInfo: Hashable {
     let decryptingAlgorithm: String? = nilOrValue(pigeonVar_list[7])
     let decryptingKeySize: Int64? = nilOrValue(pigeonVar_list[8])
     let attestationCertificateChain: [FlutterStandardTypedData]? = nilOrValue(pigeonVar_list[9])
+    let securityLevel: KeySecurityLevel? = nilOrValue(pigeonVar_list[10])
+    let requiresAuthentication: Bool? = nilOrValue(pigeonVar_list[11])
+    let invalidatedByBiometricEnrollment: Bool? = nilOrValue(pigeonVar_list[12])
+    let allowsDeviceCredentials: Bool? = nilOrValue(pigeonVar_list[13])
 
     return KeyInfo(
       exists: exists,
@@ -600,7 +681,11 @@ struct KeyInfo: Hashable {
       decryptingPublicKey: decryptingPublicKey,
       decryptingAlgorithm: decryptingAlgorithm,
       decryptingKeySize: decryptingKeySize,
-      attestationCertificateChain: attestationCertificateChain
+      attestationCertificateChain: attestationCertificateChain,
+      securityLevel: securityLevel,
+      requiresAuthentication: requiresAuthentication,
+      invalidatedByBiometricEnrollment: invalidatedByBiometricEnrollment,
+      allowsDeviceCredentials: allowsDeviceCredentials
     )
   }
   func toList() -> [Any?] {
@@ -615,6 +700,10 @@ struct KeyInfo: Hashable {
       decryptingAlgorithm,
       decryptingKeySize,
       attestationCertificateChain,
+      securityLevel,
+      requiresAuthentication,
+      invalidatedByBiometricEnrollment,
+      allowsDeviceCredentials,
     ]
   }
   static func == (lhs: KeyInfo, rhs: KeyInfo) -> Bool {
@@ -667,7 +756,9 @@ struct CreateKeysConfig: Hashable {
   var promptSubtitle: String? = nil
   /// [Android] Description text for the biometric prompt.
   var promptDescription: String? = nil
-  /// [Android] Text for the cancel button in the biometric prompt.
+  /// [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+  /// Android shows "Cancel" when null; iOS/macOS use the system's default.
+  /// On iOS/macOS key creation only prompts when [enforceBiometric] is set.
   var cancelButtonText: String? = nil
   /// [All platforms] When `true`, key creation will fail with
   /// [BiometricError.keyAlreadyExists] if a key with the specified alias
@@ -807,7 +898,8 @@ struct CreateSignatureConfig: Hashable {
   var promptSubtitle: String? = nil
   /// [Android] Description text for the biometric prompt.
   var promptDescription: String? = nil
-  /// [Android] Text for the cancel button in the biometric prompt.
+  /// [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+  /// Android shows "Cancel" when null; iOS/macOS use the system's default.
   var cancelButtonText: String? = nil
   /// [Android] Whether to allow device credentials (PIN/pattern) as fallback.
   var allowDeviceCredentials: Bool? = nil
@@ -853,7 +945,8 @@ struct DecryptConfig: Hashable {
   var promptSubtitle: String? = nil
   /// [Android] Description text for the biometric prompt.
   var promptDescription: String? = nil
-  /// [Android] Text for the cancel button in the biometric prompt.
+  /// [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+  /// Android shows "Cancel" when null; iOS/macOS use the system's default.
   var cancelButtonText: String? = nil
   /// [Android] Whether to allow device credentials (PIN/pattern) as fallback.
   var allowDeviceCredentials: Bool? = nil
@@ -898,7 +991,7 @@ struct SimplePromptConfig: Hashable {
   var subtitle: String? = nil
   /// [Android] Description text displayed in the biometric prompt body.
   var description: String? = nil
-  /// [Android] Text for the cancel/negative button.
+  /// [Android/iOS/macOS] Text for the cancel/negative button.
   /// Default: "Cancel" on Android, system default on iOS/macOS.
   var cancelButtonText: String? = nil
   /// [Android/iOS/macOS] Whether to allow device credentials (PIN/pattern/passcode)
@@ -1035,52 +1128,58 @@ private class BiometricSignatureApiPigeonCodecReader: FlutterStandardReader {
     case 133:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return SignatureType(rawValue: enumResultAsInt)
+        return KeySecurityLevel(rawValue: enumResultAsInt)
       }
       return nil
     case 134:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return AttestationMode(rawValue: enumResultAsInt)
+        return SignatureType(rawValue: enumResultAsInt)
       }
       return nil
     case 135:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return KeyFormat(rawValue: enumResultAsInt)
+        return AttestationMode(rawValue: enumResultAsInt)
       }
       return nil
     case 136:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return SignatureFormat(rawValue: enumResultAsInt)
+        return KeyFormat(rawValue: enumResultAsInt)
       }
       return nil
     case 137:
       let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
       if let enumResultAsInt = enumResultAsInt {
-        return PayloadFormat(rawValue: enumResultAsInt)
+        return SignatureFormat(rawValue: enumResultAsInt)
       }
       return nil
     case 138:
-      return BiometricAvailability.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return PayloadFormat(rawValue: enumResultAsInt)
+      }
+      return nil
     case 139:
-      return KeyCreationResult.fromList(self.readValue() as! [Any?])
+      return BiometricAvailability.fromList(self.readValue() as! [Any?])
     case 140:
-      return SignatureResult.fromList(self.readValue() as! [Any?])
+      return KeyCreationResult.fromList(self.readValue() as! [Any?])
     case 141:
-      return DecryptResult.fromList(self.readValue() as! [Any?])
+      return SignatureResult.fromList(self.readValue() as! [Any?])
     case 142:
-      return KeyInfo.fromList(self.readValue() as! [Any?])
+      return DecryptResult.fromList(self.readValue() as! [Any?])
     case 143:
-      return CreateKeysConfig.fromList(self.readValue() as! [Any?])
+      return KeyInfo.fromList(self.readValue() as! [Any?])
     case 144:
-      return CreateSignatureConfig.fromList(self.readValue() as! [Any?])
+      return CreateKeysConfig.fromList(self.readValue() as! [Any?])
     case 145:
-      return DecryptConfig.fromList(self.readValue() as! [Any?])
+      return CreateSignatureConfig.fromList(self.readValue() as! [Any?])
     case 146:
-      return SimplePromptConfig.fromList(self.readValue() as! [Any?])
+      return DecryptConfig.fromList(self.readValue() as! [Any?])
     case 147:
+      return SimplePromptConfig.fromList(self.readValue() as! [Any?])
+    case 148:
       return SimplePromptResult.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -1102,50 +1201,53 @@ private class BiometricSignatureApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? BiometricError {
       super.writeByte(132)
       super.writeValue(value.rawValue)
-    } else if let value = value as? SignatureType {
+    } else if let value = value as? KeySecurityLevel {
       super.writeByte(133)
       super.writeValue(value.rawValue)
-    } else if let value = value as? AttestationMode {
+    } else if let value = value as? SignatureType {
       super.writeByte(134)
       super.writeValue(value.rawValue)
-    } else if let value = value as? KeyFormat {
+    } else if let value = value as? AttestationMode {
       super.writeByte(135)
       super.writeValue(value.rawValue)
-    } else if let value = value as? SignatureFormat {
+    } else if let value = value as? KeyFormat {
       super.writeByte(136)
       super.writeValue(value.rawValue)
-    } else if let value = value as? PayloadFormat {
+    } else if let value = value as? SignatureFormat {
       super.writeByte(137)
       super.writeValue(value.rawValue)
-    } else if let value = value as? BiometricAvailability {
+    } else if let value = value as? PayloadFormat {
       super.writeByte(138)
-      super.writeValue(value.toList())
-    } else if let value = value as? KeyCreationResult {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? BiometricAvailability {
       super.writeByte(139)
       super.writeValue(value.toList())
-    } else if let value = value as? SignatureResult {
+    } else if let value = value as? KeyCreationResult {
       super.writeByte(140)
       super.writeValue(value.toList())
-    } else if let value = value as? DecryptResult {
+    } else if let value = value as? SignatureResult {
       super.writeByte(141)
       super.writeValue(value.toList())
-    } else if let value = value as? KeyInfo {
+    } else if let value = value as? DecryptResult {
       super.writeByte(142)
       super.writeValue(value.toList())
-    } else if let value = value as? CreateKeysConfig {
+    } else if let value = value as? KeyInfo {
       super.writeByte(143)
       super.writeValue(value.toList())
-    } else if let value = value as? CreateSignatureConfig {
+    } else if let value = value as? CreateKeysConfig {
       super.writeByte(144)
       super.writeValue(value.toList())
-    } else if let value = value as? DecryptConfig {
+    } else if let value = value as? CreateSignatureConfig {
       super.writeByte(145)
       super.writeValue(value.toList())
-    } else if let value = value as? SimplePromptConfig {
+    } else if let value = value as? DecryptConfig {
       super.writeByte(146)
       super.writeValue(value.toList())
-    } else if let value = value as? SimplePromptResult {
+    } else if let value = value as? SimplePromptConfig {
       super.writeByte(147)
+      super.writeValue(value.toList())
+    } else if let value = value as? SimplePromptResult {
+      super.writeByte(148)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -1171,7 +1273,10 @@ class BiometricSignatureApiPigeonCodec: FlutterStandardMessageCodec, @unchecked 
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol BiometricSignatureApi {
   /// Checks if biometric authentication is available.
-  func biometricAuthAvailable(completion: @escaping (Result<BiometricAvailability, Error>) -> Void)
+  ///
+  /// [biometricStrength] is the class of biometric to check for on Android
+  /// (`null` means [BiometricStrength.strong]). Other platforms ignore it.
+  func biometricAuthAvailable(biometricStrength: BiometricStrength?, completion: @escaping (Result<BiometricAvailability, Error>) -> Void)
   /// Creates a new key pair.
   ///
   /// [keyAlias] is an optional alias for the key. When null, the default
@@ -1217,6 +1322,12 @@ protocol BiometricSignatureApi {
   /// This is a destructive operation that removes every key managed by
   /// this plugin. Use [deleteKeys] for targeted deletion.
   func deleteAllKeys(completion: @escaping (Result<Bool, Error>) -> Void)
+  /// Lists the aliases that currently have a key, without prompting.
+  ///
+  /// The default alias is returned as `null`. On Windows, aliases are
+  /// tracked in app settings, which are deleted on uninstall while Windows
+  /// Hello keys are not, so after a reinstall only the default key is found.
+  func listKeyAliases(completion: @escaping (Result<[String?], Error>) -> Void)
   /// Gets detailed information about existing biometric keys.
   ///
   /// [keyAlias] specifies which key to query. Defaults to the default alias.
@@ -1269,10 +1380,15 @@ class BiometricSignatureApiSetup {
   static func setUp(binaryMessenger: FlutterBinaryMessenger, api: BiometricSignatureApi?, messageChannelSuffix: String = "") {
     let channelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
     /// Checks if biometric authentication is available.
+    ///
+    /// [biometricStrength] is the class of biometric to check for on Android
+    /// (`null` means [BiometricStrength.strong]). Other platforms ignore it.
     let biometricAuthAvailableChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.biometricAuthAvailable\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
-      biometricAuthAvailableChannel.setMessageHandler { _, reply in
-        api.biometricAuthAvailable { result in
+      biometricAuthAvailableChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let biometricStrengthArg: BiometricStrength? = nilOrValue(args[0])
+        api.biometricAuthAvailable(biometricStrength: biometricStrengthArg) { result in
           switch result {
           case .success(let res):
             reply(wrapResult(res))
@@ -1439,6 +1555,26 @@ class BiometricSignatureApiSetup {
       }
     } else {
       deleteAllKeysChannel.setMessageHandler(nil)
+    }
+    /// Lists the aliases that currently have a key, without prompting.
+    ///
+    /// The default alias is returned as `null`. On Windows, aliases are
+    /// tracked in app settings, which are deleted on uninstall while Windows
+    /// Hello keys are not, so after a reinstall only the default key is found.
+    let listKeyAliasesChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.listKeyAliases\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      listKeyAliasesChannel.setMessageHandler { _, reply in
+        api.listKeyAliases { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      listKeyAliasesChannel.setMessageHandler(nil)
     }
     /// Gets detailed information about existing biometric keys.
     ///

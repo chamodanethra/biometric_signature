@@ -10,6 +10,7 @@ import java.security.KeyPair
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.security.PrivateKey
 import java.security.ProviderException
 import java.security.cert.Certificate
 import java.security.cert.X509Certificate
@@ -99,6 +100,99 @@ data class GeneratedKey(
     val attestationCertChain: List<ByteArray>?,
     val attestationFailure: KeyAttestationException? = null
 )
+
+/**
+ * Where a keystore key lives and what it takes to use it, as reported in
+ * `KeyInfo`. A field is null when it doesn't apply or couldn't be read.
+ */
+data class KeyDescription(
+    val securityLevel: KeySecurityLevel?,
+    val requiresAuthentication: Boolean?,
+    val invalidatedByBiometricEnrollment: Boolean?,
+    val allowsDeviceCredentials: Boolean?
+) {
+    companion object {
+        val UNKNOWN = KeyDescription(null, null, null, null)
+    }
+}
+
+/**
+ * Maps a key's keystore security level to [KeySecurityLevel].
+ *
+ * API 31+ reports the level itself ([platformLevel], a
+ * `KeyProperties.SECURITY_LEVEL_*` value). Earlier versions only report
+ * whether the key is [insideSecureHardware], which on API 28–30 can be
+ * StrongBox or the TEE when the device has StrongBox, so that case is
+ * [KeySecurityLevel.SECURE_HARDWARE]. API 23–27 predate StrongBox.
+ */
+internal fun keySecurityLevelFor(
+    sdkInt: Int,
+    platformLevel: Int?,
+    insideSecureHardware: Boolean,
+    deviceHasStrongBox: Boolean
+): KeySecurityLevel? {
+    if (sdkInt >= Build.VERSION_CODES.S) {
+        return when (platformLevel) {
+            KeyProperties.SECURITY_LEVEL_STRONGBOX -> KeySecurityLevel.STRONG_BOX
+            KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT -> KeySecurityLevel.TRUSTED_ENVIRONMENT
+            KeyProperties.SECURITY_LEVEL_SOFTWARE -> KeySecurityLevel.SOFTWARE
+            KeyProperties.SECURITY_LEVEL_UNKNOWN_SECURE -> KeySecurityLevel.SECURE_HARDWARE
+            else -> null
+        }
+    }
+    return when {
+        !insideSecureHardware -> KeySecurityLevel.SOFTWARE
+        sdkInt >= Build.VERSION_CODES.P && deviceHasStrongBox -> KeySecurityLevel.SECURE_HARDWARE
+        else -> KeySecurityLevel.TRUSTED_ENVIRONMENT
+    }
+}
+
+/**
+ * The effective user-authentication policy of a keystore key.
+ *
+ * [invalidatedByBiometricEnrollment] is null below API 24, which has no
+ * getter and always invalidates auth-bound keys. [userAuthenticationType] is
+ * null below API 30: the plugin creates keys there with a validity of -1,
+ * which only a biometric can satisfy, so device credentials never unlock them.
+ */
+internal fun keyPolicyFor(
+    securityLevel: KeySecurityLevel?,
+    userAuthenticationRequired: Boolean,
+    invalidatedByBiometricEnrollment: Boolean?,
+    userAuthenticationType: Int?
+): KeyDescription {
+    if (!userAuthenticationRequired) {
+        return KeyDescription(securityLevel, false, null, null)
+    }
+    return KeyDescription(
+        securityLevel = securityLevel,
+        requiresAuthentication = true,
+        invalidatedByBiometricEnrollment = invalidatedByBiometricEnrollment ?: true,
+        allowsDeviceCredentials = userAuthenticationType?.let {
+            (it and KeyProperties.AUTH_DEVICE_CREDENTIAL) != 0
+        } ?: false
+    )
+}
+
+/**
+ * The user aliases among [keystoreAliases]: `null` for the default signing
+ * key, followed by the named ones in sorted order. Master (decryption) keys
+ * and keys the plugin doesn't own are skipped.
+ */
+internal fun userAliasesFrom(keystoreAliases: Iterable<String>): List<String?> {
+    val defaultAlias = Constants.biometricKeyAlias(null)
+    var hasDefault = false
+    val named = mutableListOf<String>()
+    for (alias in keystoreAliases) {
+        when {
+            alias == defaultAlias -> hasDefault = true
+            alias.startsWith(Constants.KEY_ALIAS_PREFIX) ->
+                named += alias.removePrefix(Constants.KEY_ALIAS_PREFIX)
+        }
+    }
+    named.sort()
+    return if (hasDefault) listOf<String?>(null) + named else named
+}
 
 class KeyManager(private val appContext: Context, private val fileIO: FileIOHelper) {
 
@@ -435,6 +529,41 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
         }
     }
 
+    /**
+     * Describes [privateKey], a key from this plugin's keystore. Never throws:
+     * metadata that can't be read is reported as [KeyDescription.UNKNOWN].
+     */
+    fun describeKey(privateKey: PrivateKey): KeyDescription {
+        val info = try {
+            val factory = KeyFactory.getInstance(privateKey.algorithm, Constants.KEYSTORE_PROVIDER)
+            factory.getKeySpec(privateKey, android.security.keystore.KeyInfo::class.java)
+        } catch (_: Exception) {
+            return KeyDescription.UNKNOWN
+        }
+        val sdkInt = Build.VERSION.SDK_INT
+        // Deprecated in API 31 in favour of securityLevel, which is used there.
+        @Suppress("DEPRECATION")
+        val insideSecureHardware = sdkInt < Build.VERSION_CODES.S && info.isInsideSecureHardware
+        val securityLevel = keySecurityLevelFor(
+            sdkInt,
+            if (sdkInt >= Build.VERSION_CODES.S) info.securityLevel else null,
+            insideSecureHardware,
+            deviceHasStrongBox()
+        )
+        return keyPolicyFor(
+            securityLevel,
+            info.isUserAuthenticationRequired,
+            if (sdkInt >= Build.VERSION_CODES.N) info.isInvalidatedByBiometricEnrollment else null,
+            if (sdkInt >= Build.VERSION_CODES.R) info.userAuthenticationType else null
+        )
+    }
+
+    /** The user aliases that have a signing key; see [userAliasesFrom]. */
+    fun listUserAliases(): List<String?> {
+        val keyStore = KeyStore.getInstance(Constants.KEYSTORE_PROVIDER).apply { load(null) }
+        return userAliasesFrom(keyStore.aliases().toList())
+    }
+
     fun keyExistsForAlias(keyAlias: String?): Boolean {
         val keyStore = KeyStore.getInstance(Constants.KEYSTORE_PROVIDER).apply { load(null) }
         return keyStore.containsAlias(Constants.biometricKeyAlias(keyAlias))
@@ -509,10 +638,12 @@ class KeyManager(private val appContext: Context, private val fileIO: FileIOHelp
         }
     }
 
-    private fun tryEnableStrongBox(builder: KeyGenParameterSpec.Builder) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+    private fun deviceHasStrongBox(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
             appContext.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)
-        ) {
+
+    private fun tryEnableStrongBox(builder: KeyGenParameterSpec.Builder) {
+        if (deviceHasStrongBox()) {
             try {
                 builder.setIsStrongBoxBacked(true)
             } catch (_: Throwable) {}

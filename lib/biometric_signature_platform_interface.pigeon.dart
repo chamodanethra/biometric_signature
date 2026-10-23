@@ -164,6 +164,45 @@ enum BiometricError {
   notInteractive,
 }
 
+/// Where a key's private material is stored and used.
+///
+/// Reported for the signing key in [KeyInfo.securityLevel] and
+/// [KeyCreationResult.securityLevel]. Those fields are null when the platform
+/// can't tell: on Windows, Windows Hello doesn't say whether the TPM holds
+/// the key.
+///
+/// More values may be added in minor releases, so avoid exhaustive switches
+/// over this enum.
+enum KeySecurityLevel {
+  /// [Android] A StrongBox secure element, a separate chip with its own CPU
+  /// and storage (Android 9+ on devices that have one).
+  strongBox,
+
+  /// [Android] The Trusted Execution Environment of the main processor.
+  trustedEnvironment,
+
+  /// [iOS/macOS] The Secure Enclave. EC keys only; RSA keys report
+  /// [software].
+  secureEnclave,
+
+  /// [Android] Secure hardware that can't be told apart further.
+  ///
+  /// Android 9–11 (API 28–30) don't report whether a key is in StrongBox or
+  /// the TEE, so keys on devices that have StrongBox report this there.
+  /// Newer Android versions report it for secure hardware that is neither.
+  secureHardware,
+
+  /// The private key is used outside secure hardware.
+  ///
+  /// - **Android**: the keystore has no secure hardware (e.g. some
+  ///   emulators).
+  /// - **iOS/macOS**: RSA keys. The Secure Enclave can't hold RSA keys, so
+  ///   the RSA private key is stored encrypted by a Secure Enclave EC key,
+  ///   which needs user authentication to unwrap it, but signing and
+  ///   decryption run in app memory.
+  software,
+}
+
 /// The cryptographic algorithm to use for key generation.
 enum SignatureType {
   /// RSA-2048 (Android: native, iOS/macOS: hybrid mode with Secure Enclave EC).
@@ -320,6 +359,7 @@ class KeyCreationResult {
     this.attestationCertificateChain,
     this.attestationErrorCode,
     this.attestationError,
+    this.securityLevel,
   });
 
   String? publicKey;
@@ -370,6 +410,12 @@ class KeyCreationResult {
   /// Human-readable detail for [attestationErrorCode].
   String? attestationError;
 
+  /// Where the new signing key is stored and used. See [KeySecurityLevel].
+  ///
+  /// Null on Windows, and on Android if the key's metadata can't be read.
+  /// The same value [KeyInfo.securityLevel] reports for the key later.
+  KeySecurityLevel? securityLevel;
+
   List<Object?> _toList() {
     return <Object?>[
       publicKey,
@@ -386,6 +432,7 @@ class KeyCreationResult {
       attestationCertificateChain,
       attestationErrorCode,
       attestationError,
+      securityLevel,
     ];
   }
 
@@ -411,6 +458,7 @@ class KeyCreationResult {
           (result[11] as List<Object?>?)?.cast<Uint8List>(),
       attestationErrorCode: result[12] as BiometricError?,
       attestationError: result[13] as String?,
+      securityLevel: result[14] as KeySecurityLevel?,
     );
   }
 
@@ -586,6 +634,10 @@ class KeyInfo {
     this.decryptingAlgorithm,
     this.decryptingKeySize,
     this.attestationCertificateChain,
+    this.securityLevel,
+    this.requiresAuthentication,
+    this.invalidatedByBiometricEnrollment,
+    this.allowsDeviceCredentials,
   });
 
   /// Whether any biometric key exists on the device.
@@ -625,6 +677,44 @@ class KeyInfo {
   /// platforms.
   List<Uint8List>? attestationCertificateChain;
 
+  /// Where the signing key is stored and used. See [KeySecurityLevel].
+  ///
+  /// In Android hybrid mode this describes the signing key only; the
+  /// decryption key is a software key wrapped by a keystore AES key. Null on
+  /// Windows, and on Android if the key's metadata can't be read.
+  KeySecurityLevel? securityLevel;
+
+  /// Whether signing and decryption require user authentication.
+  ///
+  /// `false` for keys created with [CreateKeysConfig.requireAuthentication]
+  /// set to `false`. Always `true` on Windows.
+  bool? requiresAuthentication;
+
+  /// Whether enrolling or removing a fingerprint or face permanently
+  /// invalidates the key.
+  ///
+  /// This is the key's effective setting, which can differ from
+  /// [CreateKeysConfig.setInvalidatedByBiometricEnrollment]: Android 6
+  /// (API 23) always invalidates, and on iOS/macOS a key that accepts the
+  /// device passcode is never invalidated.
+  ///
+  /// Null when [requiresAuthentication] is `false`, on Windows, and on
+  /// iOS/macOS for keys whose setting wasn't recorded.
+  bool? invalidatedByBiometricEnrollment;
+
+  /// Whether the device PIN, pattern, password or passcode can unlock the
+  /// key, besides a biometric.
+  ///
+  /// This is the key's effective setting, which can differ from
+  /// [CreateKeysConfig.useDeviceCredentials]: Android 10 (API 29) and older
+  /// can't bind a key to both, so the option is ignored there and this is
+  /// `false`.
+  ///
+  /// Null when [requiresAuthentication] is `false`, on Windows, and on
+  /// iOS/macOS for keys created before version 11.1.0, which didn't record
+  /// the setting.
+  bool? allowsDeviceCredentials;
+
   List<Object?> _toList() {
     return <Object?>[
       exists,
@@ -637,6 +727,10 @@ class KeyInfo {
       decryptingAlgorithm,
       decryptingKeySize,
       attestationCertificateChain,
+      securityLevel,
+      requiresAuthentication,
+      invalidatedByBiometricEnrollment,
+      allowsDeviceCredentials,
     ];
   }
 
@@ -658,6 +752,10 @@ class KeyInfo {
       decryptingKeySize: result[8] as int?,
       attestationCertificateChain:
           (result[9] as List<Object?>?)?.cast<Uint8List>(),
+      securityLevel: result[10] as KeySecurityLevel?,
+      requiresAuthentication: result[11] as bool?,
+      invalidatedByBiometricEnrollment: result[12] as bool?,
+      allowsDeviceCredentials: result[13] as bool?,
     );
   }
 
@@ -741,7 +839,9 @@ class CreateKeysConfig {
   /// [Android] Description text for the biometric prompt.
   String? promptDescription;
 
-  /// [Android] Text for the cancel button in the biometric prompt.
+  /// [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+  /// Android shows "Cancel" when null; iOS/macOS use the system's default.
+  /// On iOS/macOS key creation only prompts when [enforceBiometric] is set.
   String? cancelButtonText;
 
   /// [All platforms] When `true`, key creation will fail with
@@ -894,7 +994,8 @@ class CreateSignatureConfig {
   /// [Android] Description text for the biometric prompt.
   String? promptDescription;
 
-  /// [Android] Text for the cancel button in the biometric prompt.
+  /// [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+  /// Android shows "Cancel" when null; iOS/macOS use the system's default.
   String? cancelButtonText;
 
   /// [Android] Whether to allow device credentials (PIN/pattern) as fallback.
@@ -958,7 +1059,8 @@ class DecryptConfig {
   /// [Android] Description text for the biometric prompt.
   String? promptDescription;
 
-  /// [Android] Text for the cancel button in the biometric prompt.
+  /// [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+  /// Android shows "Cancel" when null; iOS/macOS use the system's default.
   String? cancelButtonText;
 
   /// [Android] Whether to allow device credentials (PIN/pattern) as fallback.
@@ -1022,7 +1124,7 @@ class SimplePromptConfig {
   /// [Android] Description text displayed in the biometric prompt body.
   String? description;
 
-  /// [Android] Text for the cancel/negative button.
+  /// [Android/iOS/macOS] Text for the cancel/negative button.
   /// Default: "Cancel" on Android, system default on iOS/macOS.
   String? cancelButtonText;
 
@@ -1177,50 +1279,53 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is BiometricError) {
       buffer.putUint8(132);
       writeValue(buffer, value.index);
-    } else if (value is SignatureType) {
+    } else if (value is KeySecurityLevel) {
       buffer.putUint8(133);
       writeValue(buffer, value.index);
-    } else if (value is AttestationMode) {
+    } else if (value is SignatureType) {
       buffer.putUint8(134);
       writeValue(buffer, value.index);
-    } else if (value is KeyFormat) {
+    } else if (value is AttestationMode) {
       buffer.putUint8(135);
       writeValue(buffer, value.index);
-    } else if (value is SignatureFormat) {
+    } else if (value is KeyFormat) {
       buffer.putUint8(136);
       writeValue(buffer, value.index);
-    } else if (value is PayloadFormat) {
+    } else if (value is SignatureFormat) {
       buffer.putUint8(137);
       writeValue(buffer, value.index);
-    } else if (value is BiometricAvailability) {
+    } else if (value is PayloadFormat) {
       buffer.putUint8(138);
-      writeValue(buffer, value.encode());
-    } else if (value is KeyCreationResult) {
+      writeValue(buffer, value.index);
+    } else if (value is BiometricAvailability) {
       buffer.putUint8(139);
       writeValue(buffer, value.encode());
-    } else if (value is SignatureResult) {
+    } else if (value is KeyCreationResult) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    } else if (value is DecryptResult) {
+    } else if (value is SignatureResult) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    } else if (value is KeyInfo) {
+    } else if (value is DecryptResult) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    } else if (value is CreateKeysConfig) {
+    } else if (value is KeyInfo) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    } else if (value is CreateSignatureConfig) {
+    } else if (value is CreateKeysConfig) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
-    } else if (value is DecryptConfig) {
+    } else if (value is CreateSignatureConfig) {
       buffer.putUint8(145);
       writeValue(buffer, value.encode());
-    } else if (value is SimplePromptConfig) {
+    } else if (value is DecryptConfig) {
       buffer.putUint8(146);
       writeValue(buffer, value.encode());
-    } else if (value is SimplePromptResult) {
+    } else if (value is SimplePromptConfig) {
       buffer.putUint8(147);
+      writeValue(buffer, value.encode());
+    } else if (value is SimplePromptResult) {
+      buffer.putUint8(148);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1244,38 +1349,41 @@ class _PigeonCodec extends StandardMessageCodec {
         return value == null ? null : BiometricError.values[value];
       case 133:
         final int? value = readValue(buffer) as int?;
-        return value == null ? null : SignatureType.values[value];
+        return value == null ? null : KeySecurityLevel.values[value];
       case 134:
         final int? value = readValue(buffer) as int?;
-        return value == null ? null : AttestationMode.values[value];
+        return value == null ? null : SignatureType.values[value];
       case 135:
         final int? value = readValue(buffer) as int?;
-        return value == null ? null : KeyFormat.values[value];
+        return value == null ? null : AttestationMode.values[value];
       case 136:
         final int? value = readValue(buffer) as int?;
-        return value == null ? null : SignatureFormat.values[value];
+        return value == null ? null : KeyFormat.values[value];
       case 137:
         final int? value = readValue(buffer) as int?;
-        return value == null ? null : PayloadFormat.values[value];
+        return value == null ? null : SignatureFormat.values[value];
       case 138:
-        return BiometricAvailability.decode(readValue(buffer)!);
+        final int? value = readValue(buffer) as int?;
+        return value == null ? null : PayloadFormat.values[value];
       case 139:
-        return KeyCreationResult.decode(readValue(buffer)!);
+        return BiometricAvailability.decode(readValue(buffer)!);
       case 140:
-        return SignatureResult.decode(readValue(buffer)!);
+        return KeyCreationResult.decode(readValue(buffer)!);
       case 141:
-        return DecryptResult.decode(readValue(buffer)!);
+        return SignatureResult.decode(readValue(buffer)!);
       case 142:
-        return KeyInfo.decode(readValue(buffer)!);
+        return DecryptResult.decode(readValue(buffer)!);
       case 143:
-        return CreateKeysConfig.decode(readValue(buffer)!);
+        return KeyInfo.decode(readValue(buffer)!);
       case 144:
-        return CreateSignatureConfig.decode(readValue(buffer)!);
+        return CreateKeysConfig.decode(readValue(buffer)!);
       case 145:
-        return DecryptConfig.decode(readValue(buffer)!);
+        return CreateSignatureConfig.decode(readValue(buffer)!);
       case 146:
-        return SimplePromptConfig.decode(readValue(buffer)!);
+        return DecryptConfig.decode(readValue(buffer)!);
       case 147:
+        return SimplePromptConfig.decode(readValue(buffer)!);
+      case 148:
         return SimplePromptResult.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -1299,7 +1407,11 @@ class BiometricSignatureApi {
   final String pigeonVar_messageChannelSuffix;
 
   /// Checks if biometric authentication is available.
-  Future<BiometricAvailability> biometricAuthAvailable() async {
+  ///
+  /// [biometricStrength] is the class of biometric to check for on Android
+  /// (`null` means [BiometricStrength.strong]). Other platforms ignore it.
+  Future<BiometricAvailability> biometricAuthAvailable(
+      BiometricStrength? biometricStrength) async {
     final String pigeonVar_channelName =
         'dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.biometricAuthAvailable$pigeonVar_messageChannelSuffix';
     final BasicMessageChannel<Object?> pigeonVar_channel =
@@ -1308,7 +1420,8 @@ class BiometricSignatureApi {
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final Future<Object?> pigeonVar_sendFuture =
+        pigeonVar_channel.send(<Object?>[biometricStrength]);
     final List<Object?>? pigeonVar_replyList =
         await pigeonVar_sendFuture as List<Object?>?;
     if (pigeonVar_replyList == null) {
@@ -1585,6 +1698,41 @@ class BiometricSignatureApi {
       );
     } else {
       return (pigeonVar_replyList[0] as bool?)!;
+    }
+  }
+
+  /// Lists the aliases that currently have a key, without prompting.
+  ///
+  /// The default alias is returned as `null`. On Windows, aliases are
+  /// tracked in app settings, which are deleted on uninstall while Windows
+  /// Hello keys are not, so after a reinstall only the default key is found.
+  Future<List<String?>> listKeyAliases() async {
+    final String pigeonVar_channelName =
+        'dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.listKeyAliases$pigeonVar_messageChannelSuffix';
+    final BasicMessageChannel<Object?> pigeonVar_channel =
+        BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final List<Object?>? pigeonVar_replyList =
+        await pigeonVar_sendFuture as List<Object?>?;
+    if (pigeonVar_replyList == null) {
+      throw _createConnectionError(pigeonVar_channelName);
+    } else if (pigeonVar_replyList.length > 1) {
+      throw PlatformException(
+        code: pigeonVar_replyList[0]! as String,
+        message: pigeonVar_replyList[1] as String?,
+        details: pigeonVar_replyList[2],
+      );
+    } else if (pigeonVar_replyList[0] == null) {
+      throw PlatformException(
+        code: 'null-error',
+        message: 'Host platform returned null value for non-null return value.',
+      );
+    } else {
+      return (pigeonVar_replyList[0] as List<Object?>?)!.cast<String?>();
     }
   }
 

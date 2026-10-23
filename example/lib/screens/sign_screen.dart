@@ -146,7 +146,7 @@ class SignScreen extends StatelessWidget {
                   ),
                   ArgTextField(
                     name: 'config.cancelButtonText',
-                    platforms: androidOnly,
+                    platforms: mobileAndMac,
                     controller: c.cancelButtonText,
                   ),
                   OptionSwitch(

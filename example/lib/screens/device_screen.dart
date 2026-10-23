@@ -1,3 +1,4 @@
+import 'package:biometric_signature/biometric_signature.dart';
 import 'package:examples_shared/ui.dart';
 import 'package:flutter/material.dart';
 
@@ -50,23 +51,37 @@ class DeviceScreen extends StatelessWidget {
                 busy: c.isBusy(DeviceController.availabilityOp),
                 onPressed: c.checkAvailability,
               ),
-              child: c.availability == null
-                  ? const Text('Not checked yet.')
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (final f in resultFieldsOf(c.availability))
-                          ResultFieldRow(field: f),
-                        const SizedBox(height: 8),
-                        const NoteList([
-                          'canAuthenticate: whether a biometric prompt can '
-                              'succeed right now (enrolled, not locked out).',
-                          'availableBiometrics lists sensor types; '
-                              '"multiple" means more than one kind.',
-                          'reason explains a false canAuthenticate.',
-                        ]),
-                      ],
-                    ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  EnumChoice<BiometricStrength>(
+                    key: const ValueKey('device.biometricStrength'),
+                    name: 'biometricStrength',
+                    platforms: androidOnly,
+                    values: BiometricStrength.values,
+                    selected: c.biometricStrength,
+                    description: 'strong (Class 3) is what keys need. weak '
+                        '(Class 2) also counts biometrics such as some face '
+                        'unlock implementations, for simplePrompt.',
+                    onChanged: (v) => c.update(() => c.biometricStrength = v),
+                  ),
+                  const SizedBox(height: 8),
+                  if (c.availability == null)
+                    const Text('Not checked yet.')
+                  else ...[
+                    for (final f in resultFieldsOf(c.availability))
+                      ResultFieldRow(field: f),
+                    const SizedBox(height: 8),
+                    const NoteList([
+                      'canAuthenticate: whether a biometric prompt can '
+                          'succeed right now (enrolled, not locked out).',
+                      'availableBiometrics lists sensor types; '
+                          '"multiple" means more than one kind.',
+                      'reason explains a false canAuthenticate.',
+                    ]),
+                  ],
+                ],
+              ),
             ),
             SectionCard(
               title: 'isDeviceLockSet()',

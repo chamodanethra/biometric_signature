@@ -13,6 +13,9 @@ class DeviceController extends ExplorerController {
   /// Operation id for [checkDeviceLock].
   static const String lockOp = 'deviceLock';
 
+  /// `biometricAuthAvailable(biometricStrength:)`.
+  BiometricStrength biometricStrength = BiometricStrength.strong;
+
   /// Last `biometricAuthAvailable` result.
   BiometricAvailability? availability;
 
@@ -21,7 +24,9 @@ class DeviceController extends ExplorerController {
 
   /// Calls `biometricAuthAvailable`.
   Future<void> checkAvailability() => run(availabilityOp, () async {
-        availability = await api.biometricAuthAvailable();
+        availability = await api.biometricAuthAvailable(
+          biometricStrength: biometricStrength,
+        );
       });
 
   /// Calls `isDeviceLockSet`.
