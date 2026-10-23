@@ -4,6 +4,7 @@ import android.app.Activity
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.visionflutter.biometric_signature.BiometricError
 import com.visionflutter.biometric_signature.BiometricSignaturePlugin
 import com.visionflutter.biometric_signature.CreateKeysConfig
 import com.visionflutter.biometric_signature.KeyCreationResult
@@ -13,11 +14,16 @@ import com.visionflutter.biometric_signature.SignatureResult
 import com.visionflutter.biometric_signature.SignatureType
 import io.flutter.embedding.android.ExclusiveAppComponent
 import io.flutter.embedding.engine.FlutterEngine
+import java.security.KeyFactory
+import java.security.Signature
+import java.security.spec.X509EncodedKeySpec
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -43,7 +49,7 @@ class BackgroundSigningTest {
     fun signsWithAKeyThatNeedsNoAuthenticationFromAnEngineWithNoActivity() {
         // The key is created on screen, with an activity attached, as an app
         // creates it.
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+        val created = ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             val foreground = newEngine()
             scenario.onActivity { activity -> attach(foreground, activity) }
             val created = await<KeyCreationResult> { done ->
@@ -57,14 +63,17 @@ class BackgroundSigningTest {
                     null,
                 ) { done(it.getOrThrow()) }
             }
-            assertNotNull(created.error, created.publicKey)
+            instrumentation.runOnMainSync { foreground.activityControlSurface.detachFromActivity() }
+            assertNotNull(created.error, created.publicKeyBytes)
+            created
         }
 
         // A second engine, never attached to an activity, signs with it.
         val background = newEngine()
+        val payload = "payload".toByteArray()
         val signed = await<SignatureResult> { done ->
             plugin(background).createSignatureFromBytes(
-                "payload".toByteArray(),
+                payload,
                 ALIAS,
                 null,
                 SignatureFormat.BASE64,
@@ -72,7 +81,15 @@ class BackgroundSigningTest {
                 null,
             ) { done(it.getOrThrow()) }
         }
-        assertNotNull(signed.error, signed.signature)
+        assertEquals(signed.error, BiometricError.SUCCESS, signed.code)
+        val publicKey = KeyFactory.getInstance("EC")
+            .generatePublic(X509EncodedKeySpec(created.publicKeyBytes!!))
+        val verified = Signature.getInstance("SHA256withECDSA").run {
+            initVerify(publicKey)
+            update(payload)
+            verify(signed.signatureBytes!!)
+        }
+        assertTrue("Signature does not verify against the created key", verified)
     }
 
     /** A new engine, with the app's plugins registered and no Dart running. */

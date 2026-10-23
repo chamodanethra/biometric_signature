@@ -702,18 +702,6 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
             callback(Result.success(DecryptResult(code = BiometricError.INVALID_INPUT, error = "Invalid payload")))
             return
         }
-        val act = activity
-        if (act == null) {
-            callback(
-                Result.success(
-                    DecryptResult(
-                        code = BiometricError.UNKNOWN,
-                        error = "Foreground activity required"
-                    )
-                )
-            )
-            return
-        }
 
         pluginScope.launch {
             try {
@@ -759,6 +747,22 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                                 decryptedData = data,
                                 code = BiometricError.SUCCESS,
                                 authenticationType = AuthenticationType.UNKNOWN
+                            )
+                        )
+                    )
+                    return@launch
+                }
+
+                // Only the BiometricPrompt path below needs an activity. Decryption with a key
+                // that requires no user authentication is handled above, which also works
+                // from a background engine with no activity attached.
+                val act = activity
+                if (act == null) {
+                    callback(
+                        Result.success(
+                            DecryptResult(
+                                code = BiometricError.UNKNOWN,
+                                error = "Foreground activity required"
                             )
                         )
                     )
