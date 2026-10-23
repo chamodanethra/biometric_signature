@@ -179,8 +179,6 @@ Future<KeyCreationResult> reproduce() {
 
 class _ThrowingPlatform extends SoftwareBiometricPlatform {
   @override
-  Future<BiometricAvailability> biometricAuthAvailable([
-    BiometricStrength? biometricStrength,
-  ]) =>
+  Future<BiometricAvailability> biometricAuthAvailable() =>
       Future.error(StateError('boom'));
 }

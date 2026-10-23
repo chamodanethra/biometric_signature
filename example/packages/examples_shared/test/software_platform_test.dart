@@ -683,9 +683,7 @@ void main() {
   test('biometricAuthAvailable records the strength', () async {
     install(DevicePlatform.android);
     await api.biometricAuthAvailable(biometricStrength: BiometricStrength.weak);
-    expect(
-      fake.calls.last.arguments['biometricStrength'],
-      BiometricStrength.weak,
-    );
+    expect(fake.lastBiometricStrength, BiometricStrength.weak);
+    expect(fake.calls.last.method, 'biometricAuthAvailable');
   });
 }

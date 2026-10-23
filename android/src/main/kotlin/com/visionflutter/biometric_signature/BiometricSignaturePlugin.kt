@@ -741,15 +741,8 @@ class BiometricSignaturePlugin : FlutterPlugin, BiometricSignatureApi, ActivityA
                                 val alias = Constants.biometricKeyAlias(keyAlias)
                                 val entry = keyStore.getEntry(alias, null) as? KeyStore.PrivateKeyEntry
                                     ?: throw KeyNotFoundException("RSA key not found")
-                                val cipher = try {
-                                    Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding").apply {
-                                        init(Cipher.DECRYPT_MODE, entry.privateKey)
-                                    }
-                                } catch (e: InvalidKeyException) {
-                                    Cipher.getInstance("RSA/ECB/PKCS1Padding").apply {
-                                        init(Cipher.DECRYPT_MODE, entry.privateKey)
-                                    }
-                                }
+                                // Same parameters as the prompted path (decryptRsa).
+                                val cipher = openRsaDecryptCipher(entry.privateKey)
                                 String(cipher.doFinal(encryptedBytes), Charsets.UTF_8)
                             }
 

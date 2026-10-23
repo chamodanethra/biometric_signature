@@ -63,6 +63,9 @@ The Explorer depends on the plugin and on the shared example helpers
   Simulator, enroll Face ID with *Features → Face ID → Enrolled* and answer prompts with
   *Matching Face* / *Non-matching Face*.
 - Key attestation is Android-only: any `attestationChallenge` returns `notSupported`.
+- The app adopts the UIScene life cycle, which iOS 27 requires of apps built with Xcode 27.
+  `ios/Runner/AppDelegate.swift` runs a `FlutterEngine` and shows it from a `SceneDelegate`,
+  which also works on Flutter versions without `FlutterSceneDelegate`, such as 3.24.5.
 
 ### macOS
 
@@ -87,6 +90,18 @@ with real cryptography — and drive the Explorer as Android, iOS, macOS and Win
 create keys, sign and verify, decrypt with each scheme, inspect a synthetic attestation chain,
 run error triggers, and copy a call as Dart. `test/version_test.dart` keeps the version shown in
 the app in step with the plugin's `pubspec.yaml`.
+
+On Android, an instrumented test runs the real plugin on a device or emulator:
+
+```bash
+cd example/android
+./gradlew :app:connectedDebugAndroidTest
+```
+
+`BackgroundSigningTest` creates `requireAuthentication: false` keys with an activity attached,
+then uses them from a second `FlutterEngine` that never had one, as a background engine
+handling a notification action would: it signs with an EC key and verifies the signature, and
+decrypts an RSA-OAEP payload with an RSA key.
 
 ## Code layout
 

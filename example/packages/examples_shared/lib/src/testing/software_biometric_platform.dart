@@ -189,6 +189,9 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
   /// `secureEnclave` for EC keys and `software` for RSA keys, Windows `null`.
   KeySecurityLevel? androidSecurityLevel;
 
+  /// The strength of the last `biometricAuthAvailable` check.
+  BiometricStrength? lastBiometricStrength;
+
   /// Every call received, oldest first.
   final List<FakeCall> calls = [];
 
@@ -297,15 +300,20 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
         : AuthenticationType.unknown;
   }
 
-  /// Returns [availability] whatever [biometricStrength] is.
   @override
-  Future<BiometricAvailability> biometricAuthAvailable([
-    BiometricStrength? biometricStrength,
-  ]) async {
-    calls.add(FakeCall('biometricAuthAvailable', arguments: {
-      'biometricStrength': biometricStrength,
-    }));
+  Future<BiometricAvailability> biometricAuthAvailable() async {
+    calls.add(const FakeCall('biometricAuthAvailable'));
     return availability;
+  }
+
+  /// Records [biometricStrength] in [lastBiometricStrength], then answers
+  /// like [biometricAuthAvailable], whatever the strength.
+  @override
+  Future<BiometricAvailability> biometricAuthAvailableWithStrength(
+    BiometricStrength biometricStrength,
+  ) {
+    lastBiometricStrength = biometricStrength;
+    return biometricAuthAvailable();
   }
 
   @override

@@ -191,7 +191,7 @@ class BiometricSignature {
     BiometricStrength biometricStrength = BiometricStrength.strong,
   }) async {
     return BiometricSignaturePlatform.instance
-        .biometricAuthAvailable(biometricStrength);
+        .biometricAuthAvailableWithStrength(biometricStrength);
   }
 
   /// Gets detailed information about existing biometric keys.

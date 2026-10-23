@@ -5,6 +5,14 @@ import 'package:biometric_signature/biometric_signature_platform_interface.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
+/// A platform written before `biometricAuthAvailableWithStrength` and
+/// `listKeyAliases` existed: it only overrides `biometricAuthAvailable()`.
+class LegacyBiometricSignaturePlatform extends BiometricSignaturePlatform {
+  @override
+  Future<BiometricAvailability> biometricAuthAvailable() async =>
+      BiometricAvailability(canAuthenticate: true, reason: 'legacy');
+}
+
 class MockBiometricSignaturePlatform
     with MockPlatformInterfaceMixin
     implements BiometricSignaturePlatform {
@@ -50,12 +58,17 @@ class MockBiometricSignaturePlatform
   }
 
   @override
-  Future<BiometricAvailability> biometricAuthAvailable([
-    BiometricStrength? biometricStrength,
-  ]) async {
+  Future<BiometricAvailability> biometricAuthAvailable() async {
     if (_shouldThrowError) throw Exception('Auth check failed');
-    lastBiometricStrength = biometricStrength;
     return _authAvailableResult;
+  }
+
+  @override
+  Future<BiometricAvailability> biometricAuthAvailableWithStrength(
+    BiometricStrength biometricStrength,
+  ) {
+    lastBiometricStrength = biometricStrength;
+    return biometricAuthAvailable();
   }
 
   @override
@@ -277,6 +290,21 @@ void main() {
         biometricStrength: BiometricStrength.weak,
       );
       expect(fakePlatform.lastBiometricStrength, BiometricStrength.weak);
+    });
+
+    test('works with a platform that predates the strength option', () async {
+      BiometricSignaturePlatform.instance = LegacyBiometricSignaturePlatform();
+
+      final result = await BiometricSignature().biometricAuthAvailable(
+        biometricStrength: BiometricStrength.weak,
+      );
+
+      expect(result.canAuthenticate, isTrue);
+      expect(result.reason, 'legacy');
+      await expectLater(
+        BiometricSignature().listKeyAliases(),
+        throwsUnimplementedError,
+      );
     });
   });
 
@@ -1060,6 +1088,21 @@ void main() {
 
       expect(sent, [BiometricStrength.strong, BiometricStrength.weak]);
       expect(weak.canAuthenticate, isTrue);
+    });
+
+    test('the generated API still accepts biometricAuthAvailable()', () async {
+      final sent = <Object?>[];
+      messenger().setMockMessageHandler('$channelPrefix.biometricAuthAvailable',
+          (ByteData? message) async {
+        sent.add((codec.decodeMessage(message)! as List<Object?>)[0]);
+        return codec.encodeMessage(<Object?>[
+          BiometricAvailability(canAuthenticate: true),
+        ]);
+      });
+
+      await BiometricSignatureApi().biometricAuthAvailable();
+
+      expect(sent, [null]);
     });
 
     test('listKeyAliases decodes null for the default alias', () async {

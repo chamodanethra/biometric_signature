@@ -186,7 +186,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^13.2.0
+  biometric_signature: ^13.3.0
 ```
 
 |             | Android | iOS   | macOS  | Windows |
@@ -274,6 +274,8 @@ you need to add:
 
 to your Info.plist file.
 
+**iOS 27 and the UIScene life cycle.** An app built with Xcode 27 doesn't launch on iOS 27 unless it adopts the UIScene life cycle. This is a requirement for the app, not the plugin, which works in scene-based apps. Recent Flutter versions migrate an app that uses the default `AppDelegate` when it builds; see Flutter's [UIScene migration guide](https://flutter.dev/to/uiscene-migration). Flutter versions without `FlutterSceneDelegate`, such as 3.24.5, can't. The example apps show a setup that works on those too: `ios/Runner/AppDelegate.swift` runs a `FlutterEngine` and shows it from a `SceneDelegate`, which `Info.plist` declares under `UIApplicationSceneManifest`.
+
 ### Android Integration
 
 #### Activity Changes
@@ -286,6 +288,8 @@ import io.flutter.embedding.android.FlutterFragmentActivity
 class MainActivity : FlutterFragmentActivity() {
 }
 ```
+
+Calls that can show a prompt need that activity in the foreground: `createKeys`, `simplePrompt`, and signing or decrypting with a key that requires authentication return `unknown` ("Foreground activity required") without one. Signing and decrypting with a `requireAuthentication: false` key never prompt, so they also work from a `FlutterEngine` with no activity attached, such as a background engine handling a notification action.
 
 #### Permissions
 
@@ -613,7 +617,7 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
 | `enforceBiometric` | Android/iOS/macOS | `false` | Require biometric during key creation |
 | `setInvalidatedByBiometricEnrollment` | Android/iOS/macOS | `true` | Invalidate key on biometric changes |
 | `useDeviceCredentials` | Android/iOS/macOS | `false` | Allow PIN/passcode fallback |
-| `requireAuthentication` | Android/iOS/macOS | `true` | Require authentication at signing/decryption time |
+| `requireAuthentication` | Android/iOS/macOS | `true` | Require authentication at signing/decryption time. With `false`, the key signs and decrypts without a prompt, which on Android also works without a foreground activity |
 | `enableDecryption` | Android | `false` | Enable decryption capability |
 | `failIfExists` | All | `false` | Fail with `keyAlreadyExists` if key already exists |
 | `promptSubtitle` | Android | none | Subtitle for biometric prompt |

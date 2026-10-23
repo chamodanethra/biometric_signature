@@ -27,6 +27,9 @@ flutter run
   a real server would reject it.
 - iOS/macOS: Face ID / Touch ID need a device, or the Simulator's *Features → Face ID*
   menu (which can also change the enrollment, to trigger `keyInvalidated`).
+- iOS: the apps adopt the UIScene life cycle, which iOS 27 requires, in a way that also builds
+  with Flutter 3.24.5: `ios/Runner/AppDelegate.swift` runs a `FlutterEngine` and shows it from
+  a `SceneDelegate`.
 - Windows: needs Windows Hello with a PIN.
 - `flutter test` in each app runs its flows against a software fake of the plugin
   (`SoftwareBiometricPlatform`), so they run anywhere.

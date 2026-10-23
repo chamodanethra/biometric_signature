@@ -1,4 +1,4 @@
-## [Unreleased]
+## [13.3.0] - 2026-10-23
 
 ### Added
 * **Where a key lives, and its effective policy.** New `KeySecurityLevel` enum (`strongBox`, `trustedEnvironment`, `secureEnclave`, `secureHardware`, `software`).
@@ -7,9 +7,15 @@
 * **`listKeyAliases()`** lists the aliases that have a key, without a prompt, with the default alias as `null`. Use it to find keys your app's records have lost, e.g. iOS/macOS keychain keys that survived an uninstall. On Windows it only finds aliases tracked in the app's settings, which an uninstall deletes, so after a reinstall only the default key is found.
 * **`cancelButtonText` now works on iOS and macOS** for `createKeys` (with `enforceBiometric`), `createSignature`, `createSignatureFromBytes`, `decrypt` and `simplePrompt`, through `LAContext.localizedCancelTitle`. It used to be Android-only.
 * **`biometricAuthAvailable(biometricStrength:)`.** Android checked only for strong (Class 3) biometrics, so a device whose only biometric is Class 2 reported `canAuthenticate: false` even though `simplePrompt` with `BiometricStrength.weak` works there. The default stays `strong`; iOS, macOS and Windows ignore it.
+* **Platform interface:** `BiometricSignaturePlatform` gains `biometricAuthAvailableWithStrength` and `listKeyAliases`. Both have default implementations, so implementations that extend it keep compiling and working: `biometricAuthAvailableWithStrength` falls back to `biometricAuthAvailable()`, and `listKeyAliases` throws `UnimplementedError` until implemented. Classes that implement the interface instead, such as mocks using `MockPlatformInterfaceMixin`, need to add both, as with any new platform method.
 
-### Changed
-* **Custom platform implementations must be updated.** `BiometricSignaturePlatform.biometricAuthAvailable` takes an optional `BiometricStrength`, and `BiometricSignaturePlatform` has a new `listKeyAliases` method. App code that calls `BiometricSignature` is unaffected, but classes that extend or implement `BiometricSignaturePlatform`, such as test fakes, have to add both.
+### Fixed
+* **Android: a key created with `requireAuthentication: false` couldn't sign or decrypt without a foreground activity.** `createSignature`, `createSignatureFromBytes` and `decrypt` returned `unknown` ("Foreground activity required") as soon as no activity was attached, although such a key never shows a `BiometricPrompt`. So a background `FlutterEngine`, such as one handling a notification action while the app is closed, couldn't sign with the app's silent device key. The activity check now runs only before a prompt, so these keys work with no activity attached. Keys that need authentication still return "Foreground activity required" without an activity, and `createKeys` and `simplePrompt` still need one. Because the check runs later, a missing key (`keyNotFound`) is now reported ahead of a missing activity, and so is an empty payload (`invalidInput`) when signing. ([#86](https://github.com/chamodanethra/biometric_signature/pull/86))
+* **Android: decrypting with a `requireAuthentication: false` RSA key now uses the same OAEP parameters as other keys.** That path built its own cipher, which named only the SHA-256 main digest and left the MGF1 digest to an undocumented AndroidKeyStore default, the reliance 13.0.0 removed from decryption with keys that prompt. It now pins SHA-256 and MGF1 SHA-1 too, and falls back the same way when a key doesn't accept that. The parameters are the ones AndroidKeyStore applied before, so existing ciphertext still decrypts.
+
+### Examples
+* The example app has an Android instrumented test, `BackgroundSigningTest`, that creates `requireAuthentication: false` keys with an activity attached, then signs with an EC key and decrypts with an RSA key from a second `FlutterEngine` that never had one. Run it on a device or emulator with `./gradlew :app:connectedDebugAndroidTest` from `example/android`.
+* The iOS example apps no longer crash at launch on iOS 27. iOS 27 doesn't launch an app built with Xcode 27 unless it adopts the UIScene life cycle, and the examples hadn't. Flutter's own scene support (`FlutterSceneDelegate`) isn't available in Flutter 3.24.5, which the examples also build with, so each app's `AppDelegate.swift` now runs a `FlutterEngine` that a `SceneDelegate` shows, with the scene declared in `Info.plist`. This works with Flutter 3.24.5 and newer versions alike.
 
 ## [13.2.0] - 2026-09-30
 

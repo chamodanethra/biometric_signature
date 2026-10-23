@@ -777,7 +777,9 @@ struct CreateKeysConfig: Hashable {
   /// Platform behaviour:
   /// - **Android**: the keystore key is generated without
   ///   `setUserAuthenticationRequired(true)`, and signing/decryption skip the
-  ///   `BiometricPrompt`.
+  ///   `BiometricPrompt`. They therefore also work without a foreground
+  ///   activity, e.g. from a background `FlutterEngine` handling a
+  ///   notification action.
   /// - **iOS/macOS**: the Secure Enclave key is created with only
   ///   `.privateKeyUsage` access control (no `.biometryAny`/`.userPresence`) and
   ///   `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so signing never
@@ -1276,6 +1278,7 @@ protocol BiometricSignatureApi {
   ///
   /// [biometricStrength] is the class of biometric to check for on Android
   /// (`null` means [BiometricStrength.strong]). Other platforms ignore it.
+  /// It is a named parameter so that existing calls without it still compile.
   func biometricAuthAvailable(biometricStrength: BiometricStrength?, completion: @escaping (Result<BiometricAvailability, Error>) -> Void)
   /// Creates a new key pair.
   ///
@@ -1383,6 +1386,7 @@ class BiometricSignatureApiSetup {
     ///
     /// [biometricStrength] is the class of biometric to check for on Android
     /// (`null` means [BiometricStrength.strong]). Other platforms ignore it.
+    /// It is a named parameter so that existing calls without it still compile.
     let biometricAuthAvailableChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.biometricAuthAvailable\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       biometricAuthAvailableChannel.setMessageHandler { message, reply in

@@ -28,15 +28,22 @@ abstract class BiometricSignaturePlatform extends PlatformInterface {
   }
 
   /// Checks if biometric authentication is available.
-  ///
-  /// [biometricStrength] is the class of biometric to check for on Android;
-  /// `null` means [BiometricStrength.strong].
-  Future<BiometricAvailability> biometricAuthAvailable([
-    BiometricStrength? biometricStrength,
-  ]) {
+  Future<BiometricAvailability> biometricAuthAvailable() {
     throw UnimplementedError(
       'biometricAuthAvailable() has not been implemented.',
     );
+  }
+
+  /// Checks if biometric authentication with [biometricStrength] is
+  /// available. Only Android distinguishes biometric classes.
+  ///
+  /// The default implementation ignores [biometricStrength] and calls
+  /// [biometricAuthAvailable], so implementations that predate this method
+  /// keep working.
+  Future<BiometricAvailability> biometricAuthAvailableWithStrength(
+    BiometricStrength biometricStrength,
+  ) {
+    return biometricAuthAvailable();
   }
 
   /// Creates a new key pair.
@@ -127,10 +134,15 @@ class _PigeonBiometricSignature extends BiometricSignaturePlatform {
   final BiometricSignatureApi _api = BiometricSignatureApi();
 
   @override
-  Future<BiometricAvailability> biometricAuthAvailable([
-    BiometricStrength? biometricStrength,
-  ]) {
-    return _api.biometricAuthAvailable(biometricStrength);
+  Future<BiometricAvailability> biometricAuthAvailable() {
+    return _api.biometricAuthAvailable();
+  }
+
+  @override
+  Future<BiometricAvailability> biometricAuthAvailableWithStrength(
+    BiometricStrength biometricStrength,
+  ) {
+    return _api.biometricAuthAvailable(biometricStrength: biometricStrength);
   }
 
   @override

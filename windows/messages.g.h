@@ -822,7 +822,9 @@ class CreateKeysConfig {
   // Platform behaviour:
   // - **Android**: the keystore key is generated without
   //   `setUserAuthenticationRequired(true)`, and signing/decryption skip the
-  //   `BiometricPrompt`.
+  //   `BiometricPrompt`. They therefore also work without a foreground
+  //   activity, e.g. from a background `FlutterEngine` handling a
+  //   notification action.
   // - **iOS/macOS**: the Secure Enclave key is created with only
   //   `.privateKeyUsage` access control (no `.biometryAny`/`.userPresence`) and
   //   `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so signing never
@@ -1162,6 +1164,7 @@ class BiometricSignatureApi {
   //
   // [biometricStrength] is the class of biometric to check for on Android
   // (`null` means [BiometricStrength.strong]). Other platforms ignore it.
+  // It is a named parameter so that existing calls without it still compile.
   virtual void BiometricAuthAvailable(
     const BiometricStrength* biometric_strength,
     std::function<void(ErrorOr<BiometricAvailability> reply)> result) = 0;
