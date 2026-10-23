@@ -1,4 +1,4 @@
-## [13.3.0] - 2026-10-23
+## [13.3.0] - 2026-10-24
 
 ### Added
 * **Where a key lives, and its effective policy.** New `KeySecurityLevel` enum (`strongBox`, `trustedEnvironment`, `secureEnclave`, `secureHardware`, `software`).
