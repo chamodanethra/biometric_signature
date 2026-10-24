@@ -217,9 +217,11 @@ class KeysScreen extends StatelessWidget {
                   ),
                   ArgTextField(
                     name: 'config.cancelButtonText',
-                    platforms: androidOnly,
+                    platforms: mobileAndMac,
                     controller: c.cancelButtonText,
-                    hint: 'null → "Cancel"',
+                    hint: 'null → "Cancel" / system default',
+                    helper: 'iOS/macOS only prompt at creation with '
+                        'enforceBiometric.',
                   ),
                 ],
               ),

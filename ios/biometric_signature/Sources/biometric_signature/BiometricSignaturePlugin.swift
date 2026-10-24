@@ -448,6 +448,14 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
     private static let keyInvalidatedMessage =
         "The key was permanently invalidated by a biometric enrollment change. Delete it and create a new one."
 
+    /// Shows `cancelButtonText` on the prompt `context` evaluates. A missing or
+    /// empty text keeps the system's default.
+    private static func applyCancelTitle(_ cancelTitle: String?, to context: LAContext) {
+        if let cancelTitle, !cancelTitle.isEmpty {
+            context.localizedCancelTitle = cancelTitle
+        }
+    }
+
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = BiometricSignaturePlugin()
 #if os(macOS)
@@ -460,7 +468,9 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
 
     // MARK: - BiometricSignatureApi Implementation
 
-    func biometricAuthAvailable(completion: @escaping (Result<BiometricAvailability, Error>) -> Void) {
+    // `biometricStrength` is Android-only: Apple platforms only offer strong
+    // biometrics (Face ID, Touch ID, Optic ID).
+    func biometricAuthAvailable(biometricStrength: BiometricStrength?, completion: @escaping (Result<BiometricAvailability, Error>) -> Void) {
         let context = LAContext()
         var error: NSError?
         let canEvaluate = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
@@ -589,6 +599,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             let context = LAContext()
             context.localizedFallbackTitle = ""
             context.localizedReason = prompt
+            Self.applyCancelTitle(config?.cancelButtonText, to: context)
 
             let policy: LAPolicy = useDeviceCredentials ? .deviceOwnerAuthentication : .deviceOwnerAuthenticationWithBiometrics
             context.evaluatePolicy(policy, localizedReason: prompt) { success, _ in
@@ -655,6 +666,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         completion: @escaping (Result<SignatureResult, Error>) -> Void
     ) {
         let prompt = promptMessage ?? "Authenticate"
+        let cancelTitle = config?.cancelButtonText
         let authType = resolveAuthenticationType(keyAlias: keyAlias)
 
         if hasEcKey(keyAlias) && isInvalidatedByEnrollmentChange(keyAlias) {
@@ -664,14 +676,14 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
 
 #if os(macOS)
         if hasRsaKey(keyAlias) {
-             performRsaSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
+             performRsaSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, cancelTitle: cancelTitle, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
         } else {
-             performEcSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
+             performEcSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, cancelTitle: cancelTitle, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
         }
 #else
         if hasRsaKey(keyAlias) {
             // Already on the v10+ hybrid path: a wrapped RSA blob exists.
-            performRsaSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
+            performRsaSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, cancelTitle: cancelTitle, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
         } else if keyAlias == nil
                     && !hasEcKey(nil)
                     && hasLegacyUnwrappedRsaKeyForMigration() {
@@ -681,7 +693,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             migrateToSecureEnclave(prompt: prompt) { result in
                 switch result {
                 case .success:
-                    self.performRsaSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
+                    self.performRsaSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, cancelTitle: cancelTitle, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
                 case .failure(let error):
                     let msg = (error as? PigeonError)?.message ?? (error as NSError).localizedDescription
                     completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: "Migration Error: \(msg)", code: .unknown)))
@@ -689,7 +701,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             }
         } else {
             // Default: EC key (created via v10+ createKeys with signatureType=ecdsa).
-            performEcSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
+            performEcSigning(keyAlias: keyAlias, dataToSign: dataToSign, prompt: prompt, cancelTitle: cancelTitle, signatureFormat: signatureFormat, keyFormat: keyFormat, authenticationType: authType, completion: completion)
         }
 #endif
     }
@@ -829,6 +841,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         }
 
         let prompt = promptMessage ?? "Authenticate"
+        let cancelTitle = config?.cancelButtonText
         let authType = resolveAuthenticationType(keyAlias: keyAlias)
 
         if hasEcKey(keyAlias) && isInvalidatedByEnrollmentChange(keyAlias) {
@@ -838,14 +851,14 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
 
 #if os(macOS)
         if hasRsaKey(keyAlias) {
-             performRsaDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, authenticationType: authType, completion: completion)
+             performRsaDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, cancelTitle: cancelTitle, authenticationType: authType, completion: completion)
         } else {
-             performEcDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, authenticationType: authType, completion: completion)
+             performEcDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, cancelTitle: cancelTitle, authenticationType: authType, completion: completion)
         }
 #else
         if hasRsaKey(keyAlias) {
             // Already on the v10+ hybrid path: a wrapped RSA blob exists.
-            performRsaDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, authenticationType: authType, completion: completion)
+            performRsaDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, cancelTitle: cancelTitle, authenticationType: authType, completion: completion)
         } else if keyAlias == nil
                     && !hasEcKey(nil)
                     && hasLegacyUnwrappedRsaKeyForMigration() {
@@ -855,7 +868,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             migrateToSecureEnclave(prompt: prompt) { result in
                 switch result {
                 case .success:
-                    self.performRsaDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, authenticationType: authType, completion: completion)
+                    self.performRsaDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, cancelTitle: cancelTitle, authenticationType: authType, completion: completion)
                 case .failure(let error):
                     let msg = (error as? PigeonError)?.message ?? (error as NSError).localizedDescription
                     completion(.success(DecryptResult(decryptedData: nil, error: "Migration Error: \(msg)", code: .unknown)))
@@ -863,7 +876,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             }
         } else {
             // Default: EC key (created via v10+ createKeys with signatureType=ecdsa).
-            performEcDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, authenticationType: authType, completion: completion)
+            performEcDecryption(keyAlias: keyAlias, ciphertext: ciphertext, prompt: prompt, cancelTitle: cancelTitle, authenticationType: authType, completion: completion)
         }
 #endif
     }
@@ -926,11 +939,22 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
 
         // Determine validity
         let isValid: Bool? = checkValidity ? !isInvalidatedByEnrollmentChange(keyAlias) : nil
+        let policy = keyPolicy(keyAlias)
 
         // For EC-only mode
         if ecKeyExists && !rsaKeyExists {
             guard let ecPublicKey = ecKey.flatMap({ SecKeyCopyPublicKey($0) }) else {
-                completion(.success(KeyInfo(exists: true, isValid: isValid, algorithm: "EC", keySize: 256, isHybridMode: false)))
+                completion(.success(KeyInfo(
+                    exists: true,
+                    isValid: isValid,
+                    algorithm: "EC",
+                    keySize: 256,
+                    isHybridMode: false,
+                    securityLevel: .secureEnclave,
+                    requiresAuthentication: policy.requiresAuthentication,
+                    invalidatedByBiometricEnrollment: policy.invalidatedByBiometricEnrollment,
+                    allowsDeviceCredentials: policy.allowsDeviceCredentials
+                )))
                 return
             }
 
@@ -945,7 +969,11 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
                 publicKey: publicKeyStr,
                 decryptingPublicKey: nil,
                 decryptingAlgorithm: nil,
-                decryptingKeySize: nil
+                decryptingKeySize: nil,
+                securityLevel: .secureEnclave,
+                requiresAuthentication: policy.requiresAuthentication,
+                invalidatedByBiometricEnrollment: policy.invalidatedByBiometricEnrollment,
+                allowsDeviceCredentials: policy.allowsDeviceCredentials
             )))
             return
         }
@@ -962,8 +990,44 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             publicKey: RsaPublicKeyStore.load(keyAlias).map { formatKey($0, format: keyFormat) },
             decryptingPublicKey: nil,
             decryptingAlgorithm: nil,
-            decryptingKeySize: nil
+            decryptingKeySize: nil,
+            securityLevel: .software,
+            requiresAuthentication: policy.requiresAuthentication,
+            invalidatedByBiometricEnrollment: policy.invalidatedByBiometricEnrollment,
+            allowsDeviceCredentials: policy.allowsDeviceCredentials
         )))
+    }
+
+    /// The key's effective user-authentication policy, read from the records
+    /// saved when it was created. The enrollment and device-credential settings
+    /// don't apply to a key that needs no authentication, so they are nil then.
+    private func keyPolicy(_ keyAlias: String?) -> (
+        requiresAuthentication: Bool,
+        invalidatedByBiometricEnrollment: Bool?,
+        allowsDeviceCredentials: Bool?
+    ) {
+        // A missing record means an interactive key, as for signing.
+        let requiresAuthentication = RequireAuthenticationSetting.read(keyAlias) ?? true
+        guard requiresAuthentication else { return (false, nil, nil) }
+        return (true, InvalidationSetting.load(keyAlias), DeviceCredentialsSetting.read(keyAlias))
+    }
+
+    func listKeyAliases(completion: @escaping (Result<[String?], Error>) -> Void) {
+        // Every key has exactly one Secure Enclave EC key: the signing key in
+        // EC mode, the RSA key's wrapping key in RSA mode. `getKeyInfo` tests
+        // the same key for existence.
+        let prefix = Constants.ecKeyPrefix
+        var hasDefault = false
+        var named = Set<String>()
+        for tag in ecKeyTags() {
+            if tag == prefix {
+                hasDefault = true
+            } else if tag.hasPrefix(prefix + "_") {
+                named.insert(String(tag.dropFirst(prefix.count + 1)))
+            }
+        }
+        let aliases: [String?] = (hasDefault ? [nil] : []) + named.sorted()
+        completion(.success(aliases))
     }
 
     func simplePrompt(
@@ -981,6 +1045,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         if !allowDeviceCredentials {
             context.localizedFallbackTitle = ""
         }
+        Self.applyCancelTitle(config?.cancelButtonText, to: context)
 
         var laError: NSError?
         guard context.canEvaluatePolicy(policy, error: &laError) else {
@@ -1221,7 +1286,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
                  decryptingAlgorithm: nil,
                  decryptingKeySize: nil,
                  isHybridMode: false,
-                 authenticationType: authenticationType
+                 authenticationType: authenticationType,
+                 securityLevel: .secureEnclave
              )))
              return
         }
@@ -1285,7 +1351,10 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
             algorithm: "RSA",
             keySize: 2048,
             isHybridMode: false,
-            authenticationType: authenticationType
+            authenticationType: authenticationType,
+            // The RSA key signs and decrypts in app memory once the Secure
+            // Enclave key has unwrapped it.
+            securityLevel: .software
         )))
     }
 
@@ -1327,8 +1396,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         return "\(nsError.localizedDescription) [\(chain.joined(separator: " -> "))]"
     }
 
-    private func performRsaSigning(keyAlias: String?, dataToSign: Data, prompt: String, signatureFormat: SignatureFormat, keyFormat: KeyFormat, authenticationType: AuthenticationType, completion: @escaping (Result<SignatureResult, Error>) -> Void) {
-        let keyResult = unwrapRsaKey(keyAlias: keyAlias, prompt: prompt)
+    private func performRsaSigning(keyAlias: String?, dataToSign: Data, prompt: String, cancelTitle: String?, signatureFormat: SignatureFormat, keyFormat: KeyFormat, authenticationType: AuthenticationType, completion: @escaping (Result<SignatureResult, Error>) -> Void) {
+        let keyResult = unwrapRsaKey(keyAlias: keyAlias, prompt: prompt, cancelTitle: cancelTitle)
         guard let rsaPrivateKey = keyResult.key else {
              let failure = refineFailure(keyResult.error, "Failed to access/unwrap RSA key", keyAlias: keyAlias)
              completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: failure.message, code: failure.code)))
@@ -1360,8 +1429,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         )))
     }
 
-    private func performEcSigning(keyAlias: String?, dataToSign: Data, prompt: String, signatureFormat: SignatureFormat, keyFormat: KeyFormat, authenticationType: AuthenticationType, completion: @escaping (Result<SignatureResult, Error>) -> Void) {
-        let keyResult = getEcPrivateKey(keyAlias: keyAlias, prompt: prompt)
+    private func performEcSigning(keyAlias: String?, dataToSign: Data, prompt: String, cancelTitle: String?, signatureFormat: SignatureFormat, keyFormat: KeyFormat, authenticationType: AuthenticationType, completion: @escaping (Result<SignatureResult, Error>) -> Void) {
+        let keyResult = getEcPrivateKey(keyAlias: keyAlias, prompt: prompt, cancelTitle: cancelTitle)
         guard let ecKey = keyResult.key else {
              let failure = refineFailure(keyResult.error, "EC Key not found or auth failed", keyAlias: keyAlias)
              completion(.success(SignatureResult(signature: nil, signatureBytes: nil, publicKey: nil, error: failure.message, code: failure.code)))
@@ -1392,8 +1461,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         )))
     }
 
-    private func performRsaDecryption(keyAlias: String?, ciphertext: Data, prompt: String, authenticationType: AuthenticationType, completion: @escaping (Result<DecryptResult, Error>) -> Void) {
-        let keyResult = unwrapRsaKey(keyAlias: keyAlias, prompt: prompt)
+    private func performRsaDecryption(keyAlias: String?, ciphertext: Data, prompt: String, cancelTitle: String?, authenticationType: AuthenticationType, completion: @escaping (Result<DecryptResult, Error>) -> Void) {
+        let keyResult = unwrapRsaKey(keyAlias: keyAlias, prompt: prompt, cancelTitle: cancelTitle)
         guard let rsaPrivateKey = keyResult.key else {
                let failure = refineFailure(keyResult.error, "Failed to access/unwrap RSA key", keyAlias: keyAlias)
                completion(.success(DecryptResult(decryptedData: nil, error: failure.message, code: failure.code)))
@@ -1422,8 +1491,8 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         completion(.success(DecryptResult(decryptedData: str, error: nil, code: .success, authenticationType: authenticationType)))
     }
 
-    private func performEcDecryption(keyAlias: String?, ciphertext: Data, prompt: String, authenticationType: AuthenticationType, completion: @escaping (Result<DecryptResult, Error>) -> Void) {
-         let keyResult = getEcPrivateKey(keyAlias: keyAlias, prompt: prompt)
+    private func performEcDecryption(keyAlias: String?, ciphertext: Data, prompt: String, cancelTitle: String?, authenticationType: AuthenticationType, completion: @escaping (Result<DecryptResult, Error>) -> Void) {
+         let keyResult = getEcPrivateKey(keyAlias: keyAlias, prompt: prompt, cancelTitle: cancelTitle)
          guard let ecKey = keyResult.key else {
                let failure = refineFailure(keyResult.error, "EC Key not found or auth failed", keyAlias: keyAlias)
                completion(.success(DecryptResult(decryptedData: nil, error: failure.message, code: failure.code)))
@@ -1624,7 +1693,9 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
     }
 
 
-    private func deleteEcKeys(withTagPrefix prefix: String) {
+    /// The application tags of every EC key in this app's keychain, read
+    /// without accessing (or prompting for) the keys themselves.
+    private func ecKeyTags() -> [String] {
         let query: [String: Any] = [
             kSecClass as String: kSecClassKey,
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
@@ -1636,19 +1707,20 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         let status = SecItemCopyMatching(query as CFDictionary, &items)
         guard status == errSecSuccess,
               let attributes = items as? [[String: Any]] else {
-            return
+            return []
         }
 
-        for item in attributes {
-            guard let tagData = item[kSecAttrApplicationTag as String] as? Data,
-                  let tag = String(data: tagData, encoding: .utf8),
-                  tag.hasPrefix(prefix) else {
-                continue
-            }
+        return attributes.compactMap { item in
+            guard let tagData = item[kSecAttrApplicationTag as String] as? Data else { return nil }
+            return String(data: tagData, encoding: .utf8)
+        }
+    }
 
+    private func deleteEcKeys(withTagPrefix prefix: String) {
+        for tag in ecKeyTags() where tag.hasPrefix(prefix) {
             let deleteQuery: [String: Any] = [
                 kSecClass as String: kSecClassKey,
-                kSecAttrApplicationTag as String: tagData,
+                kSecAttrApplicationTag as String: tag.data(using: .utf8)!,
                 kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom
             ]
             SecItemDelete(deleteQuery as CFDictionary)
@@ -1706,10 +1778,11 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         return SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess
     }
 
-    private func getEcPrivateKey(keyAlias: String?, prompt: String) -> (key: SecKey?, error: BiometricError) {
+    private func getEcPrivateKey(keyAlias: String?, prompt: String, cancelTitle: String?) -> (key: SecKey?, error: BiometricError) {
         let tag = Constants.ecKeyAlias(keyAlias)
         let context = LAContext()
         context.localizedReason = prompt
+        Self.applyCancelTitle(cancelTitle, to: context)
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassKey,
@@ -1727,7 +1800,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         return (nil, mapSecError(status))
     }
 
-    private func unwrapRsaKey(keyAlias: String?, prompt: String) -> (key: SecKey?, error: BiometricError) {
+    private func unwrapRsaKey(keyAlias: String?, prompt: String, cancelTitle: String?) -> (key: SecKey?, error: BiometricError) {
         // 1. Get Wrapped Data
         let tag = Constants.biometricKeyAlias(keyAlias)
         let query: [String: Any] = [
@@ -1744,7 +1817,7 @@ public class BiometricSignaturePlugin: NSObject, FlutterPlugin, BiometricSignatu
         }
 
         // 2. Get EC Key (Auth logic handled by Secure Enclave)
-        let ecKeyResult = getEcPrivateKey(keyAlias: keyAlias, prompt: prompt)
+        let ecKeyResult = getEcPrivateKey(keyAlias: keyAlias, prompt: prompt, cancelTitle: cancelTitle)
         guard let ecKey = ecKeyResult.key else {
             return (nil, ecKeyResult.error)
         }

@@ -24,6 +24,7 @@ class BiometricSignaturePlugin : public flutter::Plugin,
 
   // BiometricSignatureApi implementation
   void BiometricAuthAvailable(
+      const BiometricStrength* biometric_strength,
       std::function<void(ErrorOr<BiometricAvailability> reply)> result) override;
 
   void CreateKeys(
@@ -65,6 +66,9 @@ class BiometricSignaturePlugin : public flutter::Plugin,
 
   void DeleteAllKeys(
       std::function<void(ErrorOr<bool> reply)> result) override;
+
+  void ListKeyAliases(
+      std::function<void(ErrorOr<flutter::EncodableList> reply)> result) override;
 
   void GetKeyInfo(
       const std::string* key_alias,

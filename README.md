@@ -21,7 +21,8 @@ Even if an attacker bypasses or hooks biometric APIs, your backend will still re
 - **Hybrid Architectures:**
   - **Android Hybrid EC:** Hardware EC signing + software ECIES decryption. Software EC private key is AES-wrapped using a Keystore/StrongBox AES-256 master key that requires biometric authentication for every unwrap.
   - **iOS/macOS Hybrid RSA:** Software RSA key for **both signing and decryption**, wrapped using ECIES with Secure Enclave EC public key. Hardware EC is only used for wrapping/unwrapping, so these keys report `isHybridMode: false` (one key signs and decrypts).
-- **Named Key Aliases:** Manage multiple independent key pairs per app (e.g., one for auth, one for payment signing) via optional `keyAlias` parameter.
+- **Named Key Aliases:** Manage multiple independent key pairs per app (e.g., one for auth, one for payment signing) via optional `keyAlias` parameter, and find them again with `listKeyAliases()`.
+- **Key Security Level & Policy:** `getKeyInfo()` reports where a key lives (StrongBox, TEE, Secure Enclave or software) and its effective authentication policy. See [Key security level and policy](#key-security-level-and-policy).
 - **Key Overwrite Protection:** Prevent accidental key replacement with `failIfExists` option.
 - **Key Invalidation:** Keys can be bound to biometric enrollment state (fingerprint/Face ID changes).
 - **Device Credentials:** Optional PIN/Pattern/Password fallback on Android.
@@ -185,7 +186,7 @@ To get started with Biometric Signature, follow these steps:
 
 ```yaml
 dependencies:
-  biometric_signature: ^13.2.0
+  biometric_signature: ^13.3.0
 ```
 
 |             | Android | iOS   | macOS  | Windows |
@@ -273,6 +274,8 @@ you need to add:
 
 to your Info.plist file.
 
+**iOS 27 and the UIScene life cycle.** An app built with Xcode 27 doesn't launch on iOS 27 unless it adopts the UIScene life cycle. This is a requirement for the app, not the plugin, which works in scene-based apps. Recent Flutter versions migrate an app that uses the default `AppDelegate` when it builds; see Flutter's [UIScene migration guide](https://flutter.dev/to/uiscene-migration). Flutter versions without `FlutterSceneDelegate`, such as 3.24.5, can't. The example apps show a setup that works on those too: `ios/Runner/AppDelegate.swift` runs a `FlutterEngine` and shows it from a `SceneDelegate`, which `Info.plist` declares under `UIApplicationSceneManifest`.
+
 ### Android Integration
 
 #### Activity Changes
@@ -285,6 +288,8 @@ import io.flutter.embedding.android.FlutterFragmentActivity
 class MainActivity : FlutterFragmentActivity() {
 }
 ```
+
+Calls that can show a prompt need that activity in the foreground: `createKeys`, `simplePrompt`, and signing or decrypting with a key that requires authentication return `unknown` ("Foreground activity required") without one. Signing and decrypting with a `requireAuthentication: false` key never prompt, so they also work from a `FlutterEngine` with no activity attached, such as a background engine handling a notification action.
 
 #### Permissions
 
@@ -602,6 +607,7 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
   - `error`: Descriptive error message.
   - `attestationCertificateChain`: DER X.509 attestation chain of the new key, leaf first. Android only, and only when `attestationChallenge` was set; see [Hardware Key Attestation](#hardware-key-attestation).
   - `attestationErrorCode` / `attestationError`: why the key was created without attestation although `attestationChallenge` was set. Only when `attestationMode` fell back; see [Falling back to an unattested key](#falling-back-to-an-unattested-key).
+  - `securityLevel`: where the new key lives; see [Key security level and policy](#key-security-level-and-policy).
 
 #### CreateKeysConfig Options
 
@@ -611,12 +617,12 @@ Generates a new key pair (RSA 2048 or EC) for biometric authentication. The priv
 | `enforceBiometric` | Android/iOS/macOS | `false` | Require biometric during key creation |
 | `setInvalidatedByBiometricEnrollment` | Android/iOS/macOS | `true` | Invalidate key on biometric changes |
 | `useDeviceCredentials` | Android/iOS/macOS | `false` | Allow PIN/passcode fallback |
-| `requireAuthentication` | Android/iOS/macOS | `true` | Require authentication at signing/decryption time |
+| `requireAuthentication` | Android/iOS/macOS | `true` | Require authentication at signing/decryption time. With `false`, the key signs and decrypts without a prompt, which on Android also works without a foreground activity |
 | `enableDecryption` | Android | `false` | Enable decryption capability |
 | `failIfExists` | All | `false` | Fail with `keyAlreadyExists` if key already exists |
 | `promptSubtitle` | Android | none | Subtitle for biometric prompt |
 | `promptDescription` | Android | none | Description for biometric prompt |
-| `cancelButtonText` | Android | `"Cancel"` | Cancel button text |
+| `cancelButtonText` | Android/iOS/macOS | `"Cancel"` (Android), system default (iOS/macOS) | Cancel button text. iOS/macOS only prompt at creation with `enforceBiometric` |
 | `attestationChallenge` | Android 7.0+ | none | Server challenge (1–128 bytes) for [hardware key attestation](#hardware-key-attestation); the chain is returned in `attestationCertificateChain`. Returns `notSupported` on iOS/macOS/Windows unless `attestationMode` falls back |
 | `attestationMode` | All | `AttestationMode.enforceOnChallenge` | Whether a key that can't be attested fails or is created unattested; see [Falling back to an unattested key](#falling-back-to-an-unattested-key) |
 
@@ -677,7 +683,7 @@ Prompts the user for biometric authentication and generates a cryptographic sign
 | `allowDeviceCredentials` | Android | Allow PIN/pattern fallback |
 | `promptSubtitle` | Android | Subtitle for biometric prompt |
 | `promptDescription` | Android | Description for biometric prompt |
-| `cancelButtonText` | Android | Cancel button text |
+| `cancelButtonText` | Android/iOS/macOS | Cancel button text (`"Cancel"` on Android, the system default on iOS/macOS when unset) |
 
 - **Returns**: `Future<SignatureResult>`.
   - `signature`: The signed payload.
@@ -716,7 +722,7 @@ Prompts the user for biometric authentication and generates a cryptographic sign
 | `allowDeviceCredentials` | Android | Allow PIN/pattern fallback |
 | `promptSubtitle` | Android | Subtitle for biometric prompt |
 | `promptDescription` | Android | Description for biometric prompt |
-| `cancelButtonText` | Android | Cancel button text |
+| `cancelButtonText` | Android/iOS/macOS | Cancel button text (`"Cancel"` on Android, the system default on iOS/macOS when unset) |
 
 - **Returns**: `Future<SignatureResult>`.
   - `signature`: The signed payload.
@@ -760,7 +766,7 @@ Decrypts the given payload using the private key and biometrics.
 | `allowDeviceCredentials` | Android | Allow PIN/pattern fallback |
 | `promptSubtitle` | Android | Subtitle for biometric prompt |
 | `promptDescription` | Android | Description for biometric prompt |
-| `cancelButtonText` | Android | Cancel button text |
+| `cancelButtonText` | Android/iOS/macOS | Cancel button text (`"Cancel"` on Android, the system default on iOS/macOS when unset) |
 
 > **Note**: Decryption is not supported on Windows. On iOS, if a legacy
 > v2.x-era unwrapped RSA private key exists in the keychain (default alias,
@@ -820,11 +826,31 @@ if (deleted) {
 }
 ```
 
+### `listKeyAliases()`
 
-### `biometricAuthAvailable()`
+Lists the aliases that currently have a key, without prompting. The default alias (`keyAlias: null`) is listed as `null`, first; named aliases follow in sorted order.
+
+Use it to find keys your app's own records have lost track of. On iOS/macOS, keychain keys survive an uninstall that clears the app's preferences, so after a reinstall the keys are still there but your list of aliases isn't.
+
+- **Returns**: `Future<List<String?>>`.
+
+> **Windows**: Windows Hello can't enumerate keys, so the plugin tracks aliases in the app's local settings. An uninstall deletes those settings but not the Windows Hello keys, so after a reinstall only the default key is listed.
+
+```dart
+final aliases = await biometricSignature.listKeyAliases();
+for (final alias in aliases) {
+  final info = await biometricSignature.getKeyInfo(keyAlias: alias);
+  print('${alias ?? 'default'}: ${info.algorithm} in ${info.securityLevel}');
+}
+```
+
+
+### `biometricAuthAvailable({ biometricStrength })`
 
 Checks if biometric authentication is available on the device and returns a structured response.
 
+- **Parameters**:
+  - `biometricStrength` (Android): the class of biometric to check for. Keep the default, `BiometricStrength.strong` (Class 3), before creating or using keys. **`BiometricStrength.weak` is only for `simplePrompt`:** a Class 2 biometric, such as some face unlock implementations, can never unlock a key. Signing, decryption, and the prompt `createKeys` shows with `enforceBiometric` always need a strong biometric, or the device credential where allowed. So a `weak` check that reports `canAuthenticate: true` doesn't mean keys can be used. iOS, macOS and Windows ignore the parameter.
 - **Returns**: `Future<BiometricAvailability>`.
   - `canAuthenticate`: `bool` indicating if auth is possible.
   - `hasEnrolledBiometrics`: `bool` indicating if user has enrolled biometrics.
@@ -857,6 +883,7 @@ Retrieves detailed information about existing biometric keys without prompting f
   - `publicKey`: The signing public key.
   - `decryptingPublicKey`: Decryption key (hybrid mode only).
   - `attestationCertificateChain`: Attestation chain of a key created with `attestationChallenge` (Android only; `null` for unattested keys).
+  - `securityLevel`, `requiresAuthentication`, `invalidatedByBiometricEnrollment`, `allowsDeviceCredentials`: where the key lives and what it takes to use it; see below.
 
 ```dart
 final info = await biometricSignature.getKeyInfo(
@@ -868,8 +895,33 @@ final info = await biometricSignature.getKeyInfo(
 if (info.exists && (info.isValid ?? true)) {
   print('Algorithm: ${info.algorithm}, Size: ${info.keySize}');
   print('Hybrid Mode: ${info.isHybridMode}');
+  print('Stored in: ${info.securityLevel}');
 }
 ```
+
+#### Key security level and policy
+
+`securityLevel` (also on `KeyCreationResult`) says where the signing key is stored and used:
+
+| `KeySecurityLevel` | Platforms | Meaning |
+|--------------------|-----------|---------|
+| `strongBox` | Android 9+ | A StrongBox secure element (a separate chip). |
+| `trustedEnvironment` | Android | The Trusted Execution Environment. |
+| `secureHardware` | Android | Secure hardware the OS can't name further. Android 9–11 can't tell StrongBox from the TEE, so keys on devices that have StrongBox report this there. |
+| `secureEnclave` | iOS/macOS | The Secure Enclave (EC keys). |
+| `software` | Android, iOS/macOS | Outside secure hardware. On iOS/macOS this is every RSA key: the Secure Enclave can't hold RSA keys, so the RSA private key is stored encrypted by a Secure Enclave key but signs and decrypts in app memory. |
+
+It is `null` on Windows (Windows Hello doesn't say whether the TPM holds the key). In Android hybrid mode it describes the signing key; the decryption key is a software key wrapped by a keystore AES key. New values may be added in minor releases, so avoid exhaustive switches over `KeySecurityLevel`.
+
+The other three fields report the key's **effective** policy, which can differ from what `CreateKeysConfig` asked for:
+
+- `requiresAuthentication`: `false` for keys created with `requireAuthentication: false`. Always `true` on Windows.
+- `invalidatedByBiometricEnrollment`: whether enrolling or removing a biometric invalidates the key. Android 6 always invalidates, and on iOS/macOS a key that accepts the passcode never is.
+- `allowsDeviceCredentials`: whether the device PIN, pattern or passcode can unlock the key. Android 10 and older can't bind a key to both a biometric and the device credential, so `useDeviceCredentials` is ignored there and this is `false`.
+
+The last two are `null` when the key needs no authentication and on Windows. On iOS/macOS they can also be `null` for keys created by older plugin versions that didn't record them.
+
+A server that requires StrongBox or the TEE should not rely on `securityLevel` alone: a modified client can report anything. Use [Hardware Key Attestation](#hardware-key-attestation) for proof.
 
 ### `biometricKeyExists({ keyAlias, checkValidity })`
 
@@ -897,9 +949,9 @@ Performs biometric authentication without performing any cryptographic operation
 |--------|-----------|-------------|
 | `subtitle` | Android | Subtitle for biometric prompt |
 | `description` | Android | Description for biometric prompt |
-| `cancelButtonText` | Android | Cancel button text |
+| `cancelButtonText` | Android/iOS/macOS | Cancel button text (`"Cancel"` on Android, the system default on iOS/macOS when unset) |
 | `allowDeviceCredentials` | Android/iOS/macOS | Allow PIN/pattern/passcode fallback |
-| `biometricStrength` | Android | `BiometricStrength.strong` or `BiometricStrength.weak` |
+| `biometricStrength` | Android | `BiometricStrength.strong` or `BiometricStrength.weak`. `simplePrompt` is the only call that accepts `weak`: a Class 2 biometric can never unlock a key |
 
 ```dart
 final result = await biometricSignature.simplePrompt(

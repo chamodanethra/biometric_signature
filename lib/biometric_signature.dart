@@ -21,6 +21,7 @@ export 'biometric_signature_platform_interface.dart'
         SignatureResult,
         DecryptResult,
         KeyInfo,
+        KeySecurityLevel,
         SimplePromptConfig,
         SimplePromptResult;
 
@@ -162,11 +163,35 @@ class BiometricSignature {
     return BiometricSignaturePlatform.instance.deleteAllKeys();
   }
 
+  /// Lists the aliases that currently have a key, without prompting.
+  ///
+  /// The default alias (a `null` [createKeys] `keyAlias`) is returned as
+  /// `null`. Use this to find keys your app's own records have lost track
+  /// of, e.g. on iOS/macOS, where keychain keys survive an uninstall that
+  /// clears the app's preferences.
+  ///
+  /// On Windows, the plugin tracks aliases in the app's local settings,
+  /// which are deleted on uninstall while Windows Hello keys are not. After a
+  /// reinstall only the default key is found there.
+  Future<List<String?>> listKeyAliases() async {
+    return BiometricSignaturePlatform.instance.listKeyAliases();
+  }
+
   /// Determines whether biometric authentication is available on the device.
   ///
+  /// [biometricStrength] is the class of biometric to check for on Android;
+  /// iOS, macOS and Windows ignore it. Keep the default,
+  /// [BiometricStrength.strong], before creating or using keys. Pass
+  /// [BiometricStrength.weak] only before a [simplePrompt] that accepts weak
+  /// biometrics: a Class 2 biometric can never unlock a key (see
+  /// [BiometricStrength.weak]).
+  ///
   /// Returns a [BiometricAvailability] with details about available biometrics.
-  Future<BiometricAvailability> biometricAuthAvailable() async {
-    return BiometricSignaturePlatform.instance.biometricAuthAvailable();
+  Future<BiometricAvailability> biometricAuthAvailable({
+    BiometricStrength biometricStrength = BiometricStrength.strong,
+  }) async {
+    return BiometricSignaturePlatform.instance
+        .biometricAuthAvailableWithStrength(biometricStrength);
   }
 
   /// Gets detailed information about existing biometric keys.

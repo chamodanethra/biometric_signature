@@ -140,6 +140,7 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
     this.attestedPackageName = 'com.example.app',
     this.operationDelay = Duration.zero,
     this.random,
+    this.androidSecurityLevel = KeySecurityLevel.trustedEnvironment,
   })  : availability = availability ??
             BiometricAvailability(
               canAuthenticate: true,
@@ -183,6 +184,13 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
 
   /// Randomness for key generation and signing (defaults to secure).
   final SecureRandom? random;
+
+  /// `securityLevel` reported for Android keys. Apple platforms report
+  /// `secureEnclave` for EC keys and `software` for RSA keys, Windows `null`.
+  KeySecurityLevel? androidSecurityLevel;
+
+  /// The strength of the last `biometricAuthAvailable` check.
+  BiometricStrength? lastBiometricStrength;
 
   /// Every call received, oldest first.
   final List<FakeCall> calls = [];
@@ -274,6 +282,15 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
     return key.ecKey!.publicKey.uncompressedPoint;
   }
 
+  KeySecurityLevel? _securityLevelFor(FakeKey key) =>
+      switch (simulatedPlatform) {
+        DevicePlatform.android => androidSecurityLevel,
+        DevicePlatform.ios || DevicePlatform.macos => key.isRsa
+            ? KeySecurityLevel.software
+            : KeySecurityLevel.secureEnclave,
+        DevicePlatform.windows || DevicePlatform.other => null,
+      };
+
   AuthenticationType _authTypeFor(FakeKey key) {
     if (simulatedPlatform == DevicePlatform.windows) {
       return AuthenticationType.unknown;
@@ -287,6 +304,16 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
   Future<BiometricAvailability> biometricAuthAvailable() async {
     calls.add(const FakeCall('biometricAuthAvailable'));
     return availability;
+  }
+
+  /// Records [biometricStrength] in [lastBiometricStrength], then answers
+  /// like [biometricAuthAvailable], whatever the strength.
+  @override
+  Future<BiometricAvailability> biometricAuthAvailableWithStrength(
+    BiometricStrength biometricStrength,
+  ) {
+    lastBiometricStrength = biometricStrength;
+    return biometricAuthAvailable();
   }
 
   @override
@@ -450,6 +477,7 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
       attestationCertificateChain: chain,
       attestationErrorCode: attestationFailure?.$1,
       attestationError: attestationFailure?.$2,
+      securityLevel: _securityLevelFor(key),
     );
   }
 
@@ -656,6 +684,16 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
   }
 
   @override
+  Future<List<String?>> listKeyAliases() async {
+    calls.add(const FakeCall('listKeyAliases'));
+    final named = [
+      for (final k in _keys.keys)
+        if (k.isNotEmpty) k,
+    ]..sort();
+    return [if (_keys.containsKey('')) null, ...named];
+  }
+
+  @override
   Future<KeyInfo> getKeyInfo(
     String? keyAlias,
     bool checkValidity,
@@ -668,6 +706,11 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
     final key = _keys[_k(keyAlias)];
     if (key == null) return KeyInfo(exists: false);
     final dk = key.decryptingKey;
+    // The effective policy each platform reports: Windows always
+    // authenticates and reports nothing more, and on iOS/macOS a key that
+    // accepts the passcode is never invalidated by enrollment changes.
+    final policyApplies = key.requireAuthentication &&
+        simulatedPlatform != DevicePlatform.windows;
     return KeyInfo(
       exists: true,
       isValid: checkValidity ? !key.invalidated : null,
@@ -679,6 +722,13 @@ class SoftwareBiometricPlatform extends BiometricSignaturePlatform {
       decryptingAlgorithm: dk == null ? null : 'EC',
       decryptingKeySize: dk == null ? null : 256,
       attestationCertificateChain: key.attestationChain,
+      securityLevel: _securityLevelFor(key),
+      requiresAuthentication: key.requireAuthentication,
+      invalidatedByBiometricEnrollment: policyApplies
+          ? key.invalidatedByEnrollment &&
+              !(simulatedPlatform.isApple && key.useDeviceCredentials)
+          : null,
+      allowsDeviceCredentials: policyApplies ? key.useDeviceCredentials : null,
     );
   }
 

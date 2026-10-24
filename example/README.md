@@ -12,11 +12,11 @@ secrets), see the [scenario apps](#scenario-apps).
 
 | Screen | Plugin API | What to look at |
 |--------|------------|-----------------|
-| **Device** | `biometricAuthAvailable`, `isDeviceLockSet` | Every availability field, what `isDeviceLockSet` means on each platform, and a capability matrix (EC keys, decryption, attestation, silent keys, invalidation, `authenticationType`). |
+| **Device** | `biometricAuthAvailable`, `isDeviceLockSet` | `biometricStrength` (strong or weak, Android), every availability field, what `isDeviceLockSet` means on each platform, and a capability matrix (EC keys, decryption, attestation, silent keys, invalidation, `authenticationType`). |
 | **Keys** | `createKeys` | Alias, `signatureType`, all four `KeyFormat`s (including how `publicKeyBytes` differs per platform) and every `CreateKeysConfig` field: `requireAuthentication`, `enforceBiometric`, `useDeviceCredentials`, `setInvalidatedByBiometricEnrollment`, `enableDecryption`, `failIfExists`, the prompt texts and `attestationChallenge` (none / 32 / 128 / 129 bytes — 129 shows `invalidInput`). On Android an attestation chain is inspected locally and can be copied as PEM. |
 | **Sign** | `createSignature`, `createSignatureFromBytes` | Text or byte payloads (random 32-byte nonce or hex), every `SignatureFormat` and `KeyFormat`, `CreateSignatureConfig`, `authenticationType`, and **Verify locally** against the returned key and the key recorded at creation (plus a tampered message that must fail). |
 | **Decrypt** | `decrypt` | The encryption scheme is derived from the real key (`getKeyInfo`) and platform — Android hybrid ECIES, Apple ECIES, or RSA-OAEP with the platform's MGF1 digest. Encrypt locally or paste ciphertext, pick `PayloadFormat` (`raw` is base64-decoded natively), set `DecryptConfig`, and check the round trip. |
-| **Inventory** | `getKeyInfo`, `biometricKeyExists`, `deleteKeys`, `deleteAllKeys` | The known aliases (`default`, `explorer_a`, `explorer_b`, `explorer_silent`) plus one custom alias — the plugin cannot list aliases. `checkValidity`, key format, attestation chains, and `deleteAllKeys` behind a confirmation. |
+| **Inventory** | `listKeyAliases`, `getKeyInfo`, `biometricKeyExists`, `deleteKeys`, `deleteAllKeys` | Which aliases have a key on the device, then the known aliases (`default`, `explorer_a`, `explorer_b`, `explorer_silent`) plus one custom alias. `checkValidity`, key format, where each key lives (`securityLevel`) and its effective policy, attestation chains, and `deleteAllKeys` behind a confirmation. |
 | **Prompt** | `simplePrompt` | Every `SimplePromptConfig` field, including `biometricStrength.weak` and device-credential fallback. |
 | **Errors** | all 18 `BiometricError` codes | Meaning, recovery, platforms that emit each code and how to trigger it. One-tap triggers for `keyAlreadyExists`, `invalidInput`, `notSupported`, `keyNotFound` and `userCanceled`; walkthroughs for `keyInvalidated` and `lockedOut`. |
 
@@ -63,6 +63,9 @@ The Explorer depends on the plugin and on the shared example helpers
   Simulator, enroll Face ID with *Features → Face ID → Enrolled* and answer prompts with
   *Matching Face* / *Non-matching Face*.
 - Key attestation is Android-only: any `attestationChallenge` returns `notSupported`.
+- The app adopts the UIScene life cycle, which iOS 27 requires of apps built with Xcode 27.
+  `ios/Runner/AppDelegate.swift` runs a `FlutterEngine` and shows it from a `SceneDelegate`,
+  which also works on Flutter versions without `FlutterSceneDelegate`, such as 3.24.5.
 
 ### macOS
 
@@ -87,6 +90,18 @@ with real cryptography — and drive the Explorer as Android, iOS, macOS and Win
 create keys, sign and verify, decrypt with each scheme, inspect a synthetic attestation chain,
 run error triggers, and copy a call as Dart. `test/version_test.dart` keeps the version shown in
 the app in step with the plugin's `pubspec.yaml`.
+
+On Android, an instrumented test runs the real plugin on a device or emulator:
+
+```bash
+cd example/android
+./gradlew :app:connectedDebugAndroidTest
+```
+
+`BackgroundSigningTest` creates `requireAuthentication: false` keys with an activity attached,
+then uses them from a second `FlutterEngine` that never had one, as a background engine
+handling a notification action would: it signs with an EC key and verifies the signature, and
+decrypts an RSA-OAEP payload with an RSA key.
 
 ## Code layout
 

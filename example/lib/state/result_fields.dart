@@ -88,6 +88,7 @@ List<ResultField> resultFields(Object? result) {
       add('decryptingKeySize', r.decryptingKeySize);
       add('isHybridMode', r.isHybridMode);
       add('authenticationType', r.authenticationType);
+      add('securityLevel', r.securityLevel);
       chain('attestationCertificateChain', r.attestationCertificateChain);
     case final SignatureResult r:
       add('code', r.code);
@@ -113,6 +114,11 @@ List<ResultField> resultFields(Object? result) {
       add('decryptingPublicKey', r.decryptingPublicKey, mono: true);
       add('decryptingAlgorithm', r.decryptingAlgorithm);
       add('decryptingKeySize', r.decryptingKeySize);
+      add('securityLevel', r.securityLevel);
+      add('requiresAuthentication', r.requiresAuthentication);
+      add('invalidatedByBiometricEnrollment',
+          r.invalidatedByBiometricEnrollment);
+      add('allowsDeviceCredentials', r.allowsDeviceCredentials);
       chain('attestationCertificateChain', r.attestationCertificateChain);
     case final BiometricAvailability r:
       add('canAuthenticate', r.canAuthenticate);
@@ -132,6 +138,11 @@ List<ResultField> resultFields(Object? result) {
       add('code', r.code);
       add('error', r.error);
       add('authenticationType', r.authenticationType);
+    case final List<String?> r:
+      fields.add(ResultField(
+        'aliases',
+        '[${r.map((alias) => alias ?? 'null (default)').join(', ')}]',
+      ));
     case final bool r:
       add('result', r);
     case null:

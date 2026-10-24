@@ -602,4 +602,88 @@ void main() {
       ]);
     });
   });
+
+  group('key description', () {
+    test('security level per platform and key type', () async {
+      final expected = {
+        (DevicePlatform.android, SignatureType.ecdsa):
+            KeySecurityLevel.trustedEnvironment,
+        (DevicePlatform.ios, SignatureType.ecdsa):
+            KeySecurityLevel.secureEnclave,
+        (DevicePlatform.macos, SignatureType.rsa): KeySecurityLevel.software,
+        (DevicePlatform.windows, SignatureType.rsa): null,
+      };
+      for (final MapEntry(key: (platform, type), value: level)
+          in expected.entries) {
+        install(platform);
+        final created = await api.createKeys(
+          config: CreateKeysConfig(signatureType: type),
+        );
+        expect(created.securityLevel, level, reason: platform.label);
+        expect((await api.getKeyInfo()).securityLevel, level,
+            reason: platform.label);
+      }
+    });
+
+    test('androidSecurityLevel is configurable', () async {
+      fake = SoftwareBiometricPlatform(
+        androidSecurityLevel: KeySecurityLevel.strongBox,
+      );
+      BiometricSignaturePlatform.instance = fake;
+      await api.createKeys();
+      expect(
+          (await api.getKeyInfo()).securityLevel, KeySecurityLevel.strongBox);
+    });
+
+    test('a passcode key on iOS is never invalidated by enrollment', () async {
+      install(DevicePlatform.ios);
+      await api.createKeys(
+        config: CreateKeysConfig(useDeviceCredentials: true),
+      );
+      final info = await api.getKeyInfo();
+      expect(info.requiresAuthentication, isTrue);
+      expect(info.invalidatedByBiometricEnrollment, isFalse);
+      expect(info.allowsDeviceCredentials, isTrue);
+    });
+
+    test('a silent key has no enrollment or credential policy', () async {
+      install(DevicePlatform.android);
+      await api.createKeys(
+        config: CreateKeysConfig(requireAuthentication: false),
+      );
+      final info = await api.getKeyInfo();
+      expect(info.requiresAuthentication, isFalse);
+      expect(info.invalidatedByBiometricEnrollment, isNull);
+      expect(info.allowsDeviceCredentials, isNull);
+    });
+
+    test('Windows only reports that the key requires authentication', () async {
+      install(DevicePlatform.windows);
+      await api.createKeys();
+      final info = await api.getKeyInfo();
+      expect(info.requiresAuthentication, isTrue);
+      expect(info.invalidatedByBiometricEnrollment, isNull);
+      expect(info.allowsDeviceCredentials, isNull);
+    });
+  });
+
+  group('listKeyAliases', () {
+    test('lists the default alias as null, then sorted names', () async {
+      install(DevicePlatform.android);
+      expect(await api.listKeyAliases(), isEmpty);
+      await api.createKeys(keyAlias: 'b');
+      await api.createKeys();
+      await api.createKeys(keyAlias: 'a');
+      expect(await api.listKeyAliases(), [null, 'a', 'b']);
+      await api.deleteKeys();
+      expect(await api.listKeyAliases(), ['a', 'b']);
+    });
+  });
+
+  test('biometricAuthAvailable records the strength', () async {
+    install(DevicePlatform.android);
+    await api.biometricAuthAvailable(biometricStrength: BiometricStrength.weak);
+    expect(fake.lastBiometricStrength, BiometricStrength.weak);
+    expect(fake.calls.last.method, 'biometricAuthAvailable');
+  });
 }

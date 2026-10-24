@@ -143,7 +143,8 @@ KeyCreationResult::KeyCreationResult(
   const AuthenticationType* authentication_type,
   const EncodableList* attestation_certificate_chain,
   const BiometricError* attestation_error_code,
-  const std::string* attestation_error)
+  const std::string* attestation_error,
+  const KeySecurityLevel* security_level)
  : public_key_(public_key ? std::optional<std::string>(*public_key) : std::nullopt),
     public_key_bytes_(public_key_bytes ? std::optional<std::vector<uint8_t>>(*public_key_bytes) : std::nullopt),
     error_(error ? std::optional<std::string>(*error) : std::nullopt),
@@ -157,7 +158,8 @@ KeyCreationResult::KeyCreationResult(
     authentication_type_(authentication_type ? std::optional<AuthenticationType>(*authentication_type) : std::nullopt),
     attestation_certificate_chain_(attestation_certificate_chain ? std::optional<EncodableList>(*attestation_certificate_chain) : std::nullopt),
     attestation_error_code_(attestation_error_code ? std::optional<BiometricError>(*attestation_error_code) : std::nullopt),
-    attestation_error_(attestation_error ? std::optional<std::string>(*attestation_error) : std::nullopt) {}
+    attestation_error_(attestation_error ? std::optional<std::string>(*attestation_error) : std::nullopt),
+    security_level_(security_level ? std::optional<KeySecurityLevel>(*security_level) : std::nullopt) {}
 
 const std::string* KeyCreationResult::public_key() const {
   return public_key_ ? &(*public_key_) : nullptr;
@@ -341,9 +343,22 @@ void KeyCreationResult::set_attestation_error(std::string_view value_arg) {
 }
 
 
+const KeySecurityLevel* KeyCreationResult::security_level() const {
+  return security_level_ ? &(*security_level_) : nullptr;
+}
+
+void KeyCreationResult::set_security_level(const KeySecurityLevel* value_arg) {
+  security_level_ = value_arg ? std::optional<KeySecurityLevel>(*value_arg) : std::nullopt;
+}
+
+void KeyCreationResult::set_security_level(const KeySecurityLevel& value_arg) {
+  security_level_ = value_arg;
+}
+
+
 EncodableList KeyCreationResult::ToEncodableList() const {
   EncodableList list;
-  list.reserve(14);
+  list.reserve(15);
   list.push_back(public_key_ ? EncodableValue(*public_key_) : EncodableValue());
   list.push_back(public_key_bytes_ ? EncodableValue(*public_key_bytes_) : EncodableValue());
   list.push_back(error_ ? EncodableValue(*error_) : EncodableValue());
@@ -358,6 +373,7 @@ EncodableList KeyCreationResult::ToEncodableList() const {
   list.push_back(attestation_certificate_chain_ ? EncodableValue(*attestation_certificate_chain_) : EncodableValue());
   list.push_back(attestation_error_code_ ? CustomEncodableValue(*attestation_error_code_) : EncodableValue());
   list.push_back(attestation_error_ ? EncodableValue(*attestation_error_) : EncodableValue());
+  list.push_back(security_level_ ? CustomEncodableValue(*security_level_) : EncodableValue());
   return list;
 }
 
@@ -418,6 +434,10 @@ KeyCreationResult KeyCreationResult::FromEncodableList(const EncodableList& list
   auto& encodable_attestation_error = list[13];
   if (!encodable_attestation_error.IsNull()) {
     decoded.set_attestation_error(std::get<std::string>(encodable_attestation_error));
+  }
+  auto& encodable_security_level = list[14];
+  if (!encodable_security_level.IsNull()) {
+    decoded.set_security_level(std::any_cast<const KeySecurityLevel&>(std::get<CustomEncodableValue>(encodable_security_level)));
   }
   return decoded;
 }
@@ -710,7 +730,11 @@ KeyInfo::KeyInfo(
   const std::string* decrypting_public_key,
   const std::string* decrypting_algorithm,
   const int64_t* decrypting_key_size,
-  const EncodableList* attestation_certificate_chain)
+  const EncodableList* attestation_certificate_chain,
+  const KeySecurityLevel* security_level,
+  const bool* requires_authentication,
+  const bool* invalidated_by_biometric_enrollment,
+  const bool* allows_device_credentials)
  : exists_(exists ? std::optional<bool>(*exists) : std::nullopt),
     is_valid_(is_valid ? std::optional<bool>(*is_valid) : std::nullopt),
     algorithm_(algorithm ? std::optional<std::string>(*algorithm) : std::nullopt),
@@ -720,7 +744,11 @@ KeyInfo::KeyInfo(
     decrypting_public_key_(decrypting_public_key ? std::optional<std::string>(*decrypting_public_key) : std::nullopt),
     decrypting_algorithm_(decrypting_algorithm ? std::optional<std::string>(*decrypting_algorithm) : std::nullopt),
     decrypting_key_size_(decrypting_key_size ? std::optional<int64_t>(*decrypting_key_size) : std::nullopt),
-    attestation_certificate_chain_(attestation_certificate_chain ? std::optional<EncodableList>(*attestation_certificate_chain) : std::nullopt) {}
+    attestation_certificate_chain_(attestation_certificate_chain ? std::optional<EncodableList>(*attestation_certificate_chain) : std::nullopt),
+    security_level_(security_level ? std::optional<KeySecurityLevel>(*security_level) : std::nullopt),
+    requires_authentication_(requires_authentication ? std::optional<bool>(*requires_authentication) : std::nullopt),
+    invalidated_by_biometric_enrollment_(invalidated_by_biometric_enrollment ? std::optional<bool>(*invalidated_by_biometric_enrollment) : std::nullopt),
+    allows_device_credentials_(allows_device_credentials ? std::optional<bool>(*allows_device_credentials) : std::nullopt) {}
 
 const bool* KeyInfo::exists() const {
   return exists_ ? &(*exists_) : nullptr;
@@ -852,9 +880,61 @@ void KeyInfo::set_attestation_certificate_chain(const EncodableList& value_arg) 
 }
 
 
+const KeySecurityLevel* KeyInfo::security_level() const {
+  return security_level_ ? &(*security_level_) : nullptr;
+}
+
+void KeyInfo::set_security_level(const KeySecurityLevel* value_arg) {
+  security_level_ = value_arg ? std::optional<KeySecurityLevel>(*value_arg) : std::nullopt;
+}
+
+void KeyInfo::set_security_level(const KeySecurityLevel& value_arg) {
+  security_level_ = value_arg;
+}
+
+
+const bool* KeyInfo::requires_authentication() const {
+  return requires_authentication_ ? &(*requires_authentication_) : nullptr;
+}
+
+void KeyInfo::set_requires_authentication(const bool* value_arg) {
+  requires_authentication_ = value_arg ? std::optional<bool>(*value_arg) : std::nullopt;
+}
+
+void KeyInfo::set_requires_authentication(bool value_arg) {
+  requires_authentication_ = value_arg;
+}
+
+
+const bool* KeyInfo::invalidated_by_biometric_enrollment() const {
+  return invalidated_by_biometric_enrollment_ ? &(*invalidated_by_biometric_enrollment_) : nullptr;
+}
+
+void KeyInfo::set_invalidated_by_biometric_enrollment(const bool* value_arg) {
+  invalidated_by_biometric_enrollment_ = value_arg ? std::optional<bool>(*value_arg) : std::nullopt;
+}
+
+void KeyInfo::set_invalidated_by_biometric_enrollment(bool value_arg) {
+  invalidated_by_biometric_enrollment_ = value_arg;
+}
+
+
+const bool* KeyInfo::allows_device_credentials() const {
+  return allows_device_credentials_ ? &(*allows_device_credentials_) : nullptr;
+}
+
+void KeyInfo::set_allows_device_credentials(const bool* value_arg) {
+  allows_device_credentials_ = value_arg ? std::optional<bool>(*value_arg) : std::nullopt;
+}
+
+void KeyInfo::set_allows_device_credentials(bool value_arg) {
+  allows_device_credentials_ = value_arg;
+}
+
+
 EncodableList KeyInfo::ToEncodableList() const {
   EncodableList list;
-  list.reserve(10);
+  list.reserve(14);
   list.push_back(exists_ ? EncodableValue(*exists_) : EncodableValue());
   list.push_back(is_valid_ ? EncodableValue(*is_valid_) : EncodableValue());
   list.push_back(algorithm_ ? EncodableValue(*algorithm_) : EncodableValue());
@@ -865,6 +945,10 @@ EncodableList KeyInfo::ToEncodableList() const {
   list.push_back(decrypting_algorithm_ ? EncodableValue(*decrypting_algorithm_) : EncodableValue());
   list.push_back(decrypting_key_size_ ? EncodableValue(*decrypting_key_size_) : EncodableValue());
   list.push_back(attestation_certificate_chain_ ? EncodableValue(*attestation_certificate_chain_) : EncodableValue());
+  list.push_back(security_level_ ? CustomEncodableValue(*security_level_) : EncodableValue());
+  list.push_back(requires_authentication_ ? EncodableValue(*requires_authentication_) : EncodableValue());
+  list.push_back(invalidated_by_biometric_enrollment_ ? EncodableValue(*invalidated_by_biometric_enrollment_) : EncodableValue());
+  list.push_back(allows_device_credentials_ ? EncodableValue(*allows_device_credentials_) : EncodableValue());
   return list;
 }
 
@@ -909,6 +993,22 @@ KeyInfo KeyInfo::FromEncodableList(const EncodableList& list) {
   auto& encodable_attestation_certificate_chain = list[9];
   if (!encodable_attestation_certificate_chain.IsNull()) {
     decoded.set_attestation_certificate_chain(std::get<EncodableList>(encodable_attestation_certificate_chain));
+  }
+  auto& encodable_security_level = list[10];
+  if (!encodable_security_level.IsNull()) {
+    decoded.set_security_level(std::any_cast<const KeySecurityLevel&>(std::get<CustomEncodableValue>(encodable_security_level)));
+  }
+  auto& encodable_requires_authentication = list[11];
+  if (!encodable_requires_authentication.IsNull()) {
+    decoded.set_requires_authentication(std::get<bool>(encodable_requires_authentication));
+  }
+  auto& encodable_invalidated_by_biometric_enrollment = list[12];
+  if (!encodable_invalidated_by_biometric_enrollment.IsNull()) {
+    decoded.set_invalidated_by_biometric_enrollment(std::get<bool>(encodable_invalidated_by_biometric_enrollment));
+  }
+  auto& encodable_allows_device_credentials = list[13];
+  if (!encodable_allows_device_credentials.IsNull()) {
+    decoded.set_allows_device_credentials(std::get<bool>(encodable_allows_device_credentials));
   }
   return decoded;
 }
@@ -1608,56 +1708,61 @@ EncodableValue PigeonInternalCodecSerializer::ReadValueOfType(
     case 133: {
         const auto& encodable_enum_arg = ReadValue(stream);
         const int64_t enum_arg_value = encodable_enum_arg.IsNull() ? 0 : encodable_enum_arg.LongValue();
-        return encodable_enum_arg.IsNull() ? EncodableValue() : CustomEncodableValue(static_cast<SignatureType>(enum_arg_value));
+        return encodable_enum_arg.IsNull() ? EncodableValue() : CustomEncodableValue(static_cast<KeySecurityLevel>(enum_arg_value));
       }
     case 134: {
         const auto& encodable_enum_arg = ReadValue(stream);
         const int64_t enum_arg_value = encodable_enum_arg.IsNull() ? 0 : encodable_enum_arg.LongValue();
-        return encodable_enum_arg.IsNull() ? EncodableValue() : CustomEncodableValue(static_cast<AttestationMode>(enum_arg_value));
+        return encodable_enum_arg.IsNull() ? EncodableValue() : CustomEncodableValue(static_cast<SignatureType>(enum_arg_value));
       }
     case 135: {
         const auto& encodable_enum_arg = ReadValue(stream);
         const int64_t enum_arg_value = encodable_enum_arg.IsNull() ? 0 : encodable_enum_arg.LongValue();
-        return encodable_enum_arg.IsNull() ? EncodableValue() : CustomEncodableValue(static_cast<KeyFormat>(enum_arg_value));
+        return encodable_enum_arg.IsNull() ? EncodableValue() : CustomEncodableValue(static_cast<AttestationMode>(enum_arg_value));
       }
     case 136: {
         const auto& encodable_enum_arg = ReadValue(stream);
         const int64_t enum_arg_value = encodable_enum_arg.IsNull() ? 0 : encodable_enum_arg.LongValue();
-        return encodable_enum_arg.IsNull() ? EncodableValue() : CustomEncodableValue(static_cast<SignatureFormat>(enum_arg_value));
+        return encodable_enum_arg.IsNull() ? EncodableValue() : CustomEncodableValue(static_cast<KeyFormat>(enum_arg_value));
       }
     case 137: {
         const auto& encodable_enum_arg = ReadValue(stream);
         const int64_t enum_arg_value = encodable_enum_arg.IsNull() ? 0 : encodable_enum_arg.LongValue();
-        return encodable_enum_arg.IsNull() ? EncodableValue() : CustomEncodableValue(static_cast<PayloadFormat>(enum_arg_value));
+        return encodable_enum_arg.IsNull() ? EncodableValue() : CustomEncodableValue(static_cast<SignatureFormat>(enum_arg_value));
       }
     case 138: {
-        return CustomEncodableValue(BiometricAvailability::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+        const auto& encodable_enum_arg = ReadValue(stream);
+        const int64_t enum_arg_value = encodable_enum_arg.IsNull() ? 0 : encodable_enum_arg.LongValue();
+        return encodable_enum_arg.IsNull() ? EncodableValue() : CustomEncodableValue(static_cast<PayloadFormat>(enum_arg_value));
       }
     case 139: {
-        return CustomEncodableValue(KeyCreationResult::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+        return CustomEncodableValue(BiometricAvailability::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
       }
     case 140: {
-        return CustomEncodableValue(SignatureResult::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+        return CustomEncodableValue(KeyCreationResult::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
       }
     case 141: {
-        return CustomEncodableValue(DecryptResult::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+        return CustomEncodableValue(SignatureResult::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
       }
     case 142: {
-        return CustomEncodableValue(KeyInfo::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+        return CustomEncodableValue(DecryptResult::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
       }
     case 143: {
-        return CustomEncodableValue(CreateKeysConfig::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+        return CustomEncodableValue(KeyInfo::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
       }
     case 144: {
-        return CustomEncodableValue(CreateSignatureConfig::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+        return CustomEncodableValue(CreateKeysConfig::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
       }
     case 145: {
-        return CustomEncodableValue(DecryptConfig::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+        return CustomEncodableValue(CreateSignatureConfig::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
       }
     case 146: {
-        return CustomEncodableValue(SimplePromptConfig::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+        return CustomEncodableValue(DecryptConfig::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
       }
     case 147: {
+        return CustomEncodableValue(SimplePromptConfig::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
+      }
+    case 148: {
         return CustomEncodableValue(SimplePromptResult::FromEncodableList(std::get<EncodableList>(ReadValue(stream))));
       }
     default:
@@ -1689,78 +1794,83 @@ void PigeonInternalCodecSerializer::WriteValue(
       WriteValue(EncodableValue(static_cast<int>(std::any_cast<BiometricError>(*custom_value))), stream);
       return;
     }
-    if (custom_value->type() == typeid(SignatureType)) {
+    if (custom_value->type() == typeid(KeySecurityLevel)) {
       stream->WriteByte(133);
+      WriteValue(EncodableValue(static_cast<int>(std::any_cast<KeySecurityLevel>(*custom_value))), stream);
+      return;
+    }
+    if (custom_value->type() == typeid(SignatureType)) {
+      stream->WriteByte(134);
       WriteValue(EncodableValue(static_cast<int>(std::any_cast<SignatureType>(*custom_value))), stream);
       return;
     }
     if (custom_value->type() == typeid(AttestationMode)) {
-      stream->WriteByte(134);
+      stream->WriteByte(135);
       WriteValue(EncodableValue(static_cast<int>(std::any_cast<AttestationMode>(*custom_value))), stream);
       return;
     }
     if (custom_value->type() == typeid(KeyFormat)) {
-      stream->WriteByte(135);
+      stream->WriteByte(136);
       WriteValue(EncodableValue(static_cast<int>(std::any_cast<KeyFormat>(*custom_value))), stream);
       return;
     }
     if (custom_value->type() == typeid(SignatureFormat)) {
-      stream->WriteByte(136);
+      stream->WriteByte(137);
       WriteValue(EncodableValue(static_cast<int>(std::any_cast<SignatureFormat>(*custom_value))), stream);
       return;
     }
     if (custom_value->type() == typeid(PayloadFormat)) {
-      stream->WriteByte(137);
+      stream->WriteByte(138);
       WriteValue(EncodableValue(static_cast<int>(std::any_cast<PayloadFormat>(*custom_value))), stream);
       return;
     }
     if (custom_value->type() == typeid(BiometricAvailability)) {
-      stream->WriteByte(138);
+      stream->WriteByte(139);
       WriteValue(EncodableValue(std::any_cast<BiometricAvailability>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(KeyCreationResult)) {
-      stream->WriteByte(139);
+      stream->WriteByte(140);
       WriteValue(EncodableValue(std::any_cast<KeyCreationResult>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(SignatureResult)) {
-      stream->WriteByte(140);
+      stream->WriteByte(141);
       WriteValue(EncodableValue(std::any_cast<SignatureResult>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(DecryptResult)) {
-      stream->WriteByte(141);
+      stream->WriteByte(142);
       WriteValue(EncodableValue(std::any_cast<DecryptResult>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(KeyInfo)) {
-      stream->WriteByte(142);
+      stream->WriteByte(143);
       WriteValue(EncodableValue(std::any_cast<KeyInfo>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(CreateKeysConfig)) {
-      stream->WriteByte(143);
+      stream->WriteByte(144);
       WriteValue(EncodableValue(std::any_cast<CreateKeysConfig>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(CreateSignatureConfig)) {
-      stream->WriteByte(144);
+      stream->WriteByte(145);
       WriteValue(EncodableValue(std::any_cast<CreateSignatureConfig>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(DecryptConfig)) {
-      stream->WriteByte(145);
+      stream->WriteByte(146);
       WriteValue(EncodableValue(std::any_cast<DecryptConfig>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(SimplePromptConfig)) {
-      stream->WriteByte(146);
+      stream->WriteByte(147);
       WriteValue(EncodableValue(std::any_cast<SimplePromptConfig>(*custom_value).ToEncodableList()), stream);
       return;
     }
     if (custom_value->type() == typeid(SimplePromptResult)) {
-      stream->WriteByte(147);
+      stream->WriteByte(148);
       WriteValue(EncodableValue(std::any_cast<SimplePromptResult>(*custom_value).ToEncodableList()), stream);
       return;
     }
@@ -1790,7 +1900,15 @@ void BiometricSignatureApi::SetUp(
     if (api != nullptr) {
       channel.SetMessageHandler([api](const EncodableValue& message, const flutter::MessageReply<EncodableValue>& reply) {
         try {
-          api->BiometricAuthAvailable([reply](ErrorOr<BiometricAvailability>&& output) {
+          const auto& args = std::get<EncodableList>(message);
+          const auto& encodable_biometric_strength_arg = args.at(0);
+          BiometricStrength biometric_strength_arg_value;
+          const BiometricStrength* biometric_strength_arg = nullptr;
+          if (!encodable_biometric_strength_arg.IsNull()) {
+            biometric_strength_arg_value = std::any_cast<const BiometricStrength&>(std::get<CustomEncodableValue>(encodable_biometric_strength_arg));
+            biometric_strength_arg = &biometric_strength_arg_value;
+          }
+          api->BiometricAuthAvailable(biometric_strength_arg ? &(*biometric_strength_arg) : nullptr, [reply](ErrorOr<BiometricAvailability>&& output) {
             if (output.has_error()) {
               reply(WrapError(output.error()));
               return;
@@ -2008,6 +2126,28 @@ void BiometricSignatureApi::SetUp(
       channel.SetMessageHandler([api](const EncodableValue& message, const flutter::MessageReply<EncodableValue>& reply) {
         try {
           api->DeleteAllKeys([reply](ErrorOr<bool>&& output) {
+            if (output.has_error()) {
+              reply(WrapError(output.error()));
+              return;
+            }
+            EncodableList wrapped;
+            wrapped.push_back(EncodableValue(std::move(output).TakeValue()));
+            reply(EncodableValue(std::move(wrapped)));
+          });
+        } catch (const std::exception& exception) {
+          reply(WrapError(exception.what()));
+        }
+      });
+    } else {
+      channel.SetMessageHandler(nullptr);
+    }
+  }
+  {
+    BasicMessageChannel<> channel(binary_messenger, "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.listKeyAliases" + prepended_suffix, &GetCodec());
+    if (api != nullptr) {
+      channel.SetMessageHandler([api](const EncodableValue& message, const flutter::MessageReply<EncodableValue>& reply) {
+        try {
+          api->ListKeyAliases([reply](ErrorOr<EncodableList>&& output) {
             if (output.has_error()) {
               reply(WrapError(output.error()));
               return;

@@ -2,10 +2,11 @@ import 'package:flutter/foundation.dart';
 
 /// A key alias as passed to the plugin's `keyAlias` parameter.
 ///
-/// The plugin cannot list the aliases that exist on a device, so the
-/// Explorer works with a fixed set of [known] aliases plus one free-text
-/// "probe" alias. Aliases are limited to `[a-z0-9_-]`: Windows stores them
-/// in settings keys and Android uses them in file names.
+/// The Explorer works with a fixed set of [known] aliases plus one
+/// free-text "probe" alias; `listKeyAliases` on the Inventory screen shows
+/// which aliases have a key on the device. Aliases are limited to
+/// `[a-z0-9_-]`: Windows stores them in settings keys and Android uses them
+/// in file names.
 @immutable
 class KeyAlias {
   const KeyAlias._(this.value);

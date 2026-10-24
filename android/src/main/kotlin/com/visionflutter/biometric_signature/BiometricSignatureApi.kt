@@ -124,19 +124,25 @@ enum class BiometricType(val raw: Int) {
 /**
  * Biometric authentication strength level.
  *
- * This affects which biometric sensors can be used for authentication.
- * Note: On iOS/macOS, only strong biometrics are available (Face ID, Touch ID, Optic ID).
- * On Windows, Windows Hello always uses strong authentication.
+ * Only Android distinguishes these. iOS/macOS only have strong biometrics
+ * (Face ID, Touch ID, Optic ID), and Windows Hello always authenticates
+ * strongly.
  */
 enum class BiometricStrength(val raw: Int) {
   /**
-   * Strong biometrics only (e.g., fingerprint, face recognition with depth sensing).
-   * This is the most secure option and is required for cryptographic operations.
+   * Class 3 biometrics only (e.g. fingerprint, or face recognition with depth
+   * sensing). Every prompt that unlocks a key requires this class.
    */
   STRONG(0),
   /**
-   * Weak biometrics allowed (e.g., face recognition without depth sensing).
-   * This option provides more device compatibility but lower security.
+   * Class 2 biometrics too (e.g. face unlock without depth sensing).
+   *
+   * **Only for `simplePrompt`, and the `biometricAuthAvailable` check before
+   * it. A Class 2 biometric can never unlock a key:** signing, decryption,
+   * and the prompt `createKeys` shows with `enforceBiometric` always need a
+   * strong biometric, or the device credential where allowed. A `weak` check
+   * that reports `canAuthenticate: true` therefore doesn't mean keys can be
+   * used; check with [strong] for that.
    */
   WEAK(1);
 
@@ -221,6 +227,57 @@ enum class BiometricError(val raw: Int) {
 
   companion object {
     fun ofRaw(raw: Int): BiometricError? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+/**
+ * Where a key's private material is stored and used.
+ *
+ * Reported for the signing key in [KeyInfo.securityLevel] and
+ * [KeyCreationResult.securityLevel]. Those fields are null when the platform
+ * can't tell: on Windows, Windows Hello doesn't say whether the TPM holds
+ * the key.
+ *
+ * More values may be added in minor releases, so avoid exhaustive switches
+ * over this enum.
+ */
+enum class KeySecurityLevel(val raw: Int) {
+  /**
+   * [Android] A StrongBox secure element, a separate chip with its own CPU
+   * and storage (Android 9+ on devices that have one).
+   */
+  STRONG_BOX(0),
+  /** [Android] The Trusted Execution Environment of the main processor. */
+  TRUSTED_ENVIRONMENT(1),
+  /**
+   * [iOS/macOS] The Secure Enclave. EC keys only; RSA keys report
+   * [software].
+   */
+  SECURE_ENCLAVE(2),
+  /**
+   * [Android] Secure hardware that can't be told apart further.
+   *
+   * Android 9–11 (API 28–30) don't report whether a key is in StrongBox or
+   * the TEE, so keys on devices that have StrongBox report this there.
+   * Newer Android versions report it for secure hardware that is neither.
+   */
+  SECURE_HARDWARE(3),
+  /**
+   * The private key is used outside secure hardware.
+   *
+   * - **Android**: the keystore has no secure hardware (e.g. some
+   *   emulators).
+   * - **iOS/macOS**: RSA keys. The Secure Enclave can't hold RSA keys, so
+   *   the RSA private key is stored encrypted by a Secure Enclave EC key,
+   *   which needs user authentication to unwrap it, but signing and
+   *   decryption run in app memory.
+   */
+  SOFTWARE(4);
+
+  companion object {
+    fun ofRaw(raw: Int): KeySecurityLevel? {
       return values().firstOrNull { it.raw == raw }
     }
   }
@@ -416,7 +473,14 @@ data class KeyCreationResult (
    */
   val attestationErrorCode: BiometricError? = null,
   /** Human-readable detail for [attestationErrorCode]. */
-  val attestationError: String? = null
+  val attestationError: String? = null,
+  /**
+   * Where the new signing key is stored and used. See [KeySecurityLevel].
+   *
+   * Null on Windows, and on Android if the key's metadata can't be read.
+   * The same value [KeyInfo.securityLevel] reports for the key later.
+   */
+  val securityLevel: KeySecurityLevel? = null
 )
  {
   companion object {
@@ -435,7 +499,8 @@ data class KeyCreationResult (
       val attestationCertificateChain = pigeonVar_list[11] as List<ByteArray>?
       val attestationErrorCode = pigeonVar_list[12] as BiometricError?
       val attestationError = pigeonVar_list[13] as String?
-      return KeyCreationResult(publicKey, publicKeyBytes, error, code, algorithm, keySize, decryptingPublicKey, decryptingAlgorithm, decryptingKeySize, isHybridMode, authenticationType, attestationCertificateChain, attestationErrorCode, attestationError)
+      val securityLevel = pigeonVar_list[14] as KeySecurityLevel?
+      return KeyCreationResult(publicKey, publicKeyBytes, error, code, algorithm, keySize, decryptingPublicKey, decryptingAlgorithm, decryptingKeySize, isHybridMode, authenticationType, attestationCertificateChain, attestationErrorCode, attestationError, securityLevel)
     }
   }
   fun toList(): List<Any?> {
@@ -454,6 +519,7 @@ data class KeyCreationResult (
       attestationCertificateChain,
       attestationErrorCode,
       attestationError,
+      securityLevel,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -604,7 +670,49 @@ data class KeyInfo (
    * 1.3.6.1.4.1.11129.2.1.17). Null for unattested keys and on all other
    * platforms.
    */
-  val attestationCertificateChain: List<ByteArray>? = null
+  val attestationCertificateChain: List<ByteArray>? = null,
+  /**
+   * Where the signing key is stored and used. See [KeySecurityLevel].
+   *
+   * In Android hybrid mode this describes the signing key only; the
+   * decryption key is a software key wrapped by a keystore AES key. Null on
+   * Windows, and on Android if the key's metadata can't be read.
+   */
+  val securityLevel: KeySecurityLevel? = null,
+  /**
+   * Whether signing and decryption require user authentication.
+   *
+   * `false` for keys created with [CreateKeysConfig.requireAuthentication]
+   * set to `false`. Always `true` on Windows.
+   */
+  val requiresAuthentication: Boolean? = null,
+  /**
+   * Whether enrolling or removing a fingerprint or face permanently
+   * invalidates the key.
+   *
+   * This is the key's effective setting, which can differ from
+   * [CreateKeysConfig.setInvalidatedByBiometricEnrollment]: Android 6
+   * (API 23) always invalidates, and on iOS/macOS a key that accepts the
+   * device passcode is never invalidated.
+   *
+   * Null when [requiresAuthentication] is `false`, on Windows, and on
+   * iOS/macOS for keys whose setting wasn't recorded.
+   */
+  val invalidatedByBiometricEnrollment: Boolean? = null,
+  /**
+   * Whether the device PIN, pattern, password or passcode can unlock the
+   * key, besides a biometric.
+   *
+   * This is the key's effective setting, which can differ from
+   * [CreateKeysConfig.useDeviceCredentials]: Android 10 (API 29) and older
+   * can't bind a key to both, so the option is ignored there and this is
+   * `false`.
+   *
+   * Null when [requiresAuthentication] is `false`, on Windows, and on
+   * iOS/macOS for keys created before version 11.1.0, which didn't record
+   * the setting.
+   */
+  val allowsDeviceCredentials: Boolean? = null
 )
  {
   companion object {
@@ -619,7 +727,11 @@ data class KeyInfo (
       val decryptingAlgorithm = pigeonVar_list[7] as String?
       val decryptingKeySize = pigeonVar_list[8] as Long?
       val attestationCertificateChain = pigeonVar_list[9] as List<ByteArray>?
-      return KeyInfo(exists, isValid, algorithm, keySize, isHybridMode, publicKey, decryptingPublicKey, decryptingAlgorithm, decryptingKeySize, attestationCertificateChain)
+      val securityLevel = pigeonVar_list[10] as KeySecurityLevel?
+      val requiresAuthentication = pigeonVar_list[11] as Boolean?
+      val invalidatedByBiometricEnrollment = pigeonVar_list[12] as Boolean?
+      val allowsDeviceCredentials = pigeonVar_list[13] as Boolean?
+      return KeyInfo(exists, isValid, algorithm, keySize, isHybridMode, publicKey, decryptingPublicKey, decryptingAlgorithm, decryptingKeySize, attestationCertificateChain, securityLevel, requiresAuthentication, invalidatedByBiometricEnrollment, allowsDeviceCredentials)
     }
   }
   fun toList(): List<Any?> {
@@ -634,6 +746,10 @@ data class KeyInfo (
       decryptingAlgorithm,
       decryptingKeySize,
       attestationCertificateChain,
+      securityLevel,
+      requiresAuthentication,
+      invalidatedByBiometricEnrollment,
+      allowsDeviceCredentials,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -703,7 +819,11 @@ data class CreateKeysConfig (
   val promptSubtitle: String? = null,
   /** [Android] Description text for the biometric prompt. */
   val promptDescription: String? = null,
-  /** [Android] Text for the cancel button in the biometric prompt. */
+  /**
+   * [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+   * Android shows "Cancel" when null; iOS/macOS use the system's default.
+   * On iOS/macOS key creation only prompts when [enforceBiometric] is set.
+   */
   val cancelButtonText: String? = null,
   /**
    * [All platforms] When `true`, key creation will fail with
@@ -725,7 +845,9 @@ data class CreateKeysConfig (
    * Platform behaviour:
    * - **Android**: the keystore key is generated without
    *   `setUserAuthenticationRequired(true)`, and signing/decryption skip the
-   *   `BiometricPrompt`.
+   *   `BiometricPrompt`. They therefore also work without a foreground
+   *   activity, e.g. from a background `FlutterEngine` handling a
+   *   notification action.
    * - **iOS/macOS**: the Secure Enclave key is created with only
    *   `.privateKeyUsage` access control (no `.biometryAny`/`.userPresence`) and
    *   `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so signing never
@@ -845,7 +967,10 @@ data class CreateSignatureConfig (
   val promptSubtitle: String? = null,
   /** [Android] Description text for the biometric prompt. */
   val promptDescription: String? = null,
-  /** [Android] Text for the cancel button in the biometric prompt. */
+  /**
+   * [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+   * Android shows "Cancel" when null; iOS/macOS use the system's default.
+   */
   val cancelButtonText: String? = null,
   /** [Android] Whether to allow device credentials (PIN/pattern) as fallback. */
   val allowDeviceCredentials: Boolean? = null
@@ -893,7 +1018,10 @@ data class DecryptConfig (
   val promptSubtitle: String? = null,
   /** [Android] Description text for the biometric prompt. */
   val promptDescription: String? = null,
-  /** [Android] Text for the cancel button in the biometric prompt. */
+  /**
+   * [Android/iOS/macOS] Text for the cancel button in the biometric prompt.
+   * Android shows "Cancel" when null; iOS/macOS use the system's default.
+   */
   val cancelButtonText: String? = null,
   /** [Android] Whether to allow device credentials (PIN/pattern) as fallback. */
   val allowDeviceCredentials: Boolean? = null
@@ -941,7 +1069,7 @@ data class SimplePromptConfig (
   /** [Android] Description text displayed in the biometric prompt body. */
   val description: String? = null,
   /**
-   * [Android] Text for the cancel/negative button.
+   * [Android/iOS/macOS] Text for the cancel/negative button.
    * Default: "Cancel" on Android, system default on iOS/macOS.
    */
   val cancelButtonText: String? = null,
@@ -961,7 +1089,9 @@ data class SimplePromptConfig (
    * [Android] The required biometric strength level.
    *
    * - strong: Only Class 3 biometrics (e.g., fingerprint, in-screen fingerprint)
-   * - weak: Class 2 biometrics allowed (e.g., face unlock without depth)
+   * - weak: Class 2 biometrics allowed (e.g., face unlock without depth).
+   *   `simplePrompt` is the only call that accepts them: a Class 2
+   *   biometric can never unlock a key. See [BiometricStrength.weak].
    *
    * Note: iOS/macOS always use strong biometrics. Windows Hello also uses strong.
    * If strong biometrics are not available but weak are, and strength is set to
@@ -1084,75 +1214,80 @@ private open class BiometricSignatureApiPigeonCodec : StandardMessageCodec() {
       }
       133.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          SignatureType.ofRaw(it.toInt())
+          KeySecurityLevel.ofRaw(it.toInt())
         }
       }
       134.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          AttestationMode.ofRaw(it.toInt())
+          SignatureType.ofRaw(it.toInt())
         }
       }
       135.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          KeyFormat.ofRaw(it.toInt())
+          AttestationMode.ofRaw(it.toInt())
         }
       }
       136.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          SignatureFormat.ofRaw(it.toInt())
+          KeyFormat.ofRaw(it.toInt())
         }
       }
       137.toByte() -> {
         return (readValue(buffer) as Long?)?.let {
-          PayloadFormat.ofRaw(it.toInt())
+          SignatureFormat.ofRaw(it.toInt())
         }
       }
       138.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          BiometricAvailability.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          PayloadFormat.ofRaw(it.toInt())
         }
       }
       139.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          KeyCreationResult.fromList(it)
+          BiometricAvailability.fromList(it)
         }
       }
       140.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          SignatureResult.fromList(it)
+          KeyCreationResult.fromList(it)
         }
       }
       141.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          DecryptResult.fromList(it)
+          SignatureResult.fromList(it)
         }
       }
       142.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          KeyInfo.fromList(it)
+          DecryptResult.fromList(it)
         }
       }
       143.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CreateKeysConfig.fromList(it)
+          KeyInfo.fromList(it)
         }
       }
       144.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CreateSignatureConfig.fromList(it)
+          CreateKeysConfig.fromList(it)
         }
       }
       145.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          DecryptConfig.fromList(it)
+          CreateSignatureConfig.fromList(it)
         }
       }
       146.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          SimplePromptConfig.fromList(it)
+          DecryptConfig.fromList(it)
         }
       }
       147.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          SimplePromptConfig.fromList(it)
+        }
+      }
+      148.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           SimplePromptResult.fromList(it)
         }
@@ -1178,64 +1313,68 @@ private open class BiometricSignatureApiPigeonCodec : StandardMessageCodec() {
         stream.write(132)
         writeValue(stream, value.raw)
       }
-      is SignatureType -> {
+      is KeySecurityLevel -> {
         stream.write(133)
         writeValue(stream, value.raw)
       }
-      is AttestationMode -> {
+      is SignatureType -> {
         stream.write(134)
         writeValue(stream, value.raw)
       }
-      is KeyFormat -> {
+      is AttestationMode -> {
         stream.write(135)
         writeValue(stream, value.raw)
       }
-      is SignatureFormat -> {
+      is KeyFormat -> {
         stream.write(136)
         writeValue(stream, value.raw)
       }
-      is PayloadFormat -> {
+      is SignatureFormat -> {
         stream.write(137)
         writeValue(stream, value.raw)
       }
-      is BiometricAvailability -> {
+      is PayloadFormat -> {
         stream.write(138)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw)
       }
-      is KeyCreationResult -> {
+      is BiometricAvailability -> {
         stream.write(139)
         writeValue(stream, value.toList())
       }
-      is SignatureResult -> {
+      is KeyCreationResult -> {
         stream.write(140)
         writeValue(stream, value.toList())
       }
-      is DecryptResult -> {
+      is SignatureResult -> {
         stream.write(141)
         writeValue(stream, value.toList())
       }
-      is KeyInfo -> {
+      is DecryptResult -> {
         stream.write(142)
         writeValue(stream, value.toList())
       }
-      is CreateKeysConfig -> {
+      is KeyInfo -> {
         stream.write(143)
         writeValue(stream, value.toList())
       }
-      is CreateSignatureConfig -> {
+      is CreateKeysConfig -> {
         stream.write(144)
         writeValue(stream, value.toList())
       }
-      is DecryptConfig -> {
+      is CreateSignatureConfig -> {
         stream.write(145)
         writeValue(stream, value.toList())
       }
-      is SimplePromptConfig -> {
+      is DecryptConfig -> {
         stream.write(146)
         writeValue(stream, value.toList())
       }
-      is SimplePromptResult -> {
+      is SimplePromptConfig -> {
         stream.write(147)
+        writeValue(stream, value.toList())
+      }
+      is SimplePromptResult -> {
+        stream.write(148)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -1246,8 +1385,15 @@ private open class BiometricSignatureApiPigeonCodec : StandardMessageCodec() {
 
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface BiometricSignatureApi {
-  /** Checks if biometric authentication is available. */
-  fun biometricAuthAvailable(callback: (Result<BiometricAvailability>) -> Unit)
+  /**
+   * Checks if biometric authentication is available.
+   *
+   * [biometricStrength] is the class of biometric to check for on Android
+   * (`null` means [BiometricStrength.strong]). Other platforms ignore it.
+   * [BiometricStrength.weak] only applies to `simplePrompt`; see its docs.
+   * It is a named parameter so that existing calls without it still compile.
+   */
+  fun biometricAuthAvailable(biometricStrength: BiometricStrength?, callback: (Result<BiometricAvailability>) -> Unit)
   /**
    * Creates a new key pair.
    *
@@ -1305,6 +1451,14 @@ interface BiometricSignatureApi {
    * this plugin. Use [deleteKeys] for targeted deletion.
    */
   fun deleteAllKeys(callback: (Result<Boolean>) -> Unit)
+  /**
+   * Lists the aliases that currently have a key, without prompting.
+   *
+   * The default alias is returned as `null`. On Windows, aliases are
+   * tracked in app settings, which are deleted on uninstall while Windows
+   * Hello keys are not, so after a reinstall only the default key is found.
+   */
+  fun listKeyAliases(callback: (Result<List<String?>>) -> Unit)
   /**
    * Gets detailed information about existing biometric keys.
    *
@@ -1367,8 +1521,10 @@ interface BiometricSignatureApi {
       run {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.biometricAuthAvailable$separatedMessageChannelSuffix", codec)
         if (api != null) {
-          channel.setMessageHandler { _, reply ->
-            api.biometricAuthAvailable{ result: Result<BiometricAvailability> ->
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val biometricStrengthArg = args[0] as BiometricStrength?
+            api.biometricAuthAvailable(biometricStrengthArg) { result: Result<BiometricAvailability> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(BiometricSignatureApiPigeonUtils.wrapError(error))
@@ -1504,6 +1660,24 @@ interface BiometricSignatureApi {
         if (api != null) {
           channel.setMessageHandler { _, reply ->
             api.deleteAllKeys{ result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(BiometricSignatureApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(BiometricSignatureApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.biometric_signature.BiometricSignatureApi.listKeyAliases$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.listKeyAliases{ result: Result<List<String?>> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(BiometricSignatureApiPigeonUtils.wrapError(error))

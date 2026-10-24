@@ -3,8 +3,9 @@ import 'package:biometric_signature/biometric_signature.dart';
 import 'controller_base.dart';
 import 'key_alias.dart';
 
-/// Inventory screen: `getKeyInfo`, `biometricKeyExists`, `deleteKeys` and
-/// `deleteAllKeys` over the known aliases plus the probe alias.
+/// Inventory screen: `listKeyAliases`, plus `getKeyInfo`,
+/// `biometricKeyExists`, `deleteKeys` and `deleteAllKeys` over the known
+/// aliases and the probe alias.
 class InventoryController extends ExplorerController {
   /// Creates the controller.
   InventoryController(super.state);
@@ -14,6 +15,9 @@ class InventoryController extends ExplorerController {
 
   /// Operation id for [deleteAll].
   static const String deleteAllOp = 'deleteAll';
+
+  /// Operation id for [listAliases].
+  static const String listAliasesOp = 'listAliases';
 
   /// Operation id for [refresh] of [alias].
   static String infoOp(KeyAlias alias) => 'info:${alias.label}';
@@ -41,6 +45,15 @@ class InventoryController extends ExplorerController {
 
   /// Last `deleteAllKeys` result.
   bool? deleteAllResult;
+
+  /// Last `listKeyAliases` result (`null` entry = default alias). Cleared
+  /// when a key is deleted, since it may be stale then.
+  List<String?>? deviceAliases;
+
+  /// Calls `listKeyAliases`.
+  Future<void> listAliases() => run(listAliasesOp, () async {
+        deviceAliases = await api.listKeyAliases();
+      });
 
   /// Calls `getKeyInfo` for every alias.
   Future<void> refreshAll() => run(refreshAllOp, () async {
@@ -76,6 +89,7 @@ class InventoryController extends ExplorerController {
   /// Calls `deleteKeys` for [alias].
   Future<void> delete(KeyAlias alias) => run(deleteOp(alias), () async {
         deleteResults[alias] = await api.deleteKeys(keyAlias: alias.value);
+        deviceAliases = null;
         infos.remove(alias);
         existsResults.remove(alias);
         state.forget(alias);
@@ -84,6 +98,7 @@ class InventoryController extends ExplorerController {
   /// Calls `deleteAllKeys`.
   Future<void> deleteAll() => run(deleteAllOp, () async {
         deleteAllResult = await api.deleteAllKeys();
+        deviceAliases = null;
         infos.clear();
         existsResults.clear();
         deleteResults.clear();

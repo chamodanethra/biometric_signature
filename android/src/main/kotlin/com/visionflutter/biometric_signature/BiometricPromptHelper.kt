@@ -27,12 +27,17 @@ sealed interface AuthenticationOutcome {
 
 class BiometricPromptHelper(private val appContext: Context) {
 
-    fun detectBiometricTypes(): List<BiometricType> {
+    /**
+     * The biometric types usable with [authenticators] (a biometric
+     * [BiometricManager.Authenticators] class), or an empty list when none is.
+     */
+    fun detectBiometricTypes(
+        authenticators: Int = BiometricManager.Authenticators.BIOMETRIC_STRONG
+    ): List<BiometricType> {
         val pm = appContext.packageManager
         val biometricManager = BiometricManager.from(appContext)
-        val canAuth = biometricManager.canAuthenticate(
-            BiometricManager.Authenticators.BIOMETRIC_STRONG
-        ) == BiometricManager.BIOMETRIC_SUCCESS
+        val canAuth = biometricManager.canAuthenticate(authenticators) ==
+            BiometricManager.BIOMETRIC_SUCCESS
 
         if (!canAuth) return emptyList()
 
@@ -49,9 +54,7 @@ class BiometricPromptHelper(private val appContext: Context) {
             val getStringsMethod = BiometricManager::class.java.getMethod(
                 "getStrings", Int::class.javaPrimitiveType
             )
-            val strings = getStringsMethod.invoke(
-                biometricManager, BiometricManager.Authenticators.BIOMETRIC_STRONG
-            )
+            val strings = getStringsMethod.invoke(biometricManager, authenticators)
             if (strings != null) {
                 val getButtonLabel = strings.javaClass.getMethod("getButtonLabel")
                 val getPromptMessage = try {

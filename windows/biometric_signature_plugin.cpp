@@ -17,6 +17,7 @@
 #include <functional>
 #include <iomanip>
 #include <memory>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -33,8 +34,15 @@ namespace {
 
 // Default key name for Windows Hello credential
 const std::wstring kDefaultKeyName = L"BiometricSignatureKey";
+
+// Windows Hello can't enumerate keys, so every named alias with a key is
+// recorded in the app's local settings as kAliasMarkerPrefix + alias (its
+// "marker"). The default key gets no marker: it is always checked directly.
+// Releases before 13.3.0 also recorded the default key, as "__default__",
+// which collided with a named alias of that name. Such a marker is now read
+// as the named alias "__default__", whose key won't exist if the marker was
+// written for the default key, so it is harmless.
 const std::wstring kAliasMarkerPrefix = L"BiometricSignatureAlias::";
-const std::wstring kDefaultAliasMarker = L"__default__";
 
 // Compute the Windows Hello key name from an optional alias
 std::wstring KeyNameForAlias(const std::string* key_alias) {
@@ -45,18 +53,29 @@ std::wstring KeyNameForAlias(const std::string* key_alias) {
   return L"BiometricSignatureKey_" + wide_alias;
 }
 
-std::wstring AliasMarkerFromOptionalAlias(const std::string* key_alias) {
+// The marker of a named alias; none for the default alias (null or empty,
+// as in KeyNameForAlias).
+std::optional<std::wstring> AliasMarkerFor(const std::string* key_alias) {
   if (key_alias == nullptr || key_alias->empty()) {
-    return kDefaultAliasMarker;
+    return std::nullopt;
   }
   return std::wstring(key_alias->begin(), key_alias->end());
 }
 
+// The key name of the named alias a marker stands for.
 std::wstring KeyNameFromAliasMarker(const std::wstring& marker) {
-  if (marker == kDefaultAliasMarker) {
-    return kDefaultKeyName;
-  }
   return L"BiometricSignatureKey_" + marker;
+}
+
+// The named alias a marker stands for. Inverse of AliasMarkerFor, which
+// widens the alias byte by byte.
+std::string AliasFromMarker(const std::wstring& marker) {
+  std::string alias;
+  alias.reserve(marker.size());
+  for (wchar_t c : marker) {
+    alias.push_back(static_cast<char>(c));
+  }
+  return alias;
 }
 
 void TrackAliasMarker(const std::wstring& marker) {
@@ -73,9 +92,9 @@ void UntrackAliasMarker(const std::wstring& marker) {
   values.TryRemove(winrt::hstring(kAliasMarkerPrefix + marker));
 }
 
-std::vector<std::wstring> TrackedKeyNames() {
-  std::set<std::wstring> key_names;
-  key_names.insert(kDefaultKeyName);
+// Markers of every named alias that may have a key, sorted.
+std::vector<std::wstring> TrackedAliasMarkers() {
+  std::set<std::wstring> markers;
 
   auto values = winrt::Windows::Storage::ApplicationData::Current()
           .LocalSettings()
@@ -87,9 +106,21 @@ std::vector<std::wstring> TrackedKeyNames() {
       continue;
     }
     std::wstring marker = key.substr(kAliasMarkerPrefix.size());
-    key_names.insert(KeyNameFromAliasMarker(marker));
+    if (!marker.empty()) {
+      markers.insert(marker);
+    }
   }
 
+  return std::vector<std::wstring>(markers.begin(), markers.end());
+}
+
+// The default key's name plus that of every tracked named alias.
+std::vector<std::wstring> TrackedKeyNames() {
+  std::set<std::wstring> key_names;
+  key_names.insert(kDefaultKeyName);
+  for (auto const& marker : TrackedAliasMarkers()) {
+    key_names.insert(KeyNameFromAliasMarker(marker));
+  }
   return std::vector<std::wstring>(key_names.begin(), key_names.end());
 }
 
@@ -235,7 +266,9 @@ BiometricSignaturePlugin::BiometricSignaturePlugin() {}
 BiometricSignaturePlugin::~BiometricSignaturePlugin() {}
 
 void BiometricSignaturePlugin::BiometricAuthAvailable(
+    const BiometricStrength* /*biometric_strength*/,
     std::function<void(ErrorOr<BiometricAvailability> reply)> result) {
+  // The strength is Android-only: Windows Hello has no biometric classes.
 
   auto async_op = winrt::Windows::Security::Credentials::KeyCredentialManager::
       IsSupportedAsync();
@@ -320,7 +353,7 @@ void BiometricSignaturePlugin::CreateKeys(
   BringWindowToForeground();
 
   std::wstring key_name = KeyNameForAlias(key_alias);
-  std::wstring alias_marker = AliasMarkerFromOptionalAlias(key_alias);
+  std::optional<std::wstring> alias_marker = AliasMarkerFor(key_alias);
 
   // Determine creation option based on failIfExists
   bool fail_if_exists = (config != nullptr && config->fail_if_exists() != nullptr && *config->fail_if_exists());
@@ -354,7 +387,9 @@ void BiometricSignaturePlugin::CreateKeys(
         response.set_code(BiometricError::kSuccess);
         response.set_is_hybrid_mode(false);
         response.set_authentication_type(AuthenticationType::kUnknown);
-        TrackAliasMarker(alias_marker);
+        if (alias_marker) {
+          TrackAliasMarker(*alias_marker);
+        }
       } else {
         std::string error_msg = "Failed to create key";
         BiometricError error_code = BiometricError::kUnknown;
@@ -539,14 +574,16 @@ void BiometricSignaturePlugin::DeleteKeys(
   std::function<void(ErrorOr<bool> reply)> result) {
 
   std::wstring key_name = KeyNameForAlias(key_alias);
-  std::wstring alias_marker = AliasMarkerFromOptionalAlias(key_alias);
+  std::optional<std::wstring> alias_marker = AliasMarkerFor(key_alias);
 
   auto async_op =
       winrt::Windows::Security::Credentials::KeyCredentialManager::DeleteAsync(
           key_name);
 
   async_op.Completed([result, alias_marker](auto const &op, auto status) {
-    UntrackAliasMarker(alias_marker);
+    if (alias_marker) {
+      UntrackAliasMarker(*alias_marker);
+    }
     result(true); // Return true even if key didn't exist
   });
 }
@@ -586,6 +623,55 @@ void BiometricSignaturePlugin::DeleteAllKeys(
   DeleteKeysRecursive(key_names, 0, result);
 }
 
+// A key that may exist, and the alias to report if it does: null for the
+// default key.
+struct AliasCandidate {
+  std::wstring key_name;
+  flutter::EncodableValue alias;
+};
+
+// Opens each candidate's key in turn and collects the aliases whose Windows
+// Hello key exists: a marker can outlive its key.
+static void CollectAliasesRecursive(
+    std::shared_ptr<std::vector<AliasCandidate>> candidates,
+    size_t index,
+    std::shared_ptr<flutter::EncodableList> aliases,
+    std::function<void(ErrorOr<flutter::EncodableList> reply)> result) {
+
+  if (index >= candidates->size()) {
+    result(*aliases);
+    return;
+  }
+
+  auto async_op =
+      winrt::Windows::Security::Credentials::KeyCredentialManager::OpenAsync(
+          (*candidates)[index].key_name);
+
+  async_op.Completed([candidates, index, aliases, result](auto const &op,
+                                                          auto status) {
+    if (status == winrt::Windows::Foundation::AsyncStatus::Completed &&
+        op.GetResults().Status() ==
+            winrt::Windows::Security::Credentials::KeyCredentialStatus::Success) {
+      aliases->push_back((*candidates)[index].alias);
+    }
+    CollectAliasesRecursive(candidates, index + 1, aliases, result);
+  });
+}
+
+void BiometricSignaturePlugin::ListKeyAliases(
+    std::function<void(ErrorOr<flutter::EncodableList> reply)> result) {
+
+  // The default key first, as null, then the tracked named aliases in order.
+  auto candidates = std::make_shared<std::vector<AliasCandidate>>();
+  candidates->push_back({kDefaultKeyName, flutter::EncodableValue()});
+  for (auto const& marker : TrackedAliasMarkers()) {
+    candidates->push_back({KeyNameFromAliasMarker(marker),
+                           flutter::EncodableValue(AliasFromMarker(marker))});
+  }
+  CollectAliasesRecursive(candidates, 0,
+                          std::make_shared<flutter::EncodableList>(), result);
+}
+
 void BiometricSignaturePlugin::GetKeyInfo(
     const std::string *key_alias, bool check_validity,
     const KeyFormat &key_format,
@@ -617,6 +703,9 @@ void BiometricSignaturePlugin::GetKeyInfo(
         if (check_validity) {
           response.set_is_valid(true);
         }
+        // Windows Hello always authenticates. It doesn't say whether the TPM
+        // holds the key, so the security level stays unset.
+        response.set_requires_authentication(true);
         response.set_algorithm("RSA");
         response.set_key_size(static_cast<int64_t>(2048));
         response.set_is_hybrid_mode(false);

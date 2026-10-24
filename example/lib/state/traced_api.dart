@@ -142,11 +142,17 @@ class TracedApi {
         });
 
   /// See [BiometricSignature.biometricAuthAvailable].
-  Future<BiometricAvailability> biometricAuthAvailable() => _trace(
+  Future<BiometricAvailability> biometricAuthAvailable({
+    BiometricStrength biometricStrength = BiometricStrength.strong,
+  }) =>
+      _trace(
         method: 'biometricAuthAvailable',
         resultType: 'BiometricAvailability',
-        args: const [],
-        run: _api.biometricAuthAvailable,
+        args: _args({
+          'biometricStrength': EnumArg('BiometricStrength', biometricStrength),
+        }),
+        run: () =>
+            _api.biometricAuthAvailable(biometricStrength: biometricStrength),
       );
 
   /// See [BiometricSignature.isDeviceLockSet].
@@ -282,6 +288,14 @@ class TracedApi {
         resultType: 'bool',
         args: const [],
         run: _api.deleteAllKeys,
+      );
+
+  /// See [BiometricSignature.listKeyAliases].
+  Future<List<String?>> listKeyAliases() => _trace(
+        method: 'listKeyAliases',
+        resultType: 'List<String?>',
+        args: const [],
+        run: _api.listKeyAliases,
       );
 
   /// See [BiometricSignature.getKeyInfo].
